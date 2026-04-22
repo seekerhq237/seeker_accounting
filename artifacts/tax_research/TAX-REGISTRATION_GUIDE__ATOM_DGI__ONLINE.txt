@@ -1,0 +1,150 @@
+
+=== PAGE 1 ===
+GUIDE D’UTILISATION DU NOUVEAU SYSTEME 
+D’IMMATRICULATION DE LA DGI 
+ 
+ 
+Atom 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ÉTAPES POUR OBTENIR L'IMMATRICULATION SUR ATOM A LA DGI 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Version 1.0 
+
+
+=== PAGE 2 ===
+1 - Avec le navigateur Web de votre choix, veuillez saisir 
+dans la barre d'adresse www.impots.cm et valider. 
+ 
+ 
+ 
+2 - Si vous êtes un contribuable non professionnel, c'est -à-dire que vous ne 
+vous enregistrez pas en tant qu'entreprise ou en tant qu'établissement, cliquez 
+sur le premier lien à droite : e-Registration, vous serez automatiquement 
+redirigé vers le site d'immatriculation immatriculation.dgi.cm 
+ 
+ 
+ 
+
+=== PAGE 3 ===
+3 - Sur cette nouvelle page, veuillez cliquer sur «  Register » si vous n'avez 
+pas encore créé de compte. Mais si vous avez déjà un compte, veuillez- 
+vous connecter en saisissant votre adresse e -mail et votre mot de passe 
+ 
+4 - Le processus d'inscription est simple. 
+ 
+a. Saisissez votre adresse e-mail valide car vous devrez recevoir un lien de 
+confirmation pour continuer, 
+b. Saisissez un mot de passe sécurisé et confirmez-le en le saisissant à 
+nouveau dans le champ de confirmation du mot de passe.  
+c. N'oubliez pas de cocher la case « Je ne suis pas un robot » une fois qu'elle 
+apparaît. 
+d. Cliquez enfin sur le bouton « Register » pour enregistrer les informations 
+ 
+ 
+ 
+
+=== PAGE 4 ===
+5  - Après avoir cliqué sur le bouton d'inscription, le système vous informe 
+que « votre compte a été créé avec succès ». Veuillez vérifier votre 
+courrier électronique indiqué et activer l'utilisateur pour continuer. 
+ 
+ 
+6 - Veuillez ouvrir votre adresse e-mail, recherchez le message entrant 
+provenant du compte RDF SSO. Cliquez ensuite sur le lien de confirmation 
+qui a été généré automatiquement pour activer votre compte. 
+ 
+ 
+ 
+ 
+
+=== PAGE 5 ===
+7- Une fois terminé, vous serez redirigé vers la page finale, vous  
+informant que « votre compte a été activé avec succès.  
+ 
+ 
+ 
+ 
+8 - Dans cette nouvelle page Web, saisissez l'adresse e -mail et le mot de passe 
+utilisés lors de la création de votre compte et cliquez sur le bouton Se connecter. 
+ 
+ 
+ 
+ 
+
+=== PAGE 6 ===
+9 - Nous voulons immatriculer une personne physique. Ainsi, dans l'élément 
+déroulant, sélectionnez « Personne Physique sans établissement ».  
+ 
+ 
+ 
+ 
+10 - Un nouveau formulaire d'identification devient disponible vous invitant 
+à remplir toutes les informations nécessaires pour vous enregistrer  
+ 
+
+=== PAGE 7 ===
+11- Veuillez télécharger les documents nécessaires tels que la carte d'identité et le 
+plan de localisation. Après avoir sélectionné les documents, assurez -vous de cliquer 
+sur le bouton de téléchargement afin que les annexes puissent être prises en 
+compte par le système. S'il vous plaît, assurez -vous ici de voir s'afficher 
+l'image du bouton de téléchargement et celle du fichier déjà téléchargé  
+ 
+ 
+ 
+ 
+
+=== PAGE 8 ===
+12 - Cliquez sur le bouton Envoyer une demande. Le système vous 
+informera que votre numéro d'identification fiscale a été créé  
+ 
+ 
+13 - Téléchargez l’avis d’imposition en cliquant sur le lien « Télécharger l’avis 
+d’immatriculation ». Le paiement de la redevance de 1000 frs figurant sur 
+l’avis d’imposition vous donnera la possibilité de télécharger l’Attestation 
+d’immatriculation 
+ 
+ 
+Cliquez sur « Télédéclaration » pour déposer votre déclaration annuelle de 
+revenus des particuliers ou toute autre déclaration. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 9 ===
+ 
+ 
+ 
+ 
+14 – Après avoir télécharg é l’avis d’imposition  et payé celui-ci, cliquez sur 
+le lien situé au niveau de votre NIU pour télécharger votre « attestation 
+d’immatriculation » 
+ 
+ 
+ 
+ 
+ 
+ 
+ 

@@ -1,0 +1,275 @@
+
+=== PAGE 1 ===
+1 
+TAXATION 1 
+CHAPTER ONE 
+INTRODUCTORY NOTIONS ON TAXATION 
+1) DEFINITION OF TAXATION  
+Taxation can be perceived as the system of raising money to finance government or as a means by 
+which governments finance their expenditures by imposing charges on citizens and corporate 
+entities. The Oxford Dictionary of accounting defines taxation as ‘ a levy on individuals or 
+corporate bodies by central or local government in order to finance the expenditure of tha t 
+government and also as a means of implementing its fiscal policy’. The dictionary further specifies 
+that ‘payments for specific services rendered to or for the payer are not regarded as taxation’.  
+Other scholars define taxation as ‘the science which studies the set of monetary deductions carried 
+out by the state on natural and artificial persons’. In practice, we have taxes at the core of taxation. 
+ 2) TAXES AND RELATED TERMINOLOGIES  
+A tax can be defined as "a compulsory payment, levy, duty or contribut ion, without direct 
+compensation demanded by the state or its decentralised organs from natural and artificial 
+persons." From this definition, the following main features describe taxes:  
+- A tax is a “compulsory payment” as it is a right for the fiscal ad ministration to collect its taxes 
+(attribution of sovereignty) and the taxpayer equally has the obligation to pay the taxes.  
+- A tax is a payment without any “direct compensation” required to be provided to the payer”. The 
+taxpayer may enjoy certain benefits from the state, but they hardly correspond to the amount paid 
+as taxes.  
+- A tax is a “monetary payment” as it is negotiated and assessed in terms of the legal currency of 
+the state.  
+Taxes are given different descriptions based either on the reason for charging the taxpayer to pay 
+the given tax, or the beneficiary of the tax. The following terms are used in the domain of taxation 
+either as a notion of tax or interchangeably.  
+Rates: They represent the revenue of local authorities and can be described as levies to be paid to 
+the various local authority organs of the state when a public service is required by a citizen, or in 
+general, to help provide revenue for any decentralised organ of the state.  
+Duties: They are similar to a tax in that their payment confers the right to use a public service.  
+Contributions: These are levies imposed on the population to help the state in the provision of 
+social services or social insurance understandings. Examples are levies made for the interest of the 
+National Social Insurance Fund, to the Local Council Support Fund, to the Housing Loan Fund or 
+the National Employment Fund.  
+Tariffs: They represent the ranges of duties on imports and other home-made products.  
+Apart from these terms used as taxes, it is equally important to master the following terms 
+commonly used in the domain of taxation:  
+The tax bearer: The tax bearer is that natural or artificial person subject to the domain of 
+application of an obligatory payment and who bears the burden of the said payment.  
+
+=== PAGE 2 ===
+2 
+TAXATION 1 
+The taxpayer: The taxpayer on the other side is that natural or artificial person who has carried 
+out an operation which generates taxes. There are two classes of taxpayers: the legal taxpayer and 
+the actual taxpayer.  
+- The legal taxpayer is the person (natural or artificial) who is responsible for the payment of the 
+tax to the fiscal administration.  
+- The actual taxpayer is the tax bearer, which is the person who bears the burden of the tax.  
+Tax base (tax ass essment base): This is the specific aspect or domain on which a tax is levied, 
+for instance an individual’s income for income tax, the profits of companies for corporation tax, 
+the estate of a deceased person for inheritance tax, or the value of a landed p roperty for land tax. 
+In simple terms, the tax base is the amount/value on which the tax rate is applied or the income 
+bracket for the tax.  
+Tax returns: These are forms used by taxpayers to make periodic tax declarations and payments.  
+Tax-deductible: This is an amount that can be deducted from income or profits in order to obtain 
+the final amount of income or profit that is subject to tax.  
+Tax allowance: This is a deduction made in calculating the taxable income. It reduces the tax base 
+and serves as a tax benefit.  
+Taxable income: This is the income liable to taxation. It is calculated by deducting income tax 
+allowances and tax-deductible expenses from the taxpayer’s gross income.  
+Tax bracket: These are figures between which incomes or amounts are subjected to a specific rate 
+of tax. For instance, income between 1 and 2 000 000 CFAF is tax at 10%, between 2 000 001 and 
+3 000 000 CFAF at 15%, etc.  
+A tax a dvantage: This is a benefit enjoyed by a taxpayer as a result of a reduction in a charge to 
+taxation.  
+Tax rebate: This is a repayment of a tax already paid by a taxpayer. It is like a refund on taxes 
+earlier paid by the taxpayer. In order to obtain a tax rebate, the taxpayer has to make a repayment 
+claim to the Inspector of Taxes and the refund due to the taxpayer will be made by the Collector 
+of Taxes following the Inspector’s instructions.  
+Tax exempt: This represents an item (payment, income, revenue, a llowance, etc) which is not 
+subject to taxation. That is, a tax-free item.  
+A tax heaven: This is a state, country or territory where certain taxes are levied at a low rate or 
+not at all. It also refers to countries which have a system of financial secrecy in place. It is an area 
+identified as having a composite tax structure deliberately established to take advantage of, and 
+exploit a worldwide demand for opportunities to engage in tax avoidance.  
+Tax avoidance: This is a legal usage of the tax regime in a given country to one’s own advantage 
+to reduce the amount of tax that is payable by means within the law.  
+Tax sheltering: This is a legal method of minimising or decreasing an investor’s taxable income 
+and, therefore, his or her tax liability. Tax shelte rs can range from investments or investment 
+accounts that provide favourable tax treatment, to activities or transactions that lower taxable 
+
+=== PAGE 3 ===
+3 
+TAXATION 1 
+income. It is very similar to tax avoidance, although unlike tax avoidance, it is not necessarily 
+legal.  
+Tax evasi on: is the illegal evasion of taxes by individuals, corporations and trusts. This entails 
+taxpayers deliberately misrepresenting the true state of their affairs to the tax authorities in order 
+to reduce their tax liability and includes dishonest tax report ing, such as declaring less income, 
+profits or gains than the amount actually earned, or overstating deductions. It is commonly 
+associated with the informal sector.  
+Tax liability: This is the total amount of tax that an entity or individual is legally obligated to pay 
+to an authority as a result of the occurrence of a taxable event. This is obtained by applying the 
+appropriate tax rate on the tax base.  
+Taxable event: This is any event or transaction that results in a tax consequence or tax liability 
+for the party who executes the event. Common examples of taxable events for investors include 
+the receiving of dividends and interests, selling securities for a gain and exercising options.  
+ 
+3) FUNCTIONS OF TAXES  
+The functions of taxes can be perceived from two points of view:  
+- The fiscal function;  
+- The instrumental function.  
+ 
+3.1) The fiscal function of taxes  
+This function refers to “how the government spends taxes ”. In a state, country or community, the 
+citizens or members of that community require a certain number of needs. Individually, these 
+people cannot succeed in acquiring all the resources needed to satisfy these needs. Collectively, 
+these people can use their collective efforts through the coordinati on of the state to acquire 
+resources which can satisfy these needs. Therefore, the execution of duties of collective interest 
+falls in the hands of the state. 
+3.2) The instrumental function of taxes  
+In addition to using taxation to raise money (which is the main function or purpose of taxation), a 
+government uses taxes as an excellent means of intervention in the economy or the society. A 
+government may raise or levy taxes to achieve social and economic objectives, or to achieve 
+political popularity with certain groups. Taxation can redistribute a society’s wealth by imposing 
+a heavier tax burden on one group in order to fund services for another. Also, some economists 
+consider taxation as an important tool for maintaining the stability of a country’s economy. 
+4) TYPES OF TAXATION SYSTEMS  
+Tax systems are the means by which taxes are raised and collected in accordance with the tax 
+legislation. Taxes can be levied following one of the following systems:  
+- the proportional tax system;  
+- the progressive tax system;  
+
+=== PAGE 4 ===
+4 
+TAXATION 1 
+- the regressive tax system;  
+- the ad valorem or percentage tax system;  
+- the per capita tax system;  
+- The specific or unit tax system.  
+ 
+4.1) The proportional tax system  
+A proportional tax imposes the same percentage of taxat ion on everyone, regardless of income. 
+The amount of the tax to be paid is obtained by applying a fixed rate of tax on the assessment base 
+of the tax. The tax rate remains constant whatever the amount of the assessment base.  
+For instance, if the tax rate is 10% on the monthly income, a person earning 100 000 CFAF is 
+required to pay 10 000 CFAF as tax; while another person who earns 250 000 CFAF also pays 
+10% of it, that is 25 000 CFAF; every income earner pays 10% of his income.  
+Though favoured by the economist, Adam Smith, a proportional system of taxation is nowadays 
+regarded as being less equitable than a progressive system.  
+4.2) The progressive tax system  
+The progressive tax imposes a higher percentage rate of taxation on those with higher incomes. It 
+is a system where the rate of taxation increases as income increases, so that a person with an 
+income of 100 000 CFAF may pays 11 000 CFAF in income tax (that is, 11% of his income) 
+whereas a person with an income of 500 000 CFAF may pay 13 50 0 CFAF in tax (27% of his 
+income). This is the principle of pay as you earn (PAYE).  
+Where great inequality of income exists, a progressive system of taxation is regarded as being 
+more equitable than a proportional system. The personal income tax in Camero on is an example 
+of a progressive tax.  
+4.3) The regressive tax system  
+The regressive tax system imposes a higher percentage rate of taxation on low incomes than on 
+high incomes. Some economists consider sales taxes regressive because individuals with hig her 
+incomes spend a smaller proportion of their incomes on sales taxes than those with lower incomes. 
+A poor person and a rich person who spend the same amount on groceries each year will pay the 
+same amount in sales taxes, even though the rich person earns more money. However, rich people 
+consume more than poor people.  
+4.4) The ad valorem or percentage tax system  
+Here, the amount of tax paid depends on the value of the commodity e.g. 10 % of the value of the 
+good may be paid as taxes.  
+4.5) The per capita tax system  
+Here, the tax is levied per head. That is, every tax subject pays the same amount as tax, regardless 
+of social or income earning capacity.  
+4.6) The specific tax system  
+
+=== PAGE 5 ===
+5 
+TAXATION 1 
+The amount of tax paid depends on the quantity of the good bought. A spe cific tax on wine is on 
+the quantity of wine rather than on its price. A bottle of expensive wine then bears the same cost 
+as a bottle of cheap wine.  
+5) THE PRINCIPLES OR CANONS OF TAXATION  
+Canons of taxation describe the basic principles to be followed by governments and local 
+authorities in formulating their taxation policies so as to optimize their tax systems. This is based 
+on the ideal of harvesting as much as possible from taxes, while minimising the effects of taxes on 
+individuals and activities.  
+According to the economist, Adams Smith , governments have to observe four basic principles 
+when formulating taxation policies: 
+ Equality;  
+ Certainty ;  
+ Convenience; and  
+ Economy.  
+5.1) Equality  
+According to this principle, the subjects of every state ought to contribute towards the support of 
+the government as nearly as possible, in proportion to their respective abilities. That is, in 
+proportion to the revenue that they respectively enjoy under the protection of that state. There are 
+three ways of collecting taxes from individuals so that it falls equally on individuals. These are:  
+The per capita tax system: Here, everyone pays the same contribution, say 5 000 CFAF per head, 
+as in the example of the poll tax.  
+The proportional tax system: Here, everyone pays the same proportion of their income in the 
+tax, say 10%. This was Adams Smith’s "equal" tax.  
+The progressive tax system: Here, the amount of tax is adjusted to fall most heavily on the rich.  
+ 
+Of these three systems of tax, the per capita may be said to be fair, the proportional may be said 
+to be unjust, while the progressive taxation system is the fairest system for taxes. This system has 
+therefore been adopted by most nations.  
+5.2) Certainty  
+According to this principle, the tax which each individual is bound to pay ought to be certain and 
+not arbitrary. The time of payment, the manner of payment, the quantity to be paid, ought all to be 
+clear and plain. A system of tax collecti on which is not certain will almost invariably cause 
+discontent.  
+5.3) Convenience  
+According to this principle, every tax ought to be levied at the time, or in the manner, in which it 
+is most likely to be convenient for the contributor to pay it. This rule also helps the government to 
+maintain as far as possible the flow of revenue at the same pace as that of expenditure. Again, 
+
+=== PAGE 6 ===
+6 
+TAXATION 1 
+taxes are invariably a burden at the time of payment, even when the taxpayer agrees that they are 
+just and equitable. Their collection at the most convenient point reduces losses by non -payment 
+and simplifies the whole process.  
+5.4) Economy  
+According to this principle, every tax ought to be so contrived (or designed) as both to take out 
+and keep out of the pockets of people as lit tle as possible over and above what it brings in to the 
+public treasury of the state. This canon, in the narrow sense of the term, requires that as little as 
+possible, consistent with efficiency, should be spent on administration and collection. Or, in other 
+words, the yield should be greater than the cost of collection, as any tax which costs more than it 
+raises in revenue is clearly a waste of time.  
+6) THE CLASSIFICATION OF TAXES  
+Taxes might be levied on income, on capital or on expenditure. Taxes are c lassified either on the 
+basis of the tax base or the manner in which the tax is paid to the state.  
+6.1) Classification of taxes based on the tax base  
+On the basis of the tax base, taxes fall within the following categories:  
+i) Taxes on income: The tax base here is the income or profits of the taxpayer. For example the 
+personal income tax, capital gains tax and corporation tax.  
+ii) Taxes on capital: The tax base in this case is the value of an item or wealth in general. As 
+examples we have the Capital transfer tax, inheritance tax, tax on capital of companies.  
+iii) Taxes on expenditures: The tax base for this type of taxes is the value of the expenditure, 
+which is generally represented by the net financial value of the item. Examples are the Value 
+Added Tax and excise duties.  
+iv) Taxes on activity: The tax base here is a particular activity and the tax is paid on the basis of 
+the simple fact that this activity is carried out by the taxpayer. Examples are business licence, 
+liquor licence, and the global tax paid by small business units.  
+v) Taxes on property: The tax base here is the value of an asset controlled by the taxpayer. 
+Examples are real estate taxes.  
+6.2) Classification of taxes based on the manner of payment  
+The above categories of taxes fall under two classes of taxes as per the manner of their payment 
+to the state: direct and indirect taxes  
+ Direct Taxes: These taxes are paid directly to the taxation authority by the person against 
+whom the taxes are levied. That is the taxpayer is the tax bearer. They include taxes on 
+income, on activity and on capital.  
+ Indirect taxes: Here, the person against whom the ta x is levied does not directly pay the 
+tax to the tax authority. That is, the taxpayer is different from the tax bearer. They in most 
+cases are taxes on expenditures.  
+
+=== PAGE 7 ===
+7 
+TAXATION 1 
+ 
+7. THE EFFECTS OF TAXATION  
+Economists have devoted considerable effort to study how tax es affect people’s behaviour, 
+including their choices in working, saving, and investing. To understand the effect of any tax, one 
+must first determine who bears the burden of the tax . The way a tax affects people is called the tax 
+incidence.  
+ The effect of taxes on labour supply  
+Taxes can affect labour supply by influencing people's decisions about whether to work and how 
+much to work.  
+ The effect of taxes on saving  
+Saving is the portion of income that is not spent. Might taxes levied on returns to saving (such as 
+interest and dividends) influence the amount people save? When a tax is levied on interest or 
+dividends, it reduces the reward for saving. This tends to reduce the amount of saving that an 
+individual does.  
+ The effect of taxes on physical investment  
+ 
+In effect, a tax on business income is a tax on the physical investment’s return: the tax reduces the 
+firm’s income and thus the benefit from making the investment. Most economists believe that 
+business taxes decrease the amount of physical investment by businesses.  
+ The effect of taxes on the standard of living  
+When taxes are levied on necessaries of life, there is a danger that they should cause hardship to 
+those with low income, and depress the standards of living of workers who are not or near th e 
+minimum necessary for full efficiency. 

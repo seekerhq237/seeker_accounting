@@ -1,0 +1,511 @@
+# Resource object code (Python 3)
+# Created by: object code
+# Created by: The Resource Compiler for Qt version 6.11.0
+# WARNING! All changes made in this file will be lost!
+
+from PySide6 import QtCore
+
+qt_resource_data = b"\
+\x00\x00\x01\xba\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <rect\
+ x=\x224.75\x22 y=\x225\x22 \
+width=\x226.75\x22 hei\
+ght=\x226.25\x22 rx=\x221\
+.7\x22/>\x0a    <rect \
+x=\x2212.5\x22 y=\x225\x22 w\
+idth=\x226.75\x22 heig\
+ht=\x223.75\x22 rx=\x221.\
+4\x22/>\x0a    <rect x\
+=\x224.75\x22 y=\x2212.75\
+\x22 width=\x226.75\x22 h\
+eight=\x226.25\x22 rx=\
+\x221.7\x22/>\x0a    <rec\
+t x=\x2212.5\x22 y=\x2210\
+.25\x22 width=\x226.75\
+\x22 height=\x228.75\x22 \
+rx=\x221.7\x22/>\x0a  </g\
+>\x0a</svg>\x0a\
+\x00\x00\x01\xe2\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <path\
+ d=\x22M5 7h14\x22/>\x0a \
+   <path d=\x22M5 1\
+2h14\x22/>\x0a    <pat\
+h d=\x22M5 17h14\x22/>\
+\x0a    <circle cx=\
+\x229.25\x22 cy=\x227\x22 r=\
+\x221.45\x22 fill=\x22cur\
+rentColor\x22 strok\
+e=\x22none\x22/>\x0a    <\
+circle cx=\x2214.75\
+\x22 cy=\x2212\x22 r=\x221.4\
+5\x22 fill=\x22current\
+Color\x22 stroke=\x22n\
+one\x22/>\x0a    <circ\
+le cx=\x2211.25\x22 cy\
+=\x2217\x22 r=\x221.45\x22 f\
+ill=\x22currentColo\
+r\x22 stroke=\x22none\x22\
+/>\x0a  </g>\x0a</svg>\
+\x0a\
+\x00\x00\x01\xa8\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <path\
+ d=\x22M7.1 4.75h7.\
+15L17 7.5v11.75H\
+7.1V4.75Z\x22/>\x0a   \
+ <path d=\x22M14.25\
+ 4.75V7.5H17\x22/>\x0a\
+    <path d=\x22M9.\
+35 10.4h5.25\x22/>\x0a\
+    <path d=\x22M9.\
+35 13.6h3.8\x22/>\x0a \
+   <circle cx=\x221\
+5.15\x22 cy=\x2216.15\x22\
+ r=\x222.45\x22/>\x0a    \
+<path d=\x22m14.05 \
+16.15.78.78 1.45\
+-1.68\x22/>\x0a  </g>\x0a\
+</svg>\x0a\
+\x00\x00\x01y\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <rect\
+ x=\x224.75\x22 y=\x226.2\
+5\x22 width=\x2214.5\x22 \
+height=\x2211.5\x22 rx\
+=\x222.3\x22/>\x0a    <pa\
+th d=\x22M4.75 9.9h\
+14.5\x22/>\x0a    <rec\
+t x=\x227.55\x22 y=\x2212\
+.2\x22 width=\x223.05\x22\
+ height=\x222.65\x22 r\
+x=\x22.65\x22/>\x0a    <p\
+ath d=\x22M14.15 13\
+.5h3.2\x22/>\x0a  </g>\
+\x0a</svg>\x0a\
+\x00\x00\x01\x9b\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <path\
+ d=\x22M7.1 4.75h7.\
+15L17 7.5v11.75H\
+7.1V4.75Z\x22/>\x0a   \
+ <path d=\x22M14.25\
+ 4.75V7.5H17\x22/>\x0a\
+    <path d=\x22M9.\
+35 10.3h4.95\x22/>\x0a\
+    <path d=\x22M9.\
+35 13.6h6.5\x22/>\x0a \
+   <path d=\x22M11.\
+2 11.8 14.95 15.\
+55\x22/>\x0a    <path \
+d=\x22M12.9 15.55h2\
+.05V13.5\x22/>\x0a  </\
+g>\x0a</svg>\x0a\
+\x00\x00\x01\xa7\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <path\
+ d=\x22M4.9 19.2h14\
+.2\x22/>\x0a    <path \
+d=\x22M6.2 19.2V10.\
+4h11.6v8.8\x22/>\x0a  \
+  <path d=\x22M5.2 \
+10.4 12 5.2l6.8 \
+5.2\x22/>\x0a    <rect\
+ x=\x2210.65\x22 y=\x2214\
+.3\x22 width=\x222.7\x22 \
+height=\x224.9\x22 rx=\
+\x22.55\x22/>\x0a    <pat\
+h d=\x22M8.1 12.9h1\
+.55\x22/>\x0a    <path\
+ d=\x22M14.35 12.9h\
+1.55\x22/>\x0a  </g>\x0a<\
+/svg>\x0a\
+\x00\x00\x01\xca\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <circ\
+le cx=\x228.75\x22 cy=\
+\x229.1\x22 r=\x222.25\x22/>\
+\x0a    <circle cx=\
+\x2215.25\x22 cy=\x229.1\x22\
+ r=\x222.25\x22/>\x0a    \
+<path d=\x22M5.45 1\
+7.2c.55-2.15 2.4\
+2-3.45 4.82-3.45\
+ 1.1 0 2.12.23 2\
+.98.72\x22/>\x0a    <p\
+ath d=\x22M10.75 14\
+.47c.82-.48 1.83\
+-.72 2.95-.72 2.\
+42 0 4.28 1.3 4.\
+85 3.45\x22/>\x0a    <\
+path d=\x22M11.35 1\
+0.8h1.3\x22/>\x0a  </g\
+>\x0a</svg>\x0a\
+\x00\x00\x01\x99\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <path\
+ d=\x22M7.1 4.75h7.\
+15L17 7.5v11.75H\
+7.1V4.75Z\x22/>\x0a   \
+ <path d=\x22M14.25\
+ 4.75V7.5H17\x22/>\x0a\
+    <path d=\x22M9.\
+35 10.3h5.2\x22/>\x0a \
+   <path d=\x22M9.3\
+5 13.6h6.5\x22/>\x0a  \
+  <path d=\x22M14.9\
+5 11.8 11.2 15.5\
+5\x22/>\x0a    <path d\
+=\x22M11.2 13.5v2.0\
+5h2.05\x22/>\x0a  </g>\
+\x0a</svg>\x0a\
+\x00\x00\x01\xa8\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <path\
+ d=\x22M7.1 4.75h7.\
+15L17 7.5v11.75H\
+7.1V4.75Z\x22/>\x0a   \
+ <path d=\x22M14.25\
+ 4.75V7.5H17\x22/>\x0a\
+    <path d=\x22M9.\
+4 16.1v-3\x22/>\x0a   \
+ <path d=\x22M12.1 \
+16.1v-5.15\x22/>\x0a  \
+  <path d=\x22M14.8\
+ 16.1v-2.3\x22/>\x0a  \
+  <path d=\x22M8.9 \
+11.7 11.7 10.15 \
+14.05 11.25 15.8\
+ 9.25\x22/>\x0a  </g>\x0a\
+</svg>\x0a\
+\x00\x00\x02%\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <path\
+ d=\x22M12 7.25c-1.\
+3-1-2.95-1.5-4.9\
+5-1.5-1.2 0-2.3.\
+2-3.3.6V17.7c1-.\
+4 2.1-.6 3.3-.6 \
+2 0 3.65.5 4.95 \
+1.5\x22/>\x0a    <path\
+ d=\x22M12 7.25c1.3\
+-1 2.95-1.5 4.95\
+-1.5 1.2 0 2.3.2\
+ 3.3.6V17.7c-1-.\
+4-2.1-.6-3.3-.6-\
+2 0-3.65.5-4.95 \
+1.5\x22/>\x0a    <path\
+ d=\x22M12 7.25v11.\
+35\x22/>\x0a    <path \
+d=\x22M6.1 9h2.9\x22/>\
+\x0a    <path d=\x22M6\
+.1 11.8h2.9\x22/>\x0a \
+   <path d=\x22M15 \
+9h2.9\x22/>\x0a    <pa\
+th d=\x22M15 11.8h2\
+.9\x22/>\x0a  </g>\x0a</s\
+vg>\x0a\
+\x00\x00\x01\xcd\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <rect\
+ x=\x226.1\x22 y=\x224.8\x22\
+ width=\x2211.8\x22 he\
+ight=\x224.4\x22 rx=\x221\
+.15\x22/>\x0a    <path\
+ d=\x22M12 4.8v4.4\x22\
+/>\x0a    <rect x=\x22\
+5.1\x22 y=\x2210.2\x22 wi\
+dth=\x2213.8\x22 heigh\
+t=\x224.4\x22 rx=\x221.15\
+\x22/>\x0a    <path d=\
+\x22M12 10.2v4.4\x22/>\
+\x0a    <rect x=\x224.\
+1\x22 y=\x2215.6\x22 widt\
+h=\x2215.8\x22 height=\
+\x224.4\x22 rx=\x221.15\x22/\
+>\x0a    <path d=\x22M\
+12 15.6V20\x22/>\x0a  \
+</g>\x0a</svg>\x0a\
+\x00\x00\x02Z\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0a  <g str\
+oke=\x22currentColo\
+r\x22 stroke-width=\
+\x221.85\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0a    <rect\
+ x=\x224.75\x22 y=\x225.2\
+5\x22 width=\x2214.5\x22 \
+height=\x2213.5\x22 rx\
+=\x222\x22/>\x0a    <path\
+ d=\x22M8.25 5.25v1\
+3.5\x22/>\x0a    <path\
+ d=\x22M10.45 8.8h6\
+.15\x22/>\x0a    <path\
+ d=\x22M10.45 12.05\
+h4.25\x22/>\x0a    <pa\
+th d=\x22M10.45 15.\
+3h5.55\x22/>\x0a    <c\
+ircle cx=\x226.5\x22 c\
+y=\x228.8\x22 r=\x22.55\x22 \
+fill=\x22currentCol\
+or\x22 stroke=\x22none\
+\x22/>\x0a    <circle \
+cx=\x226.5\x22 cy=\x2212.\
+05\x22 r=\x22.55\x22 fill\
+=\x22currentColor\x22 \
+stroke=\x22none\x22/>\x0a\
+    <circle cx=\x22\
+6.5\x22 cy=\x2215.3\x22 r\
+=\x22.55\x22 fill=\x22cur\
+rentColor\x22 strok\
+e=\x22none\x22/>\x0a  </g\
+>\x0a</svg>\x0a\
+\x00\x00\x01H\
+<\
+svg xmlns=\x22http:\
+//www.w3.org/200\
+0/svg\x22 viewBox=\x22\
+0 0 24 24\x22 fill=\
+\x22none\x22>\x0d\x0a  <g st\
+roke=\x22currentCol\
+or\x22 stroke-width\
+=\x221.9\x22 stroke-li\
+necap=\x22round\x22 st\
+roke-linejoin=\x22r\
+ound\x22>\x0d\x0a    <pat\
+h d=\x22M4 11.4L12 \
+4l8 7.4\x22/>\x0d\x0a    \
+<path d=\x22M5.5 10\
+v7.5a1.5 1.5 0 0\
+01.5 1.5h10a1.5 \
+1.5 0 001.5-1.5V\
+10\x22/>\x0d\x0a    <path\
+ d=\x22M9.5 19V14h5\
+v5\x22/>\x0d\x0a  </g>\x0d\x0a<\
+/svg>\x0d\x0a\
+"
+
+qt_resource_name = b"\
+\x00\x05\
+\x00o\xa6S\
+\x00i\
+\x00c\x00o\x00n\x00s\
+\x00\x07\
+\x09\xfa\xb8b\
+\x00s\
+\x00i\x00d\x00e\x00b\x00a\x00r\
+\x00\x0d\
+\x0d\x94\x89\xc7\
+\x00d\
+\x00a\x00s\x00h\x00b\x00o\x00a\x00r\x00d\x00.\x00s\x00v\x00g\
+\x00\x12\
+\x09\x1bJ\xe7\
+\x00a\
+\x00d\x00m\x00i\x00n\x00i\x00s\x00t\x00r\x00a\x00t\x00i\x00o\x00n\x00.\x00s\x00v\
+\x00g\
+\x00\x0b\
+\x06\xc2{\xe7\
+\x00p\
+\x00a\x00y\x00r\x00o\x00l\x00l\x00.\x00s\x00v\x00g\
+\x00\x0c\
+\x03\xed+\x87\
+\x00t\
+\x00r\x00e\x00a\x00s\x00u\x00r\x00y\x00.\x00s\x00v\x00g\
+\x00\x09\
+\x02\xc6\xa9\xc7\
+\x00s\
+\x00a\x00l\x00e\x00s\x00.\x00s\x00v\x00g\
+\x00\x10\
+\x0b\xe6\x0cG\
+\x00f\
+\x00i\x00x\x00e\x00d\x00_\x00a\x00s\x00s\x00e\x00t\x00s\x00.\x00s\x00v\x00g\
+\x00\x11\
+\x0a\xe4\x8b\xa7\
+\x00t\
+\x00h\x00i\x00r\x00d\x00_\x00p\x00a\x00r\x00t\x00i\x00e\x00s\x00.\x00s\x00v\x00g\
+\
+\x00\x0d\
+\x06Wf\x07\
+\x00p\
+\x00u\x00r\x00c\x00h\x00a\x00s\x00e\x00s\x00.\x00s\x00v\x00g\
+\x00\x0b\
+\x09G\xd4\x07\
+\x00r\
+\x00e\x00p\x00o\x00r\x00t\x00s\x00.\x00s\x00v\x00g\
+\x00\x0e\
+\x0f\x07\xc8g\
+\x00a\
+\x00c\x00c\x00o\x00u\x00n\x00t\x00i\x00n\x00g\x00.\x00s\x00v\x00g\
+\x00\x0d\
+\x06%\xd0g\
+\x00i\
+\x00n\x00v\x00e\x00n\x00t\x00o\x00r\x00y\x00.\x00s\x00v\x00g\
+\x00\x0c\
+\x04H\x9b\xa7\
+\x00p\
+\x00r\x00o\x00j\x00e\x00c\x00t\x00s\x00.\x00s\x00v\x00g\
+\x00\x08\
+\x068W'\
+\x00h\
+\x00o\x00m\x00e\x00.\x00s\x00v\x00g\
+"
+
+qt_resource_struct = b"\
+\x00\x00\x00\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x01\
+\x00\x00\x00\x00\x00\x00\x00\x00\
+\x00\x00\x00\x00\x00\x02\x00\x00\x00\x01\x00\x00\x00\x02\
+\x00\x00\x00\x00\x00\x00\x00\x00\
+\x00\x00\x00\x10\x00\x02\x00\x00\x00\x0d\x00\x00\x00\x03\
+\x00\x00\x00\x00\x00\x00\x00\x00\
+\x00\x00\x00\xa8\x00\x00\x00\x00\x00\x01\x00\x00\x06\xcd\
+\x00\x00\x01\x9dB$\x85o\
+\x00\x00\x00\x8a\x00\x00\x00\x00\x00\x01\x00\x00\x05P\
+\x00\x00\x01\x9dB$\x85p\
+\x00\x00\x01\x8c\x00\x00\x00\x00\x00\x01\x00\x00\x13(\
+\x00\x00\x01\x9dB$\x85r\
+\x00\x00\x01l\x00\x00\x00\x00\x00\x01\x00\x00\x11W\
+\x00\x00\x01\x9dB$\x85p\
+\x00\x00\x01\xaa\x00\x00\x00\x00\x00\x01\x00\x00\x15\x86\
+\x00\x00\x01\x9d?\x8d\xe3\x16\
+\x00\x00\x01\x0e\x00\x00\x00\x00\x00\x01\x00\x00\x0b\xe5\
+\x00\x00\x01\x9dB$\x85p\
+\x00\x00\x00n\x00\x00\x00\x00\x00\x01\x00\x00\x03\xa4\
+\x00\x00\x01\x9dB$\x85s\
+\x00\x00\x00D\x00\x00\x00\x00\x00\x01\x00\x00\x01\xbe\
+\x00\x00\x01\x9dB$\x85t\
+\x00\x00\x01.\x00\x00\x00\x00\x00\x01\x00\x00\x0d\x82\
+\x00\x00\x01\x9dB$\x85s\
+\x00\x00\x00\xe6\x00\x00\x00\x00\x00\x01\x00\x00\x0a\x17\
+\x00\x00\x01\x9dB$\x85n\
+\x00\x00\x00\xc0\x00\x00\x00\x00\x00\x01\x00\x00\x08l\
+\x00\x00\x01\x9dB$\x85r\
+\x00\x00\x00$\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\
+\x00\x00\x01\x9dB$\x85m\
+\x00\x00\x01J\x00\x00\x00\x00\x00\x01\x00\x00\x0f.\
+\x00\x00\x01\x9dB$\x85o\
+"
+
+def qInitResources():
+    QtCore.qRegisterResourceData(0x03, qt_resource_struct, qt_resource_name, qt_resource_data)
+
+def qCleanupResources():
+    QtCore.qUnregisterResourceData(0x03, qt_resource_struct, qt_resource_name, qt_resource_data)
+
+qInitResources()

@@ -1,0 +1,678 @@
+Authoritative Database Schema Extension
+Projects, Contracts, Job Costing, Budgeting, and Management Accounting v1
+1. What we are locking
+
+We are adding a new schema family for:
+
+contracts
+projects
+jobs / work packages
+cost codes
+budget versions and budget lines
+commitments
+project-aware transaction dimensions
+payroll-to-project allocation bridge
+
+This extension is management-accounting structure layered over the existing accounting spine.
+
+It does not create a second ledger.
+It does not replace source modules.
+It does not introduce one giant generic “project transactions” table.
+
+That last point is especially important because the current Seeker schema already explicitly rejects letting operational modules bypass journals or mixing multiple business concepts into one vague transaction table.
+
+2. Updated table-group map
+
+The existing schema has 11 table groups. We should extend it like this:
+
+Platform and administration
+Company and system setup
+Fiscal periods and accounting core
+Customers, suppliers, and common commercial masters
+Sales and accounts receivable
+Purchases and accounts payable
+Treasury, bank, and reconciliation
+Inventory and stock valuation
+Fixed assets
+Payroll
+Projects, contracts, job costing, budgeting, and management accounting
+Import, export, and operational support
+
+That keeps the new domain explicit and prevents it from being scattered across unrelated modules. This is consistent with the current feature-based modular-monolith structure and the way the existing schema is grouped.
+
+3. New setup table
+3.1 company_project_preferences
+
+Purpose: one-to-one company setup for project/budget-control defaults.
+
+Columns:
+
+company_id PK/FK -> companies.id
+allow_projects_without_contract default true
+default_budget_control_mode_code
+expected values: none, warn, hard_stop
+default_commitment_control_mode_code
+expected values: none, warn, hard_stop
+budget_warning_percent_threshold nullable
+require_job_on_cost_posting default false
+require_cost_code_on_cost_posting default false
+updated_at
+updated_by_user_id nullable FK -> users.id
+
+Notes:
+
+keep numbering out of this table; numbering stays in document_sequences
+keep these as company preferences, not hard-coded app constants
+4. New master and workflow tables
+4.1 contracts
+
+Purpose: commercial contract master for customer-facing work.
+
+Columns:
+
+id PK
+company_id FK -> companies.id
+contract_number
+contract_title
+customer_id FK -> customers.id
+contract_type_code
+expected values: fixed_price, time_and_material, cost_plus, framework, other
+currency_code FK -> currencies.code
+exchange_rate nullable
+base_contract_amount nullable
+start_date nullable
+planned_end_date nullable
+actual_end_date nullable
+status_code
+expected values: draft, active, on_hold, completed, closed, cancelled
+billing_basis_code nullable
+expected values: milestone, progress, time_and_material, fixed_schedule, manual
+retention_percent nullable
+reference_number nullable
+description nullable
+approved_at nullable
+approved_by_user_id nullable FK -> users.id
+created_at
+updated_at
+created_by_user_id nullable FK -> users.id
+updated_by_user_id nullable FK -> users.id
+
+Constraints:
+
+unique (company_id, contract_number)
+
+Rules:
+
+customer must belong to same company
+this table stores the base/original contract amount only
+current contract value is derived from approved change orders, not stored as separate base truth
+4.2 contract_change_orders
+
+Purpose: approved or pending contract-value / scope / time changes.
+
+Columns:
+
+id PK
+company_id FK -> companies.id
+contract_id FK -> contracts.id
+change_order_number
+change_order_date
+status_code
+expected values: draft, submitted, approved, rejected, cancelled
+change_type_code
+expected values: scope, price, time, mixed
+description
+contract_amount_delta nullable
+days_extension nullable
+effective_date nullable
+approved_at nullable
+approved_by_user_id nullable FK -> users.id
+created_at
+updated_at
+
+Constraints:
+
+unique (company_id, change_order_number)
+
+Rules:
+
+positive and negative deltas are allowed
+approved rows contribute to current contract value
+contract current value is query-derived from contract base + approved deltas
+4.3 projects
+
+Purpose: operational execution container.
+
+Columns:
+
+id PK
+company_id FK -> companies.id
+project_code
+project_name
+contract_id nullable FK -> contracts.id
+customer_id nullable FK -> customers.id
+project_type_code
+expected values: external, internal, capital, administrative, other
+project_manager_user_id nullable FK -> users.id
+currency_code nullable FK -> currencies.code
+exchange_rate nullable
+start_date nullable
+planned_end_date nullable
+actual_end_date nullable
+status_code
+expected values: draft, active, on_hold, completed, closed, cancelled
+budget_control_mode_code nullable
+expected values: none, warn, hard_stop
+notes nullable
+created_at
+updated_at
+created_by_user_id nullable FK -> users.id
+updated_by_user_id nullable FK -> users.id
+
+Constraints:
+
+unique (company_id, project_code)
+
+Rules:
+
+project may exist without contract
+if both contract_id and customer_id are present, customer must match the contract customer
+if project currency is null, use company base currency by service default
+4.4 project_jobs
+
+Purpose: job / work-package / WBS node under a project.
+
+Columns:
+
+id PK
+company_id FK -> companies.id
+project_id FK -> projects.id
+job_code
+job_name
+parent_job_id nullable FK -> project_jobs.id
+sequence_number nullable
+status_code
+expected values: draft, active, on_hold, completed, closed, cancelled
+start_date nullable
+planned_end_date nullable
+actual_end_date nullable
+allow_direct_cost_posting default true
+notes nullable
+created_at
+updated_at
+
+Constraints:
+
+unique (project_id, job_code)
+
+Rules:
+
+parent must belong to same project
+no cycle allowed in job hierarchy
+summary jobs may exist with allow_direct_cost_posting = false
+4.5 project_cost_codes
+
+Purpose: reusable company-scoped management-accounting code set.
+
+Columns:
+
+id PK
+company_id FK -> companies.id
+code
+name
+cost_code_type_code
+expected values: material, labor, subcontract, equipment, overhead, expense, revenue, other
+default_account_id nullable FK -> accounts.id
+is_active
+description nullable
+created_at
+updated_at
+
+Constraints:
+
+unique (company_id, code)
+optionally unique (company_id, name) if you want stricter setup discipline later
+
+Notes:
+
+this is a company master, not a project-line table
+project budgets, commitments, and actual-cost analysis point to this table
+4.6 project_budget_versions
+
+Purpose: header table for budget versions per project.
+
+Columns:
+
+id PK
+company_id FK -> companies.id
+project_id FK -> projects.id
+version_number
+version_name
+version_type_code
+expected values: original, revision, working, forecast
+status_code
+expected values: draft, submitted, approved, superseded, cancelled
+base_version_id nullable FK -> project_budget_versions.id
+budget_date
+revision_reason nullable
+total_budget_amount
+approved_at nullable
+approved_by_user_id nullable FK -> users.id
+created_at
+updated_at
+
+Constraints:
+
+unique (project_id, version_number)
+
+Notes:
+
+total_budget_amount is allowed as a controlled document snapshot total
+current approved budget is determined by version status, not by mutating historical versions
+4.7 project_budget_lines
+
+Purpose: detailed budget lines.
+
+Columns:
+
+id PK
+project_budget_version_id FK -> project_budget_versions.id
+line_number
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id FK -> project_cost_codes.id
+description nullable
+quantity nullable
+unit_rate nullable
+line_amount
+start_date nullable
+end_date nullable
+notes nullable
+
+Constraints:
+
+unique (project_budget_version_id, line_number)
+
+Rules:
+
+if project_job_id is present, it must belong to the same project as the parent budget version
+line amount may be derived from quantity × rate in service logic, but the stored value is the frozen budget line amount
+4.8 project_commitments
+
+Purpose: approved non-posting commitments against project budget.
+
+Columns:
+
+id PK
+company_id FK -> companies.id
+commitment_number
+project_id FK -> projects.id
+supplier_id nullable FK -> suppliers.id
+commitment_type_code
+expected values: manual_reservation, subcontract, materials, labor, expense, other
+commitment_date
+required_date nullable
+currency_code FK -> currencies.code
+exchange_rate nullable
+status_code
+expected values: draft, approved, partially_consumed, closed, cancelled
+reference_number nullable
+notes nullable
+total_amount
+approved_at nullable
+approved_by_user_id nullable FK -> users.id
+created_at
+updated_at
+
+Constraints:
+
+unique (company_id, commitment_number)
+
+Notes:
+
+this is a management-control document, not a posting document
+it does not carry posted_journal_entry_id
+4.9 project_commitment_lines
+
+Purpose: detailed commitment lines.
+
+Columns:
+
+id PK
+project_commitment_id FK -> project_commitments.id
+line_number
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id FK -> project_cost_codes.id
+description
+quantity nullable
+unit_rate nullable
+line_amount
+notes nullable
+
+Constraints:
+
+unique (project_commitment_id, line_number)
+
+Rules:
+
+same-project validation must be enforced in services
+5. Payroll integration bridge
+5.1 payroll_run_employee_project_allocations
+
+Purpose: distribute an employee’s payroll cost for one payroll run to project dimensions.
+
+Columns:
+
+id PK
+payroll_run_employee_id FK -> payroll_run_employees.id
+line_number
+contract_id nullable FK -> contracts.id
+project_id FK -> projects.id
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id FK -> project_cost_codes.id
+allocation_basis_code
+expected values: percent, amount, hours
+allocation_quantity nullable
+allocation_percent nullable
+allocated_cost_amount
+notes nullable
+created_at
+
+Constraints:
+
+unique (payroll_run_employee_id, line_number)
+
+Rules:
+
+allocation lines are management-costing facts, not separate payroll truth
+total allocated cost for one payroll run employee must equal the costing amount chosen by payroll-costing service
+this bridge lets payroll remain payroll while still feeding project costing
+
+This is the cleanest way to integrate payroll without redesigning payroll around the project module.
+
+6. Existing-table extensions
+
+The current schema already treats source documents as their own modules and uses posting links back to journals. This extension should preserve that by adding project dimensions to source tables rather than inventing detached project documents.
+
+6.1 document_sequences
+
+No structural change needed.
+
+Add new supported document_type_code values:
+
+contract
+contract_change_order
+project
+project_commitment
+project_budget_version
+6.2 account_role_mappings
+
+No structural change needed.
+
+Reserve these additional role_code values for this domain:
+
+contract_revenue_default
+project_cost_default
+project_wip_asset
+project_billed_not_earned
+project_retention_receivable
+project_deferred_revenue
+project_overhead_recovery
+
+Not all must be implemented in the first pass, but we should reserve the vocabulary now.
+
+6.3 sales_invoices
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+
+Meaning:
+
+header-level default context for billing
+one invoice should belong to at most one contract in v1
+lines may still carry finer-grained project/job/cost-code coding
+6.4 sales_invoice_lines
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id nullable FK -> project_cost_codes.id
+
+Rules:
+
+if line-level values are null, service may inherit from header where allowed
+if both contract and project are present, they must match
+this is the base billing trace for contract/project profitability
+6.5 purchase_bills
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+
+Purpose:
+
+document-level default project/contract context only
+6.6 purchase_bill_lines
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id nullable FK -> project_cost_codes.id
+
+This is one of the main actual-cost sources for job costing.
+
+6.7 treasury_transactions
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+6.8 treasury_transaction_lines
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id nullable FK -> project_cost_codes.id
+
+This supports direct project cash expenses and petty-cash usage.
+
+6.9 inventory_documents
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+
+Purpose:
+
+document-level default context for stock issues or adjustments tied to project work
+6.10 inventory_document_lines
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id nullable FK -> project_cost_codes.id
+
+This is the main material-consumption link into project actual cost.
+
+6.11 journal_entry_lines
+
+Add columns:
+
+contract_id nullable FK -> contracts.id
+project_id nullable FK -> projects.id
+project_job_id nullable FK -> project_jobs.id
+project_cost_code_id nullable FK -> project_cost_codes.id
+
+This is critical.
+
+It gives us a controlled fallback for:
+
+manual accruals
+reallocations
+contract/project adjustments
+overhead distributions
+advanced reporting
+
+But this does not mean the journal UI becomes a free-for-all coding tool. The coding still belongs under service validation, just like the rest of Seeker’s accounting architecture.
+
+7. Integrity rules to lock
+
+These are the rules that matter most.
+
+7.1 Company-scoping rules
+every new business header/master table is company-scoped
+all cross-table references must resolve within the same company
+repository and service methods remain company-aware
+
+This follows the current Seeker isolation model directly.
+
+7.2 Dimension-consistency rules
+project_job_id requires a matching project_id
+project_cost_code_id may exist without job, but not without at least project or contract context where the module requires it
+if contract_id and project_id are both present, they must be compatible
+job must belong to project
+project linked to contract must belong to same company and, where applicable, same customer
+7.3 Workflow-state rules
+contracts and projects are operational masters, not posting records
+budget versions and commitments are management-control workflows, not posting workflows
+source modules continue to own posted accounting impact
+posted source documents remain the basis for actual financial truth
+7.4 No duplicate truth rules
+
+Do not store as permanent base truth:
+
+project actual cost balance
+project actual revenue balance
+project remaining budget
+current contract value
+project margin
+commitment-consumed amount
+
+Those are derived from approved budgets, commitments, and posted source transactions.
+
+If performance later needs help, add controlled reporting caches or refresh tables, exactly the way the current schema already allows for optimization artifacts without replacing base truth.
+
+8. What is allowed to be stored
+
+These are acceptable stored snapshots:
+
+project_budget_versions.total_budget_amount
+document header totals already existing in source documents
+project_commitments.total_amount
+allocated_cost_amount on payroll allocation bridge
+approved change-order deltas
+
+Why acceptable:
+they are document-state facts under service control, not casual denormalized balances. That matches the logic already accepted in the main Seeker schema for invoice totals, bill totals, payroll outputs, and depreciation-run outputs.
+
+9. What we are deliberately not adding now
+
+Not in this first extension pass:
+
+project time-entry / timesheet engine
+purchase orders
+commitment-to-actual exact consumption link table
+WIP posting tables
+earned-value management tables
+revenue-recognition engine tables
+asset multi-project allocation tables
+project transaction cache tables
+
+Those can come later, but they should not enter the base extension until the first project-costing layer is stable.
+
+10. Index plan
+
+Add these indexes in addition to PKs and uniques.
+
+New tables
+contracts(company_id, customer_id, status_code)
+contracts(company_id, start_date)
+contract_change_orders(contract_id, status_code)
+projects(company_id, contract_id, status_code)
+projects(company_id, customer_id, status_code)
+project_jobs(project_id, parent_job_id)
+project_jobs(company_id, status_code)
+project_cost_codes(company_id, cost_code_type_code)
+project_budget_versions(project_id, status_code)
+project_budget_lines(project_budget_version_id, project_job_id)
+project_budget_lines(project_budget_version_id, project_cost_code_id)
+project_commitments(company_id, project_id, status_code)
+project_commitments(company_id, supplier_id, status_code)
+project_commitment_lines(project_commitment_id, project_job_id)
+project_commitment_lines(project_commitment_id, project_cost_code_id)
+payroll_run_employee_project_allocations(payroll_run_employee_id)
+payroll_run_employee_project_allocations(project_id, project_job_id)
+Extended source tables
+sales_invoice_lines(project_id)
+sales_invoice_lines(project_job_id)
+purchase_bill_lines(project_id)
+purchase_bill_lines(project_job_id)
+treasury_transaction_lines(project_id)
+inventory_document_lines(project_id)
+journal_entry_lines(project_id)
+journal_entry_lines(project_job_id)
+journal_entry_lines(project_cost_code_id)
+
+Do not over-index every dimension combination on day one.
+
+11. Migration sequence for this extension
+
+This is the safest order.
+
+Phase A: setup extension
+company_project_preferences
+add new document-sequence type codes through seed/setup service
+reserve new account role codes
+Phase B: project and contract masters
+contracts
+contract_change_orders
+projects
+project_jobs
+project_cost_codes
+Phase C: budget and commitment structure
+project_budget_versions
+project_budget_lines
+project_commitments
+project_commitment_lines
+Phase D: source-document integration
+extend sales, purchases, treasury, inventory, and journal lines with project dimensions
+Phase E: payroll bridge
+payroll_run_employee_project_allocations
+Phase F: reporting/query layer
+
+No new truth tables.
+Build service/query models for:
+
+contract value
+billed-to-date
+actual cost
+commitment exposure
+budget vs actual
+budget vs commitment
+project profitability
+contract profitability
+
+This sequencing respects the current Seeker rule that dependent modules should be layered only after the accounting and operational spine is in place.
+
+12. Decisions explicitly locked
+Contracts, projects, jobs, budgets, and commitments are first-class schema concepts.
+GL remains the financial truth.
+No second ledger and no giant generic project-transaction table.
+Actual cost comes from posted source documents and controlled journals.
+Budgets and commitments are management-control facts, not ledger facts.
+Project dimensions are added to source lines, not bolted on in UI-only state.
+Payroll integrates through an allocation bridge, not by redesigning payroll tables into project tables.
+Company scoping remains mandatory throughout.
+Current contract value and project profitability are derived, not stored as base truth.
+We stay portable and avoid SQLite-specific tricks.

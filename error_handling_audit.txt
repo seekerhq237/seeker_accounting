@@ -1,0 +1,484 @@
+================================================================================
+SEEKER ACCOUNTING — ERROR HANDLING & PREREQUISITE AUDIT
+================================================================================
+Date: 2026-03-28
+Scope: Full codebase review (all modules, all UI files)
+Purpose: Identify every place where users can get stuck due to missing error
+         handling, silent failures, missing prerequisite validation, or
+         unhelpful error messages.
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  A. SILENT EXCEPTION SWALLOWING (except Exception: pass/return)
+  B. GENERIC POSTING ERROR MESSAGES (no guidance on how to fix)
+  C. MISSING PREREQUISITE VALIDATION (user hits wall at action time)
+  D. ALLOCATION LOAD FAILURES DISGUISED AS "NO DATA"
+  E. COMPANY SETUP GAP (no guided initialization after creation)
+  F. SUMMARY COUNTS
+
+================================================================================
+A. SILENT EXCEPTION SWALLOWING
+================================================================================
+
+These are places where `except Exception: pass` or `except Exception: return`
+silently hides errors. The user sees empty combo boxes, empty tables, or blank
+forms with ZERO indication that something failed. They cannot distinguish
+"no data exists" from "load error".
+
+
+--- SALES MODULE (12 instances) ---
+
+  sales_invoice_dialog.py:225    except Exception: pass  (customers)
+  sales_invoice_dialog.py:237    except Exception: pass  (contracts)
+  sales_invoice_dialog.py:249    except Exception: pass  (projects)
+  sales_invoice_dialog.py:260    except Exception: pass  (currencies)
+  sales_invoice_dialog.py:270    except Exception: pass  (tax codes)
+  customer_receipt_dialog.py:212  except Exception: pass  (customers)
+  customer_receipt_dialog.py:223  except Exception: pass  (financial accounts)
+  customer_receipt_dialog.py:236  except Exception: pass  (currencies)
+  customer_receipt_dialog.py:246  except Exception: pass  (contracts)
+  sales_invoice_lines_grid.py:100 except Exception: pass  (accounts for line combos)
+  sales_invoice_lines_grid.py:108 except Exception: pass  (tax codes for line combos)
+  customer_receipt_allocations_panel.py:100  except Exception: open_bills = []
+
+
+--- PURCHASES MODULE (7 instances) ---
+
+  supplier_payment_dialog.py:216  except Exception: pass  (suppliers)
+  supplier_payment_dialog.py:228  except Exception: pass  (financial accounts)
+  supplier_payment_dialog.py:240  except Exception: pass  (currencies)
+  supplier_payment_dialog.py:250  except Exception: pass  (contracts)
+  purchase_bill_lines_grid.py:102 except Exception: pass  (accounts for line combos)
+  purchase_bill_lines_grid.py:110 except Exception: pass  (tax codes for line combos)
+  supplier_payment_allocations_panel.py:102  except Exception: open_bills = []
+
+  NOTE: purchase_bill_dialog.py:259 catches broadly but at least shows a
+  message via _show_error(). However the message is "Failed to load reference
+  data: {e}" which is not actionable.
+
+
+--- TREASURY MODULE (16 instances) ---
+
+  treasury_transaction_dialog.py:311  except Exception: pass  (financial accounts)
+  treasury_transaction_dialog.py:323  except Exception: pass  (contracts)
+  treasury_transaction_dialog.py:335  except Exception: pass  (projects)
+  treasury_transaction_dialog.py:343  except Exception: pass  (counterparty accounts)
+  treasury_transaction_dialog.py:355  except Exception: pass  (currencies)
+  treasury_transaction_dialog.py:365  except Exception: pass  (tax codes)
+  treasury_transfer_dialog.py:174     except Exception: pass  (financial accounts)
+  treasury_transfer_dialog.py:186     except Exception: pass  (financial accounts #2)
+  treasury_transfer_dialog.py:196     except Exception: pass  (currencies)
+  bank_reconciliation_page.py:102     except Exception: pass  (financial accounts)
+  manual_statement_line_dialog.py:136 except Exception: pass  (financial accounts)
+  financial_account_dialog.py:164     except Exception: pass  (GL accounts)
+  financial_account_dialog.py:177     except Exception: pass  (currencies)
+  financial_account_dialog.py:187     except Exception: pass  (account types)
+  statement_import_dialog.py:133      except Exception: pass  (financial accounts)
+  statement_lines_page.py:366         except Exception: pass  (context loading)
+
+
+--- INVENTORY MODULE (13 instances) ---
+
+  inventory_document_dialog.py:246  except Exception: pass  (items cache)
+  inventory_document_dialog.py:253  except Exception: pass  (accounts)
+  inventory_document_dialog.py:265  except Exception: pass  (locations)
+  inventory_document_dialog.py:277  except Exception: pass  (items for line combos)
+  inventory_document_dialog.py:289  except Exception: pass  (items additional)
+  inventory_document_dialog.py:299  except Exception: pass  (existing doc load)
+  item_dialog.py:176                except Exception: pass  (UOMs)
+  item_dialog.py:191                except Exception: pass  (categories)
+  item_dialog.py:203                except Exception: pass  (accounts)
+  item_dialog.py:220                except Exception: pass  (existing item load)
+  item_categories_page.py:110       except Exception: pass  (categories refresh)
+  inventory_locations_page.py:110   except Exception: pass  (locations refresh)
+  units_of_measure_page.py:111      except Exception: pass  (UOM refresh)
+
+
+--- FIXED ASSETS MODULE (8 instances) ---
+
+  asset_dialog.py:308     except Exception: return  (depreciation methods)
+  asset_dialog.py:319     except Exception: return  (MACRS profiles)
+  asset_dialog.py:334     except Exception: return  (asset categories)
+  asset_dialog.py:347     except Exception: return  (existing asset load)
+  asset_dialog.py:398     except Exception: return  (category change handler)
+  asset_dialog.py:430     except Exception: return  (depreciation settings load)
+  asset_category_dialog.py:153  except Exception: return  (chart of accounts)
+  asset_category_dialog.py:166  except Exception: return  (existing category load)
+
+
+--- CONTRACTS / PROJECTS MODULE (5 instances) ---
+
+  contract_form_dialog.py:268   except Exception: pass  (customers)
+  contract_form_dialog.py:280   except Exception: pass  (currencies)
+  project_form_dialog.py:252    except Exception: pass  (contracts)
+  project_form_dialog.py:265    except Exception: pass  (customers)
+  project_form_dialog.py:279    except Exception: pass  (currencies)
+
+
+--- PAYROLL MODULE (39 instances) ---
+
+  Workspace / Page files:
+  payroll_setup_page.py:704              except Exception: pass  (settings check)
+  payroll_accounting_workspace.py:96     except Exception: return (validation tab)
+  payroll_accounting_workspace.py:234    except Exception: return (posting tab)
+  payroll_accounting_workspace.py:362    except Exception: return (payments tab)
+  payroll_accounting_workspace.py:516    except Exception: return (remittances tab)
+  payroll_accounting_workspace.py:578    except Exception: return (summary tab)
+  payroll_calculation_workspace.py:233   except Exception: return (employee filter)
+  payroll_calculation_workspace.py:245   except Exception: return (compensation)
+  payroll_calculation_workspace.py:375   except Exception: return (component assign)
+  payroll_calculation_workspace.py:391   except Exception: return (component filter)
+  payroll_calculation_workspace.py:493   except Exception: return (input batches)
+  payroll_calculation_workspace.py:619   except Exception: return (payroll runs)
+  payroll_calculation_workspace.py:667   except Exception: return (run detail)
+  payroll_operations_workspace.py:596    except Exception: return
+  payroll_operations_workspace.py:618    except Exception: return
+  payroll_operations_workspace.py:777    except Exception: return
+
+  Dialog files:
+  employee_form_dialog.py:164            except Exception: currencies = []
+  employee_form_dialog.py:176            except Exception: depts = []
+  employee_form_dialog.py:186            except Exception: positions = []
+  employee_form_dialog.py:198            except Exception: return (existing emp)
+  company_payroll_settings_dialog.py:177 except Exception: currencies = []
+  company_payroll_settings_dialog.py:189 except Exception: return (settings load)
+  apply_statutory_pack_dialog.py:87      except Exception: packs = []
+  apply_statutory_pack_dialog.py:180     except Exception: pass (version load)
+  payroll_component_form_dialog.py:146   except Exception: accounts = []
+  payroll_component_form_dialog.py:161   except Exception: accounts = []
+  component_assignment_dialog.py:115     except Exception: pass (components)
+  payroll_export_dialog.py:151           except Exception: return
+  payroll_export_dialog.py:171           except Exception: return
+  payroll_rule_set_form_dialog.py:150    except Exception: return
+  payroll_input_batch_dialog.py:376      except Exception: pass (employees)
+  payroll_input_batch_dialog.py:389      except Exception: pass (components)
+  payroll_project_allocations_dialog.py:171  except Exception: pass
+  payroll_project_allocations_dialog.py:176  except Exception: pass
+  payroll_project_allocations_dialog.py:181  except Exception: pass
+  payroll_project_allocations_dialog.py:188  except Exception: pass
+  payroll_summary_dialog.py:29               except Exception: return
+  payroll_rule_brackets_dialog.py:271        except Exception: return
+  payroll_rule_brackets_dialog.py:320        except Exception: return
+
+
+================================================================================
+TOTAL SILENT EXCEPTION SWALLOWING: ~100 instances across all modules
+================================================================================
+
+
+================================================================================
+B. GENERIC POSTING ERROR MESSAGES (no guidance on how to fix)
+================================================================================
+
+Every posting action across the entire application catches ValidationError and
+shows the raw exception string with no actionable guidance. When a user hits
+"An active document sequence for sales_invoice must be configured before
+posting", they have no idea WHERE to go or WHAT to do.
+
+ONLY the payroll module (payroll_run_dialog.py, payroll_input_batch_dialog.py,
+payroll_remittance_batch_dialog.py) currently detects "document sequence" errors
+and offers navigation. All others show raw text.
+
+
+--- POSTING ACTIONS THAT SHOW RAW ERRORS ---
+
+  SALES:
+  sales_invoices_page.py:~543       show_error(self, "Sales Invoices", str(exc))
+    Triggers: document sequence for sales_invoice or journal_entry
+              AR control account role not mapped
+              tax code account mapping missing
+              fiscal period missing/locked
+
+  customer_receipts_page.py:~531    show_error(self, "Customer Receipts", str(exc))
+    Triggers: document sequence for customer_receipt or journal_entry
+              financial account GL mapping missing
+              fiscal period missing/locked
+
+  PURCHASES:
+  purchase_bills_page.py:~489       show_error(self, "Purchase Bills", str(exc))
+    Triggers: document sequence for purchase_bill or journal_entry
+              AP control account role not mapped
+              tax code account mapping missing
+              fiscal period missing/locked
+
+  supplier_payments_page.py:~531    show_error(self, "Supplier Payments", str(exc))
+    Triggers: document sequence for supplier_payment or journal_entry
+              financial account GL mapping missing
+              fiscal period missing/locked
+
+  TREASURY:
+  treasury_transactions_page.py:~550  show_error(self, "Treasury Transactions", str(exc))
+    Triggers: document sequence for treasury_transaction or journal_entry
+              financial account GL mapping missing
+              fiscal period missing/locked
+
+  treasury_transfers_page.py:~535   show_error(self, "Treasury Transfers", str(exc))
+    Triggers: document sequence for treasury_transfer or journal_entry
+              financial account GL mapping missing
+              fiscal period missing/locked
+
+  INVENTORY:
+  inventory_documents_page.py:~540  show_error(self, "Inventory Documents", str(exc))
+    Triggers: document sequence for inventory_document or journal_entry
+              item inventory account not configured
+              item counterparty/expense account missing
+              fiscal period missing/locked
+
+  FIXED ASSETS:
+  depreciation_run_dialog.py:~276   exception handling for depreciation posting
+    Triggers: document sequence for depreciation_run or journal_entry
+              asset category depreciation expense account missing
+              asset category accumulated depreciation account missing
+              fiscal period missing/locked
+
+
+--- SPECIFIC PREREQUISITE ERRORS THAT GIVE NO GUIDANCE ---
+
+  Error: "An active document sequence for {type} must be configured before posting."
+  Fix:   Go to Accounting Setup > Document Sequences
+  Nav:   nav_ids.DOCUMENT_SEQUENCES
+  User sees: Raw text. No button. No navigation hint.
+
+  Error: "An AR control account mapping must be configured"
+  Fix:   Go to Chart of Accounts > Account Role Mappings
+  Nav:   No direct nav_id (dialog only, accessed from CoA page)
+  User sees: Raw text.
+
+  Error: "An AP control account mapping must be configured"
+  Fix:   Same as AR
+  User sees: Raw text.
+
+  Error: "Invoice date must fall within an existing fiscal period."
+  Fix:   Go to Accounting Setup > Fiscal Periods
+  Nav:   nav_ids.FISCAL_PERIODS
+  User sees: Raw text.
+
+  Error: "Fiscal period '{code}' is locked. Posting is not allowed."
+  Fix:   Go to Accounting Setup > Fiscal Periods and unlock/reopen
+  Nav:   nav_ids.FISCAL_PERIODS
+  User sees: Raw text.
+
+  Error: "Item must have an inventory account configured"
+  Fix:   Go to Inventory > Items and edit the item
+  Nav:   nav_ids.ITEMS
+  User sees: Raw text.
+
+  Error: "The 'Payroll Payable' account role is not mapped..."
+  Fix:   Go to Chart of Accounts > Account Role Mappings
+  User sees: Raw text (but payroll post dialog now has quick-fix buttons).
+
+
+================================================================================
+C. MISSING PREREQUISITE VALIDATION
+================================================================================
+
+These are places where the user can get into a workflow that WILL fail because
+a prerequisite is not configured, but there is no early warning. The failure
+only surfaces when the user tries to save/post/submit — wasting their work.
+
+
+--- DOCUMENT SEQUENCES ---
+
+  Every posting service requires document sequences. None of the following
+  pages check if sequences exist before allowing document creation:
+
+  - Sales Invoices page (create invoice)
+  - Customer Receipts page (create receipt)
+  - Purchase Bills page (create bill)
+  - Supplier Payments page (create payment)
+  - Treasury Transactions page (create transaction)
+  - Treasury Transfers page (create transfer)
+  - Inventory Documents page (create document)
+  - Depreciation Runs page (create run)
+  - Payroll Calculation workspace (create run) [FIXED — now has nav guidance]
+  - Payroll Input Batch dialog (create batch) [FIXED — now has nav guidance]
+  - Payroll Remittance Batch dialog (create batch) [FIXED — now has nav guidance]
+
+  Impact: User creates a draft document, fills out all fields, tries to post,
+  THEN gets an error. All their input is wasted.
+
+
+--- FISCAL PERIODS ---
+
+  No page checks if a fiscal period exists or is open before allowing
+  document creation in that date range. The user can:
+  1. Create an invoice dated 2026-03-15
+  2. Fill in all details
+  3. Try to post
+  4. Get "No fiscal period covers the posting date"
+  5. Have to abandon the dialog, go create a fiscal period, come back
+
+
+--- ACCOUNT ROLE MAPPINGS ---
+
+  Sales/Purchases posting requires AR/AP control account role mappings.
+  These are configured in a dialog accessible only from Chart of Accounts page
+  or from certain module pages (Customers, Suppliers).
+  There is no standalone nav_id for Account Role Mappings.
+
+  Impact: Error message says "An AR control account mapping must be configured"
+  but user has no idea where to find "Account Role Mappings" in the UI.
+
+
+--- TAX CODE ACCOUNT MAPPINGS ---
+
+  If invoices/bills include tax lines, the tax code must have an account mapped.
+  Tax code account mappings are configured from the Tax Codes page only.
+
+  Impact: User adds tax to invoice, tries to post, gets
+  "Tax code 'VAT19.25' has no account mapped" — has to find Tax Codes page.
+
+
+--- PAYROLL-SPECIFIC PREREQUISITES ---
+
+  Creating employees requires:
+  - Currencies (reference data — loaded from ReferenceDataService)
+  - Departments (optional but combo is empty with no guidance)
+  - Positions (optional but combo is empty with no guidance)
+
+  Creating payroll components requires:
+  - GL accounts for expense and liability mapping
+  - If accounts not loaded, both combos are empty
+
+  Posting payroll requires:
+  - Payroll Payable account role mapping
+  - Component expense/liability account mappings
+  - Open fiscal period
+  - Document sequence for journal_entry
+
+  None of these are validated before the user starts the workflow.
+
+
+--- INVENTORY ITEM PREREQUISITES ---
+
+  Creating inventory items requires:
+  - Units of measure (UOM combo can be empty)
+  - Item categories (category combo can be empty)
+  - GL accounts (all 4 account combos can be empty)
+
+  item_dialog.py:270 has one good check:
+    "Select a unit of measure. Create one in Inventory > Units of Measure first."
+  But this is the ONLY such check in the entire codebase.
+
+
+--- FIXED ASSET PREREQUISITES ---
+
+  Creating assets requires:
+  - Asset categories (combo can be empty)
+  - Depreciation methods (combo can be empty)
+  - Categories require GL account mappings
+
+  Creating asset categories requires:
+  - GL accounts (asset, accumulated depreciation, depreciation expense)
+  - All 3 account combos can be empty with no feedback
+
+
+--- TREASURY PREREQUISITES ---
+
+  Creating transactions/transfers requires:
+  - Financial accounts (created separately in Financial Accounts page)
+  - Each financial account must have a GL account mapped
+  - If no financial accounts exist, combos are empty with no guidance
+
+  Financial account creation requires:
+  - GL accounts (combo can be empty)
+  - Currencies (combo can be empty)
+
+
+================================================================================
+D. ALLOCATION LOAD FAILURES DISGUISED AS "NO DATA"
+================================================================================
+
+  customer_receipt_allocations_panel.py:100
+    except Exception: open_bills = []
+    Shows: "No open invoices for this customer"
+    Real: Database query may have failed
+    Risk: User thinks customer has zero outstanding. Incorrect business decision.
+
+  supplier_payment_allocations_panel.py:102
+    except Exception: open_bills = []
+    Shows: "No open bills for this supplier"
+    Real: Database query may have failed
+    Risk: User thinks supplier has zero outstanding. Incorrect business decision.
+
+
+================================================================================
+E. COMPANY SETUP GAP
+================================================================================
+
+  When a user creates a new company, the following happens:
+
+  1. company_service.py creates the company record
+  2. company_seed_service.py optionally seeds chart of accounts
+
+  What is NOT created automatically:
+  - Fiscal periods
+  - Journals
+  - Document sequences (for ANY document type)
+  - Account role mappings (AR, AP, payroll payable, etc.)
+  - Tax code account mappings
+  - Financial accounts
+  - Payroll settings
+
+  This means a new company has NONE of the infrastructure needed for any
+  transactional workflow. The user must manually configure ~15+ items across
+  6+ different pages before they can create and post their first invoice.
+
+  There is no setup wizard, checklist, or guided onboarding.
+
+  Typical new-user journey:
+  1. Create company → success
+  2. Navigate to Sales → create invoice → success (draft)
+  3. Click "Post" → FAIL: "document sequence must be configured"
+  4. User confused → where is this setting?
+  5. Eventually finds Document Sequences page → creates sequence
+  6. Tries to post again → FAIL: "AR control account not mapped"
+  7. User confused → where are account role mappings?
+  8. Eventually finds it under Chart of Accounts → maps AR
+  9. Tries to post again → FAIL: "No fiscal period covers posting date"
+  10. User finds Fiscal Periods → creates period
+  11. Finally posts successfully
+
+  This is a 10-step frustration loop that should be a guided setup.
+
+
+================================================================================
+F. SUMMARY COUNTS
+================================================================================
+
+  Category                                          Count
+  ─────────────────────────────────────────────────────────
+  Silent exception swallowing (pass/return)         ~100
+  Generic posting errors (no navigation/guidance)     10 pages
+  Missing prerequisite validation                     15+ workflows
+  Allocation load failures disguised as "no data"      2
+  Document types needing sequences (none auto-created) 11
+  ─────────────────────────────────────────────────────────
+
+  BY MODULE:
+  ─────────────────────────────────────────────────────────
+  Payroll           39 silent failures + 5 posting gaps
+  Treasury          16 silent failures + 2 posting gaps
+  Inventory         13 silent failures + 1 posting gap
+  Sales             12 silent failures + 2 posting gaps
+  Fixed Assets       8 silent failures + 1 posting gap
+  Purchases          7 silent failures + 2 posting gaps
+  Contracts/Projects 5 silent failures
+  Accounting Core    0 (good error handling — use as template)
+  Reporting          0 (good error handling)
+  ─────────────────────────────────────────────────────────
+
+  MODULES WITH GOOD ERROR HANDLING (reference patterns):
+  - accounting/reference_data/ui/* → all pages use show_error()
+  - accounting/chart_of_accounts/ui/* → all pages use show_error()
+  - accounting/fiscal_periods/ui/* → all pages use show_error()
+  - reporting/ui/* → all tabs/dialogs use show_error()
+  - payroll/ui/dialogs/department_dialog.py → uses show_error() properly
+  - payroll/ui/dialogs/position_dialog.py → uses show_error() properly
+
+
+================================================================================
+END OF AUDIT
+================================================================================

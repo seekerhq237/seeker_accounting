@@ -1,0 +1,17 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="icons/sidebar/dashboard.svg">icons/sidebar/dashboard.svg</file>
+    <file alias="icons/sidebar/home.svg">icons/sidebar/home.svg</file>
+    <file alias="icons/sidebar/third_parties.svg">icons/sidebar/third_parties.svg</file>
+    <file alias="icons/sidebar/accounting.svg">icons/sidebar/accounting.svg</file>
+    <file alias="icons/sidebar/sales.svg">icons/sidebar/sales.svg</file>
+    <file alias="icons/sidebar/purchases.svg">icons/sidebar/purchases.svg</file>
+    <file alias="icons/sidebar/treasury.svg">icons/sidebar/treasury.svg</file>
+    <file alias="icons/sidebar/inventory.svg">icons/sidebar/inventory.svg</file>
+    <file alias="icons/sidebar/fixed_assets.svg">icons/sidebar/fixed_assets.svg</file>
+    <file alias="icons/sidebar/projects.svg">icons/sidebar/projects.svg</file>
+    <file alias="icons/sidebar/payroll.svg">icons/sidebar/payroll.svg</file>
+    <file alias="icons/sidebar/reports.svg">icons/sidebar/reports.svg</file>
+    <file alias="icons/sidebar/administration.svg">icons/sidebar/administration.svg</file>
+  </qresource>
+</RCC>

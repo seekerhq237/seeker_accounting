@@ -1,0 +1,295 @@
+
+=== PAGE 1 ===
+CHAPTER TWO 
+THE CAMEROON TAXATION ENVIRONMENT 
+ 1) TAXPAYERS ASSESSMENT SYSTEMS IN CAMEROON  
+The taxes to be paid by a taxpayer depend on the taxation system or regime. According to section 
+93 of the GTC , there are three tax assessment systems in Cameroon on the basis of the turnover 
+realised by the business:  
+- The Global Tax system;  
+- The Simplified taxation system;  
+- The Actual Earnings (or Real) taxation system.  
+ 
+ 1.1) The Global Tax (or flat rate taxation) System  
+This is for natural persons or sole proprietors whose annual turnover is less than 10 000 000 CFAF, 
+except for forestry exploiters or logging companies and persons of the liberal professions. The tax 
+payable is called Global Tax. It is paid quarterly to the council of the locality of the business.  
+According to section C46 of the GTC , each council shall classify activities into categories and tax 
+them based on the following tax brackets:  
+Category A: From 0 to 20 000 CFAF.  
+Category B: From 20 001 to 40 000 CFAF.  
+Category C: From 40 001 to 50 000 CFAF.  
+Category D: From 50 001 to 100 000 CFAF.  
+Activities are assessed under the global tax on the basis of the annual turnover of the sole trader 
+and categorised as follows: 
+ 
+ Category A shall comprise: producers, service providers and traders with an annual 
+turnover lower than 2 500 000 CFAF;  
+ Category B shall comprise: producers, service providers and traders with an annual 
+turnover between 2 500 000 CFAF and 5 000 000 CFAF;  
+ Category C shall comprise: producers, service providers and traders with an annual 
+turnover between 5 000 000 CFAF and 7 500 000 CFAF;  
+ Category D shall comprise:  
+- Producers, service providers and sole traders with an annual turnover between 7 500 000 CFAF 
+and 10 000 000 CFAF;  
+- For operators of games of chance and entertainment: operators of less than 10 baby foot 
+machines, operators of less than 5 pinball and video games machines, operators of less than 3 slot 
+cash machines.  
+According to section C 47 (2) of the GTC, hawkers who show proof of payment of the Global Tax 
+to the council of his place of residence shall not be taxable in other council areas for the same 
+activity.  
+
+=== PAGE 2 ===
+Based on the Presidential ordinance of July 7th 2014 reducing certain taxes paid by transporters, 
+as a means of regulating the inflationary effect of transport fare due to the increase in fuel prices, 
+the rates of the global tax for transporters were reduced as follows:  
+Cat A: 0 to 10 000 CFAF  
+Cat B: 10 0001 to 20 000 CFAF  
+Cat C: 20 0001 to 25 000 CFAF  
+Cat D: 25 0001 to 50 000 CFAF 
+Councils are allowed, within each category, to apply specific rates to each activity. The global tax 
+is paid per council, per establishment and per activity. The payment of the global tax excludes the 
+payment of the business license, the personal or company income tax and the value added tax.  
+According to section C46 (3) of the GTC , when it is not possible to determine the annual turnover 
+of the sole proprietor, activities liable to the Global Tax shall be classify by their nature and not 
+on the basis of the annual turnover. 
+1.2) The Simplified Taxation System 
+According to section 93 (c) (2) of the GTC, this is for natural and artificial persons with an annual 
+turnover of at least 10 000 000 and less than 50 000 000 CFAF, except for passenger transporters 
+and operators of games of chance and entertainment. 
+There are two types of taxes in the system, depending on the legal status of the taxpayer: the 
+Personal Income Tax and the Corporation or Company Tax. 
+1.2.1) The Personal Income Tax (PIT)  
+This is the income tax payable by natural persons and sole proprietors on salaries and related 
+remunerations for workers, profits from industrial, agricultural, commercial and non -commercial 
+activities and revenues from securities. Sections 69 and 70 of the GTC brings out five different 
+types of Personal Income Taxes, depending on the type of income as follows:  
+ For earnings of workers, this tax is calculated at the end of each accounting period by 
+applying the following rates on the net taxable earnings:  
+ - from 0 to 2 000 000 CFAF: 10% 
+ - from 2 000 001 to 3 000 000 CFAF: 15% 
+ - from 3 000 001 to 5 000 000 CFAF: 25% 
+ - more than 5 000 000 CFAF: 35% 
+ For taxable profits from industrial, commercial, agricultural and non -commercial 
+activities, the tax shall be 30% of the net taxable profit. This taxable profit is the gross 
+surplus of revenues over the expenses required for operations as determined by the  
+simplified accounting system.  
+ For revenues from real estates, the tax shall be 30% of the net taxable revenue.  
+ For revenues from securities, the tax shall be at a flat rate of 15% of the net taxable 
+revenue.  
+ For non-commercial revenues and profits, the tax shall be 10% of the net taxable revenue.  
+
+=== PAGE 3 ===
+NB: The above-mentioned rates shall be increased by 10% representing the additional council 
+tax rate.  
+The personal income tax is paid by persons assessed under the simplified taxation system as 
+follows:  
+e taxpayer makes a payment of 5.5% (5% as principal rate and additional council rate at 10% 
+of principal rate) of the turnover of each month not later than the 15th of the following month.  
+80 and 74 of the GTC , the down payments made during the financial year 
+shall be deducted from the annual tax liability and the balance shall be paid in a single installment 
+not later than the 15th of March of the following year.  
+section 69 of the GTC, the amount of the annual tax cannot be less than the fiscal 
+minimum tax which is equal to 5.5% (5% + 10% of 5% as additional council tax rate).  
+ 
+1.2.2) The Corporation or Company Tax (C.T)  
+This is the income tax payable by artificial persons. According to section 17of the GTC , this tax is 
+calculated at the end of each accounting period by applying a rate of 33% on the taxable profit of 
+the year rounded down to the nearest thousand CFAF. The 33% represents 30% as principal rate 
+plus 10% of principal rate as additional council tax rate.  
+According to section 21 of the GTC , the company tax is paid by persons assessed under the 
+simplified taxation system as follows:  
+- The taxpayer makes a payment of 5.5% of the turnover for the month not later than the 15th of 
+the next month.  
+- According to section 22 (1) of the GTC , the down payments made during the financial year shall 
+be deducted from the annual tax liability and the balance shall be paid spontaneously in a single 
+payment not later than the 15th of March of the following year.  
+ 
+Illustration 1: Determination of annual income tax liability under the simplified system  
+A business realises an annual turnover of 15 650 500 CFAF.  
+Required: Determine the annual income tax liability and the tax balance outstanding at year end 
+under the following assumptions:  
+i. The taxable profit is 6 350 600 CFAF.  
+ii. The taxable profit is 2 350 600 CFAF.  
+1.3) The Actual Earnings Taxation System  
+This is for natural and artificial persons with an annual turnover of at least 50 000 000 CFAF. 
+There are equally two types of taxes in the system, depending on the legal status of the taxpayer: 
+the Personal Income Tax for natural persons or the Corporation Tax for corporate bodies.  
+Section 21 of the GTC , brings in a distinctive group of tax payers known as “regulated profit 
+margin sectors” . These sectors comprise of the distribution of petroleum products using pumps 
+(fuel filling stations) and the distribution of (flour) mill products.  
+1.3.1) The Personal Income Tax (PIT)  
+It is paid by natural persons assessed under the actual system as proven by an annual turnover of 
+at least 50 000 000 CFAF. The tax is computed on the taxable income of the sole propriet or or 
+
+=== PAGE 4 ===
+worker as shown above. The personal income tax is paid by persons assessed under the actual 
+earnings taxation system as follows:  
+- The taxpayer makes a down or cash payment of 2.2% of the turnover for the month not later than 
+the 15th of the following month.  
+- The down payments made during the financial year shall be deducted from the annual tax liability 
+and the balance shall be declared and paid not later than the 15th of March of the following year 
+(section 74 of the GTC ).  
+- The annual tax liability cannot be less than the fiscal minimum tax which is equal to 2.2% of the 
+yearly turnover before tax (section 69 of the GTC).  
+ 
+However, as for taxpayers of the “regulated profit margin sectors” , the base of calculating the tax 
+shall be:  
+- For the dis tribution of petroleum products (fuel filling stations) and the distribution of flour mill 
+products, the turnover shall be made up of the gross margin, including all types of commissions 
+and allowances earned.  
+- As for production enterprises of the flour mill sector, the turnover shall be the total of the 
+production sold after a reduction of 50%.  
+1.3.2) The Corporation or Company Tax (C.T)  
+This is the income tax payable by artificial persons assessed under the actual system as proven by 
+an annual turnover of at least 50 000 000 CFAF. The tax is computed on the taxable income of the 
+corporate body as shown in section 1.2.2 above. The corporation tax is paid by persons assessed 
+under the actual earnings taxation system as follows:  
+However, section 108 and 124 of the GTC  (FL 2021) provides an incentive company tax rate as 
+follows:  
+ 
+Section 108 (new): Companies that issue stocks on the Central African Stock Exchange shall be 
+entitled to a reduced company tax rate of 25%.  
+Section 124b: (1) Innovative start-ups in the field of information and communication technologies, 
+grouped within management structures set up as approved management centres, s hall enjoy the 
+following tax advantages: 
+ 
+a) During the incubation phase, which must not exceed 5 years: exemption from all taxes, duties, 
+levies and payments with the exception of social security contributions;  
+b) At the end of the incubation phase:  
+i. In the event of the sale of the "start-up": application of a reduced rate of 10% on the capital 
+gain on the sale;  
+ii. In the event of entry into the operation phase, the company shall, for a period of five (5) years, 
+benefit from:  
+- application of a reduced company tax rate of 15%;  
+Advances payment that can be made within the year:   
+- The taxpayer makes a down or cash payment of 2.2% of the turnover for the month not later than 
+the 15th of the following month; the rate shall be 1.5% companies that issue stocks on the Central 
+African Stock Exchange. 
+
+=== PAGE 5 ===
+- The down payments made during the financial year shall be deducted from the annual tax liability 
+and the balance shall be declared and paid not later than the 15st of March of the following year 
+(section 21 of the GTC).  
+- The amount of the annual tax liability cannot be less than the fiscal minimum tax which is equal 
+to 2.2% of the yearly turnover before tax (section 22 of the GTC) .  
+However, as for taxpayers of the “regulated profit margin sectors” , the base of calculating the tax 
+shall be as indicated in 1.3.1 above. 
+Illustration 2: Determination of annual income tax liability under the actual system  
+A business realises an annual turnover of 65 750 750 CFAF.  
+Required: Determine the annual income tax liability and the tax balance outstanding at year end 
+under the following assumptions:  
+i. The taxable profit is 20 340 500 CFAF.  
+ii. The taxable profit is 2 350 600 CFAF.  
+2) THE IDENTIFICATION OF TAXPAYERS IN CAMEROON  
+According to section L1 of the GTC , every natural or artificial person subject to the payment of a 
+tax has to be obligatorily registered beforehand. These persons in their capacity of legal taxpayers 
+are obliged to send in an application to the competent taxation service of their locality wi thin a 
+period of 15 days as from the date of commencement of activity. This application has to be 
+accompanied by a location plan of the business.  
+According to Decree No. 95/538/PM of September 1, 1995, fixing the modalities of registration of 
+taxpayers, the following persons are subject to be registered as taxpayers:  
+Cameroon.  
+es in 
+Cameroon either on temporary or permanent basis.  
+ 
+2.1) Registration Requirements and Procedures  
+The registration of taxpayers is subject to the presentation of a file which carries the following 
+documents:  
+taxpayer. This form carries the following information:  
+ 
+ 
+  
+ 
+ r where need be, those of its 
+warehouse, branches or shops.  
+ 
+  
+from the registry of commerce for artificial persons.  
+The procedure then is as follows:  
+Centre, Divisional Tax Centre or Specialised Tax Centre).  
+ 
+
+=== PAGE 6 ===
+file is given a temporary registration number by the competent taxation service and 
+forwarded to the central service of the taxation department.  
+department and sent back to the taxation service of the taxpayer’s locality (or by delegation of 
+powers by taxation service of the taxpayer’s locality).  
+2.2) Taxpayer’s identification number  
+There are two basic forms of taxpayer’s identification numbers, depending on whether the person 
+is a natural or an artificial person. The person having the identification number can be easily 
+identified by the first letter of the number as follows:  
+ 
+  
+ 
+ moral (or artificial) persons.  
+The formats for the attribution of the numbers are as follows:  
+i) For Natural (Physical) Persons  
+ The number starts with the letter P.  
+ The letter P is then followed by the month of birth of the proprietor.  
+ The month of birth is followed by the year of birth of the proprietor.  
+ The year of birth is followed by the taxpayer’s chronological number of eight (8) digits.  
+ The identification number finally ends with a letter which represents the taxpayer’s index ke y.  
+ 
+ii) For Artificial (Moral) Persons  
+ The number starts with the letter M.  
+ The letter M is then followed by the month of creation of the business.  
+ The month of creation is followed by the year of creation of the business.  
+ The year of creation of the business is followed by the taxpayer’s chronological number of 
+eight (8) digits.  
+ The identification number finally ends with a letter which represents the taxpayer’s index key.  
+3) THE CAMEROON FISCAL ADMINISTRATION  
+The taxation policy of Cameroon and the fiscal administration of taxes are carried out by the 
+Ministry of Finance through its specific departments of taxes, customs and treasury. This ministry 
+conceives, proposes, regulates and applies fiscal measures to be used in the Cameroon territory.  
+The department of taxes with headquarters in Yaoundé and headed by a Director General is 
+charged with the conception, implementation and coordination of taxation policies and fiscal 
+measures related to the General Tax Code and other specific tax codes and laws . Its activities are 
+controlled by Regional Tax Centers at the levels of the Regions, divisional tax centers at the levels 
+of Divisions, and special tax centres at the levels of subdivisions and districts.  
+The department of customs with headquarters in Yaoundé and equally headed by a Director 
+General is charged with the conception, implementation and coordination of fiscal measures 
+related to the Customs Code. Its activities are controlled by the various custom units in the country.  
+The treasury department with headquarters in Yaoundé and also headed by a Director General is 
+charged with the collection of various tax revenues on behalf of the state.  
+
+=== PAGE 7 ===
+As for the control and management of taxpayers, the fiscal law has provided specific structures at 
+both the national (Yaoundé) and regional levels depending on the sizes of taxpayers. These 
+structures are:  
+ Specialised Management Units,  
+ Approved Management Centres,  
+ Regional, Divisional and Specialised tax centres.  
+3.1) Specialised Management Units (SMUs)  
+These units are charged with the control and management of major and medium-sized enterprises. 
+The Cameroon GTC in its section 113 defines these enterprises as follows:  
+ Major Enterprises are those which realise an annual turnover of at least one billion CFAF.  
+ Medium - Sized Enterprises are those which realise an annual turnover of less than one 
+billion CFAF.  
+Two Specialised Management Units have been put in place by the fiscal law as follows:  
+i) The Department of Major Enterprises (DME) or Large Taxpayers’ Unit (LTU): Based in 
+Yaoundé, this structure is in charge of managing taxpayers who are classified as major enterprises. 
+As such all major enterprises declare and pay their taxes directly to this department in Yaoundé, 
+whatever their headquarters or region of operation.  
+ii) The Medium-sized Tax Offices (MTO) or Tax Centre for Medium Enterprises (TCME) : 
+These tax centres or tax offices are in charge of controlling and managing taxpayers who are 
+classified as medium-sized enterprises. Formally based only in Yaoundé and Douala, these tax 
+offices or tax centres have been extended to other major towns of the country such as Limbe, 
+Bamenda, and Bafoussam, based on a Finance Ministerial order No. 00000/402/MINFI of 
+December 17th 2013 to review the organisation of MTO. This review segmented the MTO into a 
+front office unit and a back office unit and broadened the portfolio of MTOs to include all 
+taxpayers who are registered for the Value Added Tax (VAT).  
+3.2) Approved Management Centres (AMCs)  
+According to section 118 of the GTC, these are specific centres set out to assist their members in 
+the accomplishment of their fiscal obligations and to provide certain fiscal benefits to these 
+members. There is no obligation for an enterprise to register as a member of this centre. The only 
+legal restriction is that a business should be realising an annual turnover of at most 100 million 
+CFAF to be eligible for membership, whatever the taxation system of the business. 
+ 
+3.3) The Regional, Divisional and Specialised tax centres  
+Apart from the specialised units for the management of major and medium -sized enterprises, 
+small-sized enterprises are controlled at the level of the regions, specifically their areas of 
+operations or headquarters by regional tax centres, divisional tax centres and specialised tax 
+centres. at the levels of sub-divisions and any specialised defined area of jurisdiction as defined by 
+the fiscal law. The organisation of the Divisional Tax Centres was reviewed by Finance Ministerial 
+order No. 00000313/MINFI of June24th 2014. 

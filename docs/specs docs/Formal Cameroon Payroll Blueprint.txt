@@ -1,0 +1,468 @@
+Formal Cameroon Payroll Blueprint for Seeker
+1. Formal position in the product
+
+Payroll remains a first-class Seeker module, not an external add-on. The locked Seeker scope and architecture already place payroll after fixed assets and before reporting, and the payroll scope already includes employee records, payroll components, statutory configuration, payroll runs, payslips, payroll summaries, payroll posting to GL, and payroll payment tracking.
+
+This blueprint does not replace the current Seeker payroll direction. It deepens it for Cameroon compliance and operational correctness while staying aligned to the current schema backbone:
+
+departments
+positions
+employees
+payroll_components
+payroll_rule_sets
+payroll_rule_brackets
+employee_compensation_profiles
+employee_component_assignments
+payroll_runs
+payroll_run_employees
+payroll_run_lines
+2. Purpose of this blueprint
+
+The purpose of this blueprint is to make sure Seeker payroll is built as a configuration-driven Cameroon payroll engine rather than a collection of fragile formulas hidden in code.
+
+This is necessary because the current Cameroon payroll environment has multiple official/statutory engines that must be handled separately. The DGI publishes an official monthly salary-withholding barème for IRPP and related salary deductions excluding TDL, while TDL is handled separately. The published DGI table also shows the threshold break around 62,000 FCFA, where the IRPP/CAC lines drop to zero while other salary deductions continue.
+
+CNPS also requires structured handling rather than one flat formula. Official CNPS material states that contributions are based on remuneration including cash and in-kind benefits, capped at 750,000 FCFA per month for PF and PVID, and that contribution floors depend on the minimum wage by sector. It also shows that family benefit rates vary by regime, and pension is split employer/employee at 4.2% + 4.2% = 8.4%. The employer is responsible for declaring and paying the whole contribution, including the employee share withheld from salary.
+
+Your payroll handbook already points in the same direction: separate handling for IRPP, CAC, TDL, CNPS employee/employer portions, OHADA posting flow, payroll status workflow, and payroll-to-journal reconciliation.
+
+3. Core design principle to lock
+
+Seeker payroll for Cameroon must be:
+
+table-driven
+effective-dated
+company-scoped
+posting-controlled
+journal-linked
+audit-friendly
+
+And must not be:
+
+hard-coded around current rates
+dependent on external payment APIs
+dependent on bank/mobile-money integrations
+implemented as a monolithic “gross-to-net” function with hidden rules
+
+This aligns directly with Seeker’s locked schema principle that payroll rules live in tables, not just code, and with the product-wide rule that posted accounting truth lives in journals, not in UI tables or shortcut status fields.
+
+4. Cameroon payroll compliance baseline for Seeker
+
+For Seeker, Cameroon payroll should be modeled around these statutory and operational facts.
+
+4.1 Separate payroll engines must exist
+
+Seeker must support at least these distinct rule engines:
+
+salary earnings engine
+IRPP / related salary withholding barème engine
+TDL engine
+CNPS engine
+employer levy / employer contribution engine
+benefits-in-kind valuation engine
+overtime engine
+
+The reason is simple: the DGI withholding barème is published separately from TDL, and CNPS has separate branch/rate/cap logic.
+
+4.2 Payroll must preserve separate bases
+
+Seeker must explicitly preserve at least these payroll bases:
+
+gross earnings
+taxable salary base for DGI withholding
+TDL base
+CNPS contributory base
+employer-cost base
+net payable base
+
+These should not be collapsed into one generic “taxable pay” field.
+
+4.3 Payroll must support effective-dated rule changes
+
+All statutory rules must be effective-dated because:
+
+DGI tables can change
+CNPS rates/caps/regime rules can change
+company-specific payroll policy can change over time
+
+This is already consistent with the existing Seeker payroll schema, which includes rule sets, brackets, and effective-dated compensation profiles.
+
+4.4 Payroll payment tracking is in scope; payment execution is not
+
+Seeker payroll must support:
+
+payroll posted/unposted state
+employee payment status
+payment date
+remittance tracking
+liability settlement tracking
+
+But must not support direct disbursement through external banking or mobile-money APIs. That is already a locked Seeker scope rule.
+
+5. Seeker payroll conceptual model
+
+The payroll domain should be locked conceptually like this:
+
+Company Payroll Settings
+→ Employee Master
+→ Compensation Profile
+→ Component Assignments / Variable Inputs
+→ Rule Sets + Brackets
+→ Payroll Run
+→ Payroll Run Employees
+→ Payroll Run Lines
+→ Payslips / Summaries
+→ Payroll Posting
+→ Payment Tracking / Remittance Tracking
+
+This gives Seeker four clean control layers:
+
+First: setup truth
+
+Who is paid, how they are categorized, and what statutory/company rules apply.
+
+Second: calculation truth
+
+How gross, deductions, employer cost, and net pay are derived.
+
+Third: accounting truth
+
+When payroll becomes journal-linked expense and liability truth.
+
+Fourth: settlement truth
+
+When net salary and statutory liabilities are tracked as paid or unpaid.
+
+6. Schema alignment: what stays, what extends
+6.1 What stays as the backbone
+
+The current Seeker payroll schema remains the backbone and should not be redesigned:
+
+departments
+positions
+employees
+payroll_components
+payroll_rule_sets
+payroll_rule_brackets
+employee_compensation_profiles
+employee_component_assignments
+payroll_runs
+payroll_run_employees
+payroll_run_lines
+6.2 What should be added carefully
+
+To make Cameroon payroll robust without drifting away, I recommend adding only a few focused support tables.
+
+company_payroll_settings
+
+One-to-one with company.
+
+Purpose:
+
+company payroll defaults
+statutory pack version
+CNPS regime
+accident-risk class
+default pay frequency
+default payroll currency
+overtime policy mode
+benefit-in-kind policy mode
+payroll numbering preferences
+
+This table is the cleanest way to avoid stuffing company payroll logic into scattered services.
+
+payroll_input_batches
+
+Purpose:
+
+approved variable inputs for a run period
+overtime hours
+bonuses
+penalties
+manual taxable/non-taxable adjustments
+approved allowances
+
+This avoids overloading compensation assignments with month-specific values.
+
+payroll_payment_records
+
+Purpose:
+
+track actual internal payment status facts per payroll-run employee
+partial/full payment support
+payment reference
+payment date
+optional treasury linkage later
+
+This is safer than relying only on a status flag.
+
+payroll_remittance_batches
+
+Purpose:
+
+track DGI/CNPS/other remittances by payroll period/run
+remittance date
+amount due
+amount paid
+reference
+status
+
+This is the right accounting complement to payroll posting.
+
+These are refinements, not a redesign.
+
+7. Payroll component model to lock
+
+payroll_components should remain the standard reusable payroll building blocks.
+
+Recommended controlled component_type_code families:
+
+earning
+deduction
+employer_contribution
+tax
+informational
+
+Recommended controlled calculation_method_code families:
+
+fixed_amount
+percentage
+rule_based
+manual_input
+hourly
+
+That matches the current schema direction and gives enough flexibility for Cameroon payroll without becoming vague.
+
+Examples:
+
+base salary
+overtime 150%
+overtime 175%
+housing allowance
+transport allowance
+employee pension
+employer pension
+IRPP
+CAC
+TDL
+CRTV
+housing fund
+accident risk employer contribution
+trade union dues
+salary advance recovery
+8. Rule-set model to lock
+
+payroll_rule_sets and payroll_rule_brackets should be the heart of statutory configurability.
+
+Use them for:
+
+DGI IRPP/related deduction barème
+TDL table
+pension contribution profiles
+employer accident-risk classes
+housing/employment fund rules
+overtime premium rules
+benefit-in-kind valuation rules where formulaic
+future policy versions by effective date
+
+This is exactly the direction already described in the Seeker scope: Cameroon payroll should support PIT brackets, percentage-based deductions, fixed-scale taxes, employer accident-risk contributions, employee and employer pension contributions, and overtime premium logic through configuration tables rather than code rewrites.
+
+9. Payroll accounting model to lock
+
+Payroll accounting in Seeker should follow this model:
+
+9.1 At payroll posting
+debit salary/benefit/employer-cost expense accounts
+credit employee net-pay liability
+credit tax liabilities
+credit CNPS and other statutory liabilities
+9.2 At employee payment tracking
+reduce payroll payable / net salary liability
+track paid/unpaid/partial state internally
+9.3 At statutory remittance tracking
+reduce DGI/CNPS/other liability balances
+track remittance status separately from payroll run status
+
+This is consistent with your handbook’s OHADA posting flow and with Seeker’s global posting-link pattern, where posted source documents carry posted_journal_entry_id and create journal-linked truth through controlled posting services.
+
+10. Business workflow to lock
+
+The payroll workflow should be locked as:
+
+Step 1 — setup
+company payroll settings
+departments/positions
+employees
+payroll components
+rule sets and brackets
+compensation profiles
+recurring component assignments
+Step 2 — approved payroll inputs
+approved overtime
+approved variable earnings
+approved deductions
+approved manual adjustments
+approved benefits-in-kind values where required
+Step 3 — payroll run
+create draft run
+calculate run
+review employee payroll details
+generate payslip previews
+approve-ready state if needed
+Step 4 — posting
+validate open period
+validate mappings
+create payroll journal
+lock run into posted state
+Step 5 — settlement tracking
+track employee payment status
+track remittance batches
+close payroll period operationally
+
+This is the safest accounting-first payroll workflow for Seeker.
+
+11. The 4 payroll slices to lock
+Slice 13A — Cameroon payroll compliance and setup foundation
+Purpose
+
+Build the compliance backbone and setup layer first.
+
+Scope
+company_payroll_settings
+departments
+positions
+employees
+payroll components
+payroll rule sets
+payroll rule brackets
+payroll setup UI
+seeded Cameroon statutory pack
+payroll component account mappings
+effective-dated rule maintenance
+What must be delivered
+employee master workflows
+payroll component master workflows
+payroll rule maintenance
+seeded Cameroon default rule pack
+company payroll settings
+validation for same-company scoping and mapped accounts
+What this slice proves
+
+Seeker can be configured correctly for Cameroon payroll before calculations start.
+
+Slice 13B — Compensation, inputs, and gross-to-net calculation
+Purpose
+
+Build the real payroll calculation engine.
+
+Scope
+employee compensation profiles
+employee component assignments
+approved variable payroll inputs
+overtime handling
+benefits-in-kind handling
+payroll draft run creation
+payroll run calculation
+employee payroll detail generation
+payslip preview DTOs/UI
+What must be delivered
+gross pay calculation
+deductions calculation
+employer contribution calculation
+net pay calculation
+employee-level run detail review
+payslip preview
+What this slice proves
+
+Seeker can calculate payroll correctly and transparently before posting.
+
+Slice 13C — Payroll posting, liabilities, payment tracking, remittances
+Purpose
+
+Turn payroll results into accounting truth and liability-tracking truth.
+
+Scope
+payroll posting service
+payroll run posting to GL
+liability creation
+payroll payment tracking
+remittance batches and lines
+remittance tracking
+payroll summaries
+posted-run immutability
+treasury linkage only as internal tracking where relevant
+What must be delivered
+posted payroll journal
+payroll liability visibility
+employee payment status tracking
+remittance tracking
+audit trail around payroll posting and settlement events
+What this slice proves
+
+Seeker payroll is not just a calculator; it is a real accounting module.
+
+Slice 13D — Cameroon hardening, controls, and operational polish
+Purpose
+
+Make the payroll module deployment-ready.
+
+Scope
+statutory pack rollover/version management
+payroll validation dashboard/checks
+exception handling around missing mappings/rules
+import tools for employees and payroll setup
+printable payslips and payroll summaries
+permission and audit hardening
+edge-case handling for caps, floors, effective dates, and policy variants
+What must be delivered
+robust validation controls
+updateable statutory packs
+admin usability for real payroll operations
+hardened outputs and auditability
+What this slice proves
+
+The payroll module is practical, maintainable, and safe in real Cameroon use.
+
+12. Cameroon statutory pack design to lock
+
+Seeker should ship with a seeded Cameroon payroll statutory pack.
+
+This pack should include:
+
+DGI salary-withholding barème tables
+separate TDL table
+CNPS branch/rate profiles
+CNPS cap/floor metadata
+regime/risk-class profiles
+benefits-in-kind policy templates
+overtime premium templates
+levy templates
+effective dates and version tags
+
+The DGI salary table excluding TDL and the CNPS capped/floored contribution structure are exactly why this should be seeded as data, not buried in code.
+
+13. Decisions explicitly locked by this blueprint
+Payroll remains a first-class Seeker module.
+Payroll stays aligned to the current Seeker payroll schema backbone.
+Cameroon statutory logic is configuration-driven and effective-dated.
+DGI withholding and TDL are modeled as separate rule engines.
+CNPS logic is modeled as configurable rule/profile data, not one flat formula.
+Payroll run posting creates journal-linked accounting truth.
+Employee payment tracking is in scope.
+Remittance tracking is in scope.
+Direct payroll disbursement execution is out of scope.
+No banking API dependency is introduced.
+No generic HR suite is introduced.
+No hard-coded rate tables scattered across service code.
+No payroll truth is stored outside the run/run-line/journal-linked model.
+14. What we are deliberately not building now
+
+Not in the first payroll build:
+
+attendance/time-clock system
+leave engine
+recruitment/performance module
+direct bank/mobile-money salary disbursement
+tax filing API
+broad HRIS redesign
+arbitrary formula scripting engine

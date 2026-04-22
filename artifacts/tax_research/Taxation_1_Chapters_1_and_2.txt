@@ -1,0 +1,663 @@
+
+=== PAGE 1 ===
+1 
+TAXATION 1 
+CHAPTER ONE 
+INTRODUCTORY NOTIONS ON TAXATION 
+1) DEFINITION OF TAXATION  
+Taxation can be perceived as the system of raising money to finance government or as a means by 
+which governments  finance their expenditures by imposing charges on citizens and corporate 
+entities. The Oxford Dictionary of accounting defines taxation as ‘ a levy on individuals or 
+corporate bodies by central or local government in order to finance the expenditure of tha t 
+government and also as a means of implementing its fiscal policy’. The dictionary further specifies 
+that ‘payments for specific services rendered to or for the payer are not regarded as taxation’.  
+Other scholars define taxation as ‘the science which studies the set of monetary deductions carried 
+out by the state on natural and artificial persons’. In practice, we have taxes at the core of taxation. 
+ 2) TAXES AND RELATED TERMINOLOGIES  
+A tax can be defined as "a compulsory payment, levy, duty or contribut ion, without direct 
+compensation demanded by the state or its decentralised organs from natural and artificial 
+persons." From this definition, the following main features describe taxes:  
+- A tax is a “compulsory payment” as it is a right for the fiscal ad ministration to collect its taxes 
+(attribution of sovereignty) and the taxpayer equally has the obligation to pay the taxes.  
+- A tax is a payment without any “direct compensation” required to be provided to the payer”. The 
+taxpayer may enjoy certain benefits from the state, but they hardly correspond to the amount paid 
+as taxes.  
+- A tax is a “monetary payment” as it is negotiated and assessed in terms of the legal currency of 
+the state.  
+Taxes are given different descriptions based either on the reason fo r charging the taxpayer to pay 
+the given tax, or the beneficiary of the tax. The following terms are used in the domain of taxation 
+either as a notion of tax or interchangeably.  
+Rates: They represent the revenue of local authorities and can be described as levies to be paid to 
+the various local authority organs of the state when a public service is required by a citizen, or in 
+general, to help provide revenue for any decentralised organ of the state.  
+Duties: They are similar to a tax in that their payment confers the right to use a public service.  
+Contributions: These are levies imposed on the population to help the state in the provision of 
+social services or social insurance understandings. Examples are levies made for the interest of the 
+National Social Insurance Fund, to the Local Council Support Fund, to the Housing Loan Fund or 
+the National Employment Fund.  
+Tariffs: They represent the ranges of duties on imports and other home-made products.  
+Apart from  these terms used as taxes, it is equally important to master the following terms 
+commonly used in the domain of taxation:  
+The tax bearer: The tax bearer is that natural or artificial person subject to the domain of 
+application of an obligatory payment and who bears the burden of the said payment.  
+
+=== PAGE 2 ===
+2 
+TAXATION 1 
+The taxpayer: The taxpayer on the other side is that natural or artificial person who has carried 
+out an operation which generates taxes. There are two classes of taxpayers: the legal taxpayer and 
+the actual taxpayer.  
+- The legal taxpayer is the person (natural or artificial) who is responsible for the payment of the 
+tax to the fiscal administration.  
+- The actual taxpayer is the tax bearer, which is the person who bears the burden of the tax.  
+Tax base (tax assessment base): This is the specific aspect or domain on which a tax is levied, 
+for instance an individual’s income for income tax, the profits of companies for corporation tax, 
+the estate of a deceased person for inheritance tax, or the value of a landed p roperty for land tax. 
+In simple terms, the tax base is the amount/value on which the tax rate is applied or the income 
+bracket for the tax.  
+Tax returns: These are forms used by taxpayers to make periodic tax declarations and payments.  
+Tax-deductible: This is an amount that can be deducted from income or profits in order to obtain 
+the final amount of income or profit that is subject to tax.  
+Tax allowance: This is a deduction made in calculating the taxable income. It reduces the tax base 
+and serves as a tax benefit.  
+Taxable income: This is the income liable to taxation. It is calculated by deducting income tax 
+allowances and tax-deductible expenses from the taxpayer’s gross income.  
+Tax bracket: These are figures between which incomes or amounts are subjected to a specific rate 
+of tax. For instance, income between 1 and 2 000 000 CFAF is tax at 10%, between 2 000 001 and 
+3 000 000 CFAF at 15%, etc.  
+A tax advantage: This is a benefit enjoyed by a taxpayer as a result of a reduction in a charge to 
+taxation.  
+Tax rebate: This is a repayment of a tax already paid by a taxpayer. It is like a refund on taxes 
+earlier paid by the taxpayer. In order to obtain a tax rebate, the taxpayer has to make a repayment 
+claim to the Inspector of Taxes and the refund due to the taxpayer will be made by the Collector 
+of Taxes following the Inspector’s instructions.  
+Tax exempt: This represents an item (payment, income, revenue, a llowance, etc) which is not 
+subject to taxation. That is, a tax-free item.  
+A tax heaven: This is a state, country or territory where certain taxes are levied at a low rate or 
+not at all. It also refers to countries which have a system of financial secrecy in place. It is an area 
+identified as having a composite tax structure deliberately established to take advantage of, and 
+exploit a worldwide demand for opportunities to engage in tax avoidance.  
+Tax avoidance: This is a legal usage of the tax regime in a given country to one’s own advantage 
+to reduce the amount of tax that is payable by means within the law.  
+Tax sheltering: This is a legal method of minimising or decreasing an investor’s taxable income 
+and, therefore, his or her tax liability. Tax shelte rs can range from investments or investment 
+accounts that provide favourable tax treatment, to activities or transactions that lower taxable 
+
+=== PAGE 3 ===
+3 
+TAXATION 1 
+income. It is very similar to tax avoidance, although unlike tax avoidance, it is not necessarily 
+legal.  
+Tax evasion: is the illegal evasion of taxes by individuals, corporations and trusts. This entails 
+taxpayers deliberately misrepresenting the true state of their affairs to the tax authorities in order 
+to reduce their tax liability and includes dishonest tax report ing, such as declaring less income, 
+profits or gains than the amount actually earned, or overstating deductions. It is commonly 
+associated with the informal sector.  
+Tax liability: This is the total amount of tax that an entity or individual is legally obligated to pay 
+to an authority as a result of the occurrence of a taxable event. This is obtained by applying the 
+appropriate tax rate on the tax base.  
+Taxable event: This is any event or transaction that results in a tax consequence or tax liability 
+for the party who executes the event. Common examples of taxable events for investors include 
+the receiving of dividends and interests, selling securities for a gain and exercising options.  
+ 
+3) FUNCTIONS OF TAXES  
+The functions of taxes can be perceived from two points of view:  
+- The fiscal function;  
+- The instrumental function.  
+ 
+3.1) The fiscal function of taxes  
+This function refers to “how the government spends taxes”. In a state, country or community, the 
+citizens or members of that community require a certain number of needs. Individually, these 
+people cannot succeed in acquiring all the resources needed to satisfy these needs. Collectively, 
+these people can use their collective efforts through the coordinati on of the state to acquire 
+resources which can satisfy these needs. Therefore, the execution of duties of collective interest 
+falls in the hands of the state. 
+3.2) The instrumental function of taxes  
+In addition to using taxation to raise money (which is the main function or purpose of taxation), a 
+government uses taxes as an excellent means of intervention in the economy or the society. A 
+government may raise or levy taxes to achieve social and economic objectives, or to achieve 
+political popularity with certain groups. Taxation can redistribute a society’s wealth by imposing 
+a heavier tax burden on one group in order to fund services for another. Also, some economists 
+consider taxation as an important tool for maintaining the stability of a country’s economy. 
+4) TYPES OF TAXATION SYSTEMS  
+Tax systems are the means by which taxes are raised and collected in accordance with the tax 
+legislation. Taxes can be levied following one of the following systems:  
+- the proportional tax system;  
+- the progressive tax system;  
+
+=== PAGE 4 ===
+4 
+TAXATION 1 
+- the regressive tax system;  
+- the ad valorem or percentage tax system;  
+- the per capita tax system;  
+- The specific or unit tax system.  
+ 
+4.1) The proportional tax system  
+A proportional tax imposes the same percentage of taxat ion on everyone, regardless of income. 
+The amount of the tax to be paid is obtained by applying a fixed rate of tax on the assessment base 
+of the tax. The tax rate remains constant whatever the amount of the assessment base.  
+For instance, if the tax rate is 10% on the monthly income, a person earning 100 000 CFAF is 
+required to pay 10 000 CFAF as tax; while another person who earns 250 000 CFAF also pays 
+10% of it, that is 25 000 CFAF; every income earner pays 10% of his income.  
+Though favoured by the economist, Adam Smith, a proportional system of taxation is nowadays 
+regarded as being less equitable than a progressive system.  
+4.2) The progressive tax system  
+The progressive tax imposes a higher percentage rate of taxation on those with higher incomes. It 
+is a system where the rate of taxation increases as income increases, so that a person with an 
+income of 100 000 CFAF may pays 11 000 CFAF in income tax (that is, 11% of his income) 
+whereas a person with an income of 500 000 CFAF may pay 13 50 0 CFAF in tax (27% of his 
+income). This is the principle of pay as you earn (PAYE).  
+Where great inequality of income exists, a progressive system of taxation is regarded as being 
+more equitable than a proportional system. The personal income tax in Camero on is an example 
+of a progressive tax.  
+4.3) The regressive tax system  
+The regressive tax system imposes a higher percentage rate of taxation on low incomes than on 
+high incomes. Some economists consider sales taxes regressive because individuals with hig her 
+incomes spend a smaller proportion of their incomes on sales taxes than those with lower incomes. 
+A poor person and a rich person who spend the same amount on groceries each year will pay the 
+same amount in sales taxes, even though the rich person earns more money. However, rich people 
+consume more than poor people.  
+4.4) The ad valorem or percentage tax system  
+Here, the amount of tax paid depends on the value of the commodity e.g. 10 % of the value of the 
+good may be paid as taxes.  
+4.5) The per capita tax system  
+Here, the tax is levied per head. That is, every tax subject pays the same amount as tax, regardless 
+of social or income earning capacity.  
+4.6) The specific tax system  
+
+=== PAGE 5 ===
+5 
+TAXATION 1 
+The amount of tax paid depends on the quantity of the good bought. A spe cific tax on wine is on 
+the quantity of wine rather than on its price. A bottle of expensive wine then bears the same cost 
+as a bottle of cheap wine.  
+5) THE PRINCIPLES OR CANONS OF TAXATION  
+Canons of taxation describe the basic principles to be followed by governments and local 
+authorities in formulating their taxation policies so as to optimize their tax systems. This is based 
+on the ideal of harvesting as much as possible from taxes, while minimising the effects of taxes on 
+individuals and activities.  
+According to the economist, Adams Smith , governments have to observe four basic principles 
+when formulating taxation policies: 
+ Equality;  
+ Certainty ;  
+ Convenience; and  
+ Economy.  
+5.1) Equality  
+According to this principle, the subjects of every state ought to contribute towards the support of 
+the government as nearly as possible, in proportion to their respective abilities. That is, in 
+proportion to the revenue that they respectively enjoy under the protection of that state. There are 
+three ways of collecting taxes from individuals so that it falls equally on individuals. These are:  
+The per capita tax system: Here, everyone pays the same contribution, say 5 000 CFAF per head, 
+as in the example of the poll tax.  
+The proportional tax system: Here, everyone pays the same proportion of their income in the 
+tax, say 10%. This was Adams Smith’s "equal" tax.  
+The progressive tax system: Here, the amount of tax is adjusted to fall most heavily on the rich.  
+ 
+Of these three systems of tax, the per capita may be said to be fair, the proportional may be said 
+to be unjust, while the progressive taxation system is the fairest system for taxes. This system has 
+therefore been adopted by most nations.  
+5.2) Certainty  
+According to this principle, the tax which each individual is bound to pay ought to be certain and 
+not arbitrary. The time of payment, the manner of payment, the quantity to be paid, ought all to be 
+clear and plain. A system of tax collecti on which is not certain will almost invariably cause 
+discontent.  
+5.3) Convenience  
+According to this principle, every tax ought to be levied at the time, or in the manner, in which it 
+is most likely to be convenient for the contributor to pay it. This rule also helps the government to 
+maintain as far as possible the flow of revenue at the same pace as that of expenditure. Again, 
+
+=== PAGE 6 ===
+6 
+TAXATION 1 
+taxes are invariably a burden at the time of payment, even when the taxpayer agrees that they are 
+just and equitable. Their colle ction at the most convenient point reduces losses by non -payment 
+and simplifies the whole process.  
+5.4) Economy  
+According to this principle, every tax ought to be so contrived (or designed) as both to take out 
+and keep out of the pockets of people as lit tle as possible over and above what it brings in to the 
+public treasury of the state . This canon, in the narrow sense of the term, requires that as little as 
+possible, consistent with efficiency, should be spent on administration and collection. Or, in other 
+words, the yield should be greater than the cost of collection, as any tax which costs more than it 
+raises in revenue is clearly a waste of time.  
+6) THE CLASSIFICATION OF TAXES  
+Taxes might be levied on income, on capital or on expenditure. Taxes are c lassified either on the 
+basis of the tax base or the manner in which the tax is paid to the state.  
+6.1) Classification of taxes based on the tax base  
+On the basis of the tax base, taxes fall within the following categories:  
+i) Taxes on income: The tax base here is the income or profits of the taxpayer. For example the 
+personal income tax, capital gains tax and corporation tax.  
+ii) Taxes on capital: The tax base in this case is the value of an item or wealth in general. As 
+examples we have the Capital transfer tax, inheritance tax, tax on capital of companies.  
+iii) Taxes on expenditures: The tax base for this type of taxes is the value of the expenditure, 
+which is generally represented by the net financial value of the item. Examples are the Value 
+Added Tax and excise duties.  
+iv) Taxes on activity: The tax base here is a particular activity and the tax is paid on the basis of 
+the simple fact that this activity is carried out by the taxpayer. Examples are business licence, 
+liquor licence, and the global tax paid by small business units.  
+v) Taxes on property: The tax base here is the value of an asset controlled by the taxpayer. 
+Examples are real estate taxes.  
+6.2) Classification of taxes based on the manner of payment  
+The above categories of taxes fall under two classes of taxes as per the manner of their payment 
+to the state: direct and indirect taxes  
+ Direct Taxes: These taxes are paid directly to the taxation authority by the person against 
+whom the taxes are levied. That is the taxpayer is the tax bearer. They include taxes on 
+income, on activity and on capital.  
+ Indirect taxes: Here, the person against whom the ta x is levied does not directly pay the 
+tax to the tax authority. That is, the taxpayer is different from the tax bearer. They in most 
+cases are taxes on expenditures.  
+
+=== PAGE 7 ===
+7 
+TAXATION 1 
+ 
+7. THE EFFECTS OF TAXATION  
+Economists have devoted considerable effort to study how tax es affect people’s behaviour, 
+including their choices in working, saving, and investing. To understand the effect of any tax, one 
+must first determine who bears the burden of the tax. The way a tax affects people is called the tax 
+incidence.  
+ The effect of taxes on labour supply  
+Taxes can affect labour supply by influencing people's decisions about whether to work and how 
+much to work.  
+ The effect of taxes on saving  
+Saving is the portion of income that is not spent. Might taxes levied on returns to saving  (such as 
+interest and dividends) influence the amount people save? When a tax is levied on interest or 
+dividends, it reduces the reward for saving. This tends to reduce the amount of saving that an 
+individual does.  
+ The effect of taxes on physical investment  
+ 
+In effect, a tax on business income is a tax on the physical investment’s return: the tax reduces the 
+firm’s income and thus the benefit from making the investment. Most economists believe that 
+business taxes decrease the amount of physical investment by businesses.  
+ The effect of taxes on the standard of living  
+When taxes are levied on necessaries of life, there is a danger that they should cause hardship to 
+those with low income, and depress the standards of living of workers who are not or near th e 
+minimum necessary for full efficiency. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 8 ===
+8 
+TAXATION 1 
+CHAPTER TWO 
+THE CAMEROON TAXATION ENVIRONMENT 
+ 1) TAXPAYERS ASSESSMENT SYSTEMS IN CAMEROON  
+The taxes to be paid by a taxpayer depend on the taxation system or regime. According to section 
+93 of the GTC, there are three tax assessment systems in Cameroon on the basis of the turnover 
+realised by the business:  
+- The Global Tax system (or regime);  
+- The Simplified taxation system;  
+- The Actual Earnings (or Real) taxation system.  
+- The regime of non-profit organisations 
+ 
+ 1.1) The Global Tax (or flat rate taxation) System  
+This is for natural persons or sole proprietors whose annual turnover is less than 10 000 000 CFAF, 
+except for forestry exploiters or logging companies and persons of the liberal professions. The tax 
+payable is called Global Tax. It is paid quarterly to the council of the locality of the business.  
+According to section C46 of the GTC, each council shall classify activities into categories and tax 
+them based on the following tax brackets:  
+Category A: From 0 to 20 000 CFAF.  
+Category B: From 20 001 to 40 000 CFAF.  
+Category C: From 40 001 to 50 000 CFAF.  
+Category D: From 50 001 to 100 000 CFAF.  
+Activities are assessed under the global tax on the basis of  the annual turnover of the sole trader 
+and categorised as follows: 
+ Category A shall comprise: producers, service providers and traders with an annual 
+turnover lower than 2 500 000 CFAF;  
+ Category B shall comprise: producers, service providers and traders with an annual 
+turnover between 2 500 000 CFAF and 5 000 000 CFAF;  
+ Category C shall comprise: producers, service providers and traders with an annual 
+turnover between 5 000 000 CFAF and 7 500 000 CFAF;  
+ Category D shall comprise:  
+- Producers, service providers and sole traders with an annual turnover between 7 500 000 CFAF 
+and 10 000 000 CFAF;  
+- For operators of games of chance and entertainment: operators of less than 10 baby foot 
+machines, operators of less than 5 pinball and video games machines, operators of less than 3 slot 
+cash machines.  
+According to section C 47 (2) of the GTC, hawkers who show proof of payment of the Global Tax 
+to the council of his place of residence shall not be taxable in other council areas for the same 
+activity.  
+
+=== PAGE 9 ===
+9 
+TAXATION 1 
+Based on the Presidential ordinance of July 7th 2014 reducing certain taxes paid by transporters, 
+as a means of regulating the inflationary effect of transport fare due to the increase in fuel prices, 
+the rates of the global tax for transporters were reduced as follows:  
+Cat A: 0 to 10 000 CFAF  
+Cat B: 10 0001 to 20 000 CFAF  
+Cat C: 20 0001 to 25 000 CFAF  
+Cat D: 25 0001 to 50 000 CFAF 
+Councils are allowed, within each category, to apply specific rates to each activity. The global tax 
+is paid per council, per establishment and per activity. The payment of the global tax excludes the 
+payment of the business license, the personal or company income tax and the value added tax.  
+According to section C46 (3) of the GTC , when it is not possible to determine the annual turnover 
+of the sole proprietor, activities liable to the Global Tax shall be classify by their nature and not 
+on the basis of the annual turnover. 
+1.2) The Simplified Taxation System 
+According to section 93 (c) (2) of the GTC, this is for natural and artificial persons with an annual 
+turnover of at least 10 000 000 and less than 50 000 000 CFAF, except for passenger transporters 
+and operators of games of chance and entertainment. 
+There are two types of taxes in the system, depending on the legal status of the taxpayer: the 
+Personal Income Tax and the Corporation or Company Tax. 
+1.2.1) The Personal Income Tax (PIT)  
+This is the income tax payable by natural persons and sole proprietors on salaries and related 
+remunerations for workers, profits from industria l, agricultural, commercial and non-commercial 
+activities and revenues from securities. Sections 69 and 70 of the GTC brings out five different 
+types of Personal Income Taxes, depending on the type of income as follows:  
+ For earnings of workers, this tax i s calculated at the end of each accounting period by 
+applying the following rates on the net taxable earnings:  
+ - from 0 to 2 000 000 CFAF: 10% 
+ - from 2 000 001 to 3 000 000 CFAF: 15% 
+ - from 3 000 001 to 5 000 000 CFAF: 25% 
+ - more than 5 000 000 CFAF: 35% 
+ For taxable profits from industrial, commercial, agricultural and non -commercial 
+activities, the tax shall be 30% of the net taxable profit. This taxable profit is the gross 
+surplus of revenues over the expenses required for operations as determined by the 
+simplified accounting system.  
+ For revenues from real estates, the tax shall be 30% of the net taxable revenue.  
+ For revenues from securities, the tax shall be at a flat rate of 15% of the net taxable 
+revenue.  
+ For non-commercial revenues and profits, the tax shall be 10% of the net taxable revenue.  
+
+=== PAGE 10 ===
+10 
+TAXATION 1 
+NB: The above-mentioned rates shall be increased by 10% representin g the additional council 
+tax rate.  
+An advanced personal income tax is paid by persons assessed under the simplified taxation system 
+as follows:  
+ The taxpayer makes a payment of 5.5% (5% as principal rate and additional council rate at 10% 
+of principal rate) of the turnover of each month not later than the 15th of the following month.  
+ According to sections 80 and 74 of the GTC, the down payments made during the financial year 
+shall be deducted from the annual tax liability and the balance shall be paid in a single installment 
+not later than the 15th of March of the following year.  
+ According to section 69 of the GTC, the amount of the annual tax cannot be less than the fiscal 
+minimum tax which is equal to 5.5% (5% + 10% of 5% as additional council tax rate).  
+ 
+1.2.2) The Corporation or Company Tax (C.T)  
+This is the income tax payable by artificial persons. According to section 17of the GTC, this tax is 
+calculated at the end of each accounting period by applying a rate of 33% on the taxable profit of 
+the year rounded down to the nearest thousand CFAF. The 33% represents 30% as principal rate 
+plus 10% of principal rate as additional council tax rate.  
+According to section 21 of the GTC , the company tax is paid by persons assessed under the 
+simplified taxation system as follows:  
+- The taxpayer makes a payment of 5.5% of the turnover for the month not later than the 15th of 
+the next month.  
+- According to section 22 (1) of the GTC, the down payments made during the financial year shall 
+be deducted from the annual tax liability and the balance shall be paid spontaneously in a single 
+payment not later than the 15th of March of the following year.  
+ 
+Illustration 1: Determination of annual income tax liability under the simplified system  
+A business realises an annual turnover of 15 650 500 CFAF.  
+Required: Determine the annual income tax liability and the tax balance outstanding at year end 
+under the following assumptions:  
+i. The taxable profit is 6 350 600 CFAF.  
+ii. The taxable profit is 2 350 600 CFAF.  
+1.3) The Actual Earnings Taxation System  
+This is for natural and artificial persons with an annual turnover of at least 50 000 000 CFAF. 
+There are equally two types of taxes in the system, depending on the legal status of the taxpayer: 
+the Personal Income Tax for natural persons or the Corporation Tax for corporate bodies.  
+Section 21 of the GTC , brings in a distinctive group of tax payers known as “regulated profit 
+margin sectors”. These sectors comprise of the distribution of petroleum products using pumps 
+(fuel filling stations) and the distribution of (flour) mill products. 
+1.3.1) The Personal Income Tax (PIT)  
+It is paid by natural persons assessed under the actual system as proven by an annual turnover of 
+at least 50 000 000 CFAF. The tax is computed on the taxable income of the sole propriet or or 
+
+=== PAGE 11 ===
+11 
+TAXATION 1 
+worker as shown above. The personal income tax is paid by persons assessed under the actual 
+earnings taxation system as follows:  
+- The taxpayer makes a down or cash payment of 2.2% of the turnover for the month not later than 
+the 15th of the following month.  
+- The down payments made during the financial year shall be deducted from the annual tax liability 
+and the balance shall be declared and paid not later than the 15th of March of the following year 
+(section 74 of the GTC).  
+- The annual tax liability cannot be less than the fiscal minimum tax which is equal to 2.2% of the 
+yearly turnover before tax (section 69 of the GTC).  
+ 
+However, as for taxpayers of the “regulated profit margin sectors”, the base of calculating the tax 
+shall be:  
+- For the distribution of petroleum products (fuel filling stations) and the distribution of flour mill 
+products, the turnover shall be made up of the gross margin, including all types of commissions 
+and allowances earned.  
+- As for production ent erprises of the flour mill sector, the turnover shall be the total of the 
+production sold after a reduction of 50%.  
+1.3.2) The Corporation or Company Tax (C.T)  
+This is the income tax payable by artificial persons assessed under the actual system as proven by 
+an annual turnover of at least 50 000 000 CFAF. The tax is computed on the taxable income of the 
+corporate body as shown in section 1.2.2 above. The corporation tax is paid by persons assessed 
+under the actual earnings taxation system as follows:  
+However, section 108 and 124 of the GTC (FL 2021) provides an incentive company tax rate as 
+follows:  
+ 
+Section 108 (new): Companies that issue stocks on the Central African Stock Exchange shall be 
+entitled to a reduced company tax rate of 25%.  
+Section 124b: (1) Innovative start-ups in the field of information and communication technologies, 
+grouped within management structures set up as approved management centres, shall enjoy the 
+following tax advantages: 
+ 
+a) During the incubation phase, which must not exceed 5 years: exemption from all taxes, duties, 
+levies and payments with the exception of social security contributions;  
+b) At the end of the incubation phase:  
+i. In the event of the sale of the "start-up": application of a reduced rate of 10% on the capital 
+gain on the sale;  
+ii. In the event of entry into the operation phase, the company shall, for a period of five (5) years, 
+benefit from:  
+- application of a reduced company tax rate of 15%;  
+Advances payment that can be made within the year:   
+- The taxpayer makes a down or cash payment of 2.2% of the turnover for the month not later than 
+the 15th of the following month; the rate shall be 1.5% companies that issue stocks on the Central 
+African Stock Exchange. 
+
+=== PAGE 12 ===
+12 
+TAXATION 1 
+- The down payments made during the financial year shall be deducted from the annual tax liability 
+and the balance shall be declared and paid not later than the 15st of March of the following year 
+(section 21 of the GTC).  
+- The amount of the annual tax liability cannot be less than the fiscal minimum tax which is equal 
+to 2.2% of the yearly turnover before tax (section 22 of the GTC).  
+However, as for taxpayers of the “regulated profit margin sectors”, the base of calculating the tax 
+shall be as indicated in 1.3.1 above. 
+Illustration 2: Determination of annual income tax liability under the actual system  
+A business realises an annual turnover of 65 750 750 CFAF.  
+Required: Determine the annual income tax lia bility and the tax balance outstanding at year end 
+under the following assumptions:  
+i. The taxable profit is 20 340 500 CFAF.  
+ii. The taxable profit is 2 350 600 CFAF.  
+1.4. The regime of non-profit organisations 
+1.4.1. Entities subject to this regime 
+The regime of non-profit organisations covers any entity with or without legal personality, public, 
+private or religious, including foundations, whose purpose is not to seek profits for distribution 
+among its members and whose activity is not in competitio n with those carried out by profit -
+making entities. These include: 
+a) Subject to conventions, international bodies and non-governmental organisations;  
+b) Public establishments and decentralised territorial authorities, as well as their public service 
+boards;  
+c) Companies or bodies recognised as being of public utility  
+d) Public low-cost housing agencies;  
+e) Associations of any kind, de jure or de facto, mutual societies, private clubs and circles; 
+f) Welfare and social security organisations;  
+g) Public and denominational educational and health institutions; 
+h) In general, anybody, whether or not it has a legal personality, whose main purpose is not to 
+carry out commercial activities. 
+1.4.2. Tax Isues 
+Non-profit organisations shall be subject to the tax registration requirement referred to in Article 
+L1 of the tax Code. They shall be exempt from: 
+- The business licence; - the corporate tax; - the property tax. 
+Notwithstanding, liable to the value added tax on goods and services acquired within the 
+framework of their operation; - registration and stamp duties; or income taxes on their investments; 
+or withholding taxes for which they are legally liable. 
+
+=== PAGE 13 ===
+13 
+TAXATION 1 
+(3) Non -profit organisations shall be subject to value added tax when they carry out taxable 
+operations in accordance with the provisions of Articles 125 et seq. of the Code. (4) Income tax 
+shall be levied at a preferential rate of 15%, plus 10% in respect of additional communal centimes, 
+on the share of commercial activities of non-profit organisations. 
+A quarterly advance payment of 1% of the turnover of commercial activities of non -profit 
+organisations is paid monthly to the tax centre where they are based. This advance payment is 
+increased by 10% in respect of the additional communal centimes and con stitutes the minimum 
+collection amount. 
+5) Non-profit organisations are subject to a monthly declaration of taxes and duties due, including 
+those for which they are only legally liable. (6) Before 15 March each year, non -profit 
+organisations shall submit a statistical and tax return, the model for which shall be provided by the 
+tax authorities, together with an itemised statement of all sums paid to third parties during the 
+previous fiscal year. 
+(7) In all cases, non -profit organisations are required to kee p separate accounts for their 
+commercial activities. 
+2) THE IDENTIFICATION OF TAXPAYERS IN CAMEROON  
+According to section L1 of the GTC, every natural or artificial person subject to the payment of a 
+tax has to be obligatorily registered beforehand. These persons in their capacity of legal taxpayers 
+are obliged to send in an application to the competent taxation service of their locality within a 
+period of 15 days as from the date of commencement of activity. This application has to be 
+accompanied by a location plan of the business.  
+According to Decree No. 95/538/PM of September 1, 1995, fixing the modalities of registration of 
+taxpayers, the following persons are subject to be registered as taxpayers:  
+ Natural and artificial persons of Cameroonian nationality who have to pay taxes exacted in 
+Cameroon.  
+ Natural and artificial persons of foreign nationality who carry out economic activities in 
+Cameroon either on temporary or permanent basis.  
+ 
+2.1) Registration Requirements and Procedures  
+The registration of taxpayers is subject to the presentation of a file which carries the following 
+documents:  
+ A registration form obtainable from the taxation department, to be filled and signed by the 
+taxpayer. This form carries the following information:  
+ 
+ 
+  The name or business name of the taxpayer.  
+ 
+  The exact address of the headquarters of the business or where need be, those of its 
+warehouse, branches or shops.  
+ 
+  The postal address.  
+ A certified copy of the National Identity Card for natural persons or an attestation of registration 
+from the registry of commerce for artificial persons.  
+The procedure then is as follows:  
+ The above file is deposited at the taxation service of the taxpayer’s locality (Re gional Tax 
+Centre, Divisional Tax Centre or Specialised Tax Centre).  
+
+=== PAGE 14 ===
+14 
+TAXATION 1 
+ The taxpayer obtains a receipt for the file from the taxation service.  
+ The file is given a temporary registration number by the competent taxation service and 
+forwarded to the central service of the taxation department.  
+ A taxpayer’s card is later delivered to the applicant by the central service of the taxation 
+department and sent back to the taxation service of the taxpayer’s locality (or by delegation of 
+powers by taxation service of the taxpayer’s locality).  
+2.2) Taxpayer’s identification number  
+There are two basic forms of taxpayer’s identification numbers, depending on whether the person 
+is a natural or an artificial person. The person having the identification number can be easily 
+identified by the first letter of the number as follows:  
+ 
+  P for physical (or natural) persons,  
+ 
+  M for moral (or artificial) persons.  
+The formats for the attribution of the numbers are as follows:  
+i) For Natural (Physical) Persons  
+ The number starts with the letter P.  
+ The letter P is then followed by the month of birth of the proprietor.  
+ The month of birth is followed by the year of birth of the proprietor.  
+ The year of birth is followed by the taxpayer’s chronological number of eight (8) digits.  
+ The identification number finally ends with a letter which represents the taxpayer’s index key.  
+ 
+ii) For Artificial (Moral) Persons  
+ The number starts with the letter M.  
+ The letter M is then followed by the month of creation of the business.  
+ The month of creation is followed by the year of creation of the business.  
+ The year of creation of the business is followed by the taxpayer’s chronological number of 
+eight (8) digits.  
+ The identification number finally ends with a letter which represents the taxpayer’s index key.  
+3) THE CAMEROON FISCAL ADMINISTRATION  
+The taxation policy of Cameroon and the fiscal administration of taxes are carried out by the 
+Ministry of Finance through its specific departments of taxes, customs and treasury. This ministry 
+conceives, proposes, regulates and applies fiscal measures to be used in the Cameroon territory.  
+The department of taxes with headquarters in Yaoundé and headed by a Director General is 
+charged with the conception, implementation and coordi nation of taxation policies and fiscal 
+measures related to the General Tax Code and other specific tax codes and laws . Its activities are 
+controlled by Regional Tax Centers at the levels of the Regions, divisional tax centers at the levels 
+of Divisions, and special tax centres at the levels of subdivisions and districts.  
+The department of customs with headquarters in Yaoundé and equally headed by a Director 
+General is charged with the conception, implementation and coordination of fiscal measures 
+related to the Customs Code. It’s activities are controlled by the various custom units in the 
+country.  
+The treasury department with headquarters in Yaoundé and also headed by a Director General is 
+charged with the collection of various tax revenues on behalf of the state.  
+
+=== PAGE 15 ===
+15 
+TAXATION 1 
+As for the control and management of taxpayers, the fiscal law has provided specific structures at 
+both the national (Yaoundé) and regional levels depending on the sizes of taxpayers. These 
+structures are:  
+ Specialised Management Units,  
+ Approved Management Centres,  
+ Regional, Divisional and Specialised tax centres.  
+3.1) Specialised Management Units (SMUs)  
+These units are charged with the control and management of major and medium-sized enterprises. 
+The Cameroon GTC in its section 113 defines these enterprises as follows:  
+ Major Enterprises are those which realise an annual turnover of at least one billion CFAF.  
+ Medium - Sized Enterprises are those which realise an annual turnover of less than one 
+billion CFAF.  
+Two Specialised Management Units have been put in place by the fiscal law as follows:  
+i) The Department of Major Enterprises (DME) or Large Taxpayers’ Unit (LTU): Based in 
+Yaoundé, this structure is in charge of managing taxpayers who are classified as major enterprises. 
+As such all major enterprises declare and pay their taxes directly to this department in Yaoundé, 
+whatever their headquarters or region of operation.  
+ii) The Medium-sized Tax Offices (MTO) or Tax Centre for Medium Enterprises (TCME) : 
+These tax centres o r tax offices are in charge of controlling and managing taxpayers who are 
+classified as medium -sized enterprises. Formally based only in Yaoundé and Douala, these tax 
+offices or tax centres have been extended to other major towns of the country such as Lim be, 
+Bamenda, and Bafoussam, based on a Finance Ministerial order No. 00000/402/MINFI of 
+December 17th 2013 to review the organisation of MTO. This review segmented the MTO into a 
+front office unit and a back office unit and broadened the portfolio of MTOs to include all 
+taxpayers who are registered for the Value Added Tax (VAT).  
+3.2) Approved Management Centres (AMCs)  
+According to section 118 of the GTC, these are specific centres set out to assist their members in 
+the accomplishment of their fiscal oblig ations and to provide certain fiscal benefits to these 
+members. There is no obligation for an enterprise to register as a member of this centre. The only 
+legal restriction is that a business should be realising an annual turnover of at most 100 million 
+CFAF to be eligible for membership, whatever the taxation system of the business. 
+ 
+3.3) The Regional, Divisional and Specialised tax centres  
+Apart from the specialised units for the management of major and medium -sized enterprises, 
+small-sized enterprises ar e controlled at the level of the regions, specifically their areas of 
+operations or headquarters by regional tax centres, divisional tax centres and specialised tax 
+centres. at the levels of sub-divisions and any specialised defined area of jurisdiction as defined by 
+the fiscal law. The organisation of the Divisional Tax Centres was reviewed by Finance Ministerial 
+order No. 00000313/MINFI of June24th 2014. 
+ 
+ 
+ 
+
+=== PAGE 16 ===
+16 
+TAXATION 1 
+ 
+ 
+ 
+ 
+ 
+ 
+ 

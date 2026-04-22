@@ -1,0 +1,508 @@
+Seeker Accounting Theme + UI/UX Blueprint v1
+1. Product feel to lock
+
+Seeker Accounting should feel like this:
+
+Calm, premium, trusted, operator-focused.
+
+Not flashy. Not playful. Not generic Qt.
+Think:
+
+QuickBooks’ task clarity
+a cleaner, denser desktop workflow
+stronger accounting seriousness
+better dark theme discipline
+less clutter, less wasted space, fewer oversized cards
+
+The emotional target is:
+“This looks modern, expensive, and safe enough to run a real business.”
+
+2. What we borrow from QuickBooks, and what we do not
+
+We borrow:
+
+job-centered left navigation
+always-available create actions
+dashboard views around operational priorities
+friendly but professional visual tone
+clean status chips and inline summaries
+report drilldown mindset
+low-friction movement between overview and detail
+
+We do not borrow:
+
+web-app looseness
+oversized empty space
+over-carded layouts
+shallow dashboards with too many widgets
+soft contrast that hurts dense accounting work
+consumer-style playfulness in financial screens
+
+Also, QuickBooks’ current web experience appears light-first in some environments, while your product explicitly wants both light and dark. So Seeker should treat dual-theme support as a product decision of its own, not as a literal copy of QBO behavior.
+
+3. Brand direction from your logo
+
+Your logo gives us the right base:
+
+Primary brand blue: #2363EA
+White as the clean contrast color
+Black wordmark in the supplied asset, but in-app wordmark should adapt by theme
+
+That means the UI should use blue as an accent, not as a flood color.
+The app should mostly be built from refined neutrals, with the blue reserved for:
+
+primary actions
+active navigation
+focus rings
+selected rows
+key charts
+important interactive highlights
+
+That is the right professional move. Financial software needs trust first, branding second.
+
+4. Core shell layout to lock
+4.1 Overall structure
+
+Desktop shell:
+
+Left sidebar
+Top context bar
+Central workspace
+Optional right-side detail drawer only in data-heavy modules later
+Dialog-first create/edit flows
+
+This matches your locked architecture and shell blueprint.
+
+4.2 Sidebar
+
+The sidebar should be visually stable and never noisy.
+
+Top block:
+
+logo mark
+wordmark
+active company switcher
+
+Main nav groups:
+
+Overview
+Company Setup
+Accounting
+Sales
+Purchases
+Cash & Bank
+Inventory
+Fixed Assets
+Payroll
+Reports
+Administration
+
+Sidebar rules:
+
+icons + text
+one active item only
+subtle hover state
+blue active indicator
+collapsible labels only if the shell later supports compact mode
+favorites/pinned pages near the top
+recent pages optional later
+
+QuickBooks’ official guidance currently emphasizes menu customization, reordering, bookmarks, and hiding/showing pages. We should adopt that spirit later, but start with a stable curated navigation first.
+
+4.3 Topbar
+
+The topbar should be compact, useful, and always visible.
+
+Contents:
+
+current company
+current fiscal year / active period
+global create button
+search launcher
+notifications
+current user menu
+theme switcher
+sync/status badge later if needed
+
+Do not make it tall.
+Do not make it decorative.
+Its job is context + quick action.
+
+4.4 Global create button
+
+QuickBooks now emphasizes fast Create actions. Seeker should do the same in desktop form.
+
+Primary quick-create entries:
+
+New Journal
+New Invoice
+New Receipt
+New Bill
+New Supplier Payment
+New Treasury Transaction
+New Customer
+New Supplier
+New Employee
+
+This should be one of the fastest workflows in the app.
+
+5. Theme system
+
+We should build the theme as a tokenized design system, not loose stylesheet hacking.
+
+Theme layers:
+
+semantic color tokens
+typography tokens
+spacing scale
+radius scale
+elevation/shadow scale
+component state rules
+icon style rules
+
+Files should later map into your reserved styles area under shared/ui/styles/ and shell widgets, not page-by-page overrides.
+
+6. Light theme
+
+This should be the default business theme.
+
+6.1 Light palette
+App background: #F5F7FB
+Workspace surface: #FFFFFF
+Secondary surface: #F8FAFD
+Sidebar surface: #F3F6FB
+Border default: #D9E2EC
+Border strong: #C5D0DD
+
+Text:
+
+Primary text: #182230
+Secondary text: #526071
+Muted text: #7A8797
+
+Brand:
+
+Primary 600: #2363EA
+Primary 700: #1B55D1
+Primary 100: #DCE8FF
+Primary 50: #F3F7FF
+
+State colors:
+
+Success: #13795B
+Warning: #B7791F
+Danger: #C53030
+Info: #2563EB
+6.2 Character
+
+The light theme should feel:
+
+airy
+calm
+crisp
+serious
+highly legible
+
+No harsh pure-white glare across everything.
+Use soft neutrals to separate app background from working surfaces.
+
+7. Dark theme
+
+This should not be a lazy color inversion.
+
+Nielsen Norman Group notes that dark mode is popular, but it needs careful testing because contrast, glow, and readability failures are common. WCAG also still applies: body text should maintain at least 4.5:1 contrast, and non-text UI components should maintain at least 3:1 where required.
+
+7.1 Dark palette
+App background: #0F1420
+Workspace surface: #131A28
+Raised surface: #172033
+Sidebar surface: #0F1726
+Border default: #273247
+Border strong: #33415A
+
+Text:
+
+Primary text: #F5F7FB
+Secondary text: #C7D0DD
+Muted text: #95A2B5
+
+Brand:
+
+Primary 500: #4D84F1
+Primary 600: #3A74EE
+Primary 300: #A9C3FF
+
+State colors:
+
+Success: #34D399
+Warning: #F6C453
+Danger: #F87171
+Info: #60A5FA
+7.2 Dark theme rules
+never use pure black cards on pure black background
+never use thin gray text
+reduce shadow, increase border separation
+selected rows should use tinted fill, not neon outline
+forms need stronger field boundaries than in light mode
+charts need fewer colors and clearer labels
+8. Typography
+
+Typography should feel premium and accounting-friendly.
+
+Recommended hierarchy:
+
+App title / module title: 22–24 px, semibold
+Section title: 16–18 px, semibold
+Card title / group title: 14–15 px, semibold
+Body: 13–14 px
+Dense table text: 12.5–13 px
+Caption / meta text: 11–12 px
+
+Rules:
+
+prefer semibold over bold everywhere
+avoid giant headers
+numeric values align right in tables
+financial totals use tabular numerals if the chosen font supports them
+labels must remain readable in both themes
+9. Density and spacing
+
+This is desktop accounting software. It should be comfortable, but dense enough for work.
+
+Material’s density guidance explicitly notes that greater density is useful for lists, tables, and long forms. NN/g also stresses that tables must support finding, comparing, viewing/editing, and acting on records.
+
+So the Seeker density rules should be:
+
+page outer padding: 20 px
+content group spacing: 16 px
+control gap inside bars: 8–10 px
+field height: 34–38 px
+action button height: 32–36 px
+table row height default: 34 px
+dense row option later: 30 px
+
+No giant tiles by default.
+No oversized buttons.
+No bloated headers.
+
+10. Component blueprint
+10.1 Buttons
+
+Variants:
+
+Primary
+Secondary
+Tertiary
+Danger
+Icon-only
+Split-button for create actions later
+
+Rules:
+
+rounded but not pill-shaped
+subtle shadow in light theme only
+stronger border in dark theme
+icon-left for major actions
+destructive actions never blue
+10.2 Inputs
+
+Rules:
+
+clean border
+clear focus ring using brand blue
+prefix/suffix support for currency, percent, search, calendar
+inline validation below field
+disabled state clearly distinct, not just faded away
+10.3 Cards
+
+Cards should be used sparingly:
+
+KPI cards
+summary panels
+empty states
+small inspectors
+
+They should not become the layout for every page.
+
+10.4 Status chips
+
+Standard chip system:
+
+Draft
+Posted
+Locked
+Open
+Closed
+Paid
+Partial
+Overdue
+Active
+Inactive
+
+Rules:
+
+low-saturation background
+strong text contrast
+same semantics across all modules
+10.5 Tables
+
+This is one of the most important parts.
+
+NN/g identifies four major table tasks: find records, compare them, view/edit/add a row, and take actions. Seeker tables must support all four.
+
+So every major table should support:
+
+sticky header
+quick search
+filters
+visible sort state
+row selection
+bulk actions where useful
+double-click open
+context menu
+export
+totals footer where relevant
+frozen key columns in some modules later
+
+Accounting tables must look premium, not developer-default.
+
+11. Form UX rules
+
+NN/g’s recent form guidance emphasizes structure, transparency, clarity, and support to reduce cognitive load. That is exactly the right rule here.
+
+So Seeker forms should follow this:
+
+group fields by business meaning
+show only the fields needed for the current task
+use progressive disclosure for advanced settings
+give helper text only where confusion is likely
+validate early, but not aggressively
+do not show giant stacked forms on every main page
+use dialogs for create/edit unless the workflow truly needs a full workspace
+
+That already matches your shell blueprint.
+
+12. Dashboard blueprint
+
+QuickBooks officially distinguishes Home and Cash flow dashboard areas. Seeker should adapt that idea for desktop.
+
+Recommended dashboard structure:
+
+Top summary strip
+cash position
+receivables due
+payables due
+current month revenue
+current month expenses
+pending postings
+low-stock alerts if inventory is enabled
+Main dashboard tabs
+Overview
+Cash & Liquidity
+Overview
+KPI strip
+receivables aging snapshot
+payables aging snapshot
+recent posted activity
+tasks requiring attention
+quick actions
+Cash & Liquidity
+bank + cash balances
+inflow vs outflow trend
+unreconciled items
+upcoming obligations
+payroll due indicator where relevant
+
+Dashboard rule:
+No decorative clutter.
+Your scope already locks that principle.
+
+13. Module page blueprint
+
+Most modules should follow one of only three page patterns.
+
+Pattern A: List workspace
+
+For customers, suppliers, chart of accounts, employees, assets.
+
+Structure:
+
+compact title/context row
+action bar
+filters/search
+main table/tree
+bottom status or totals strip if needed
+Pattern B: Document workspace
+
+For invoices, bills, receipts, payments, journals.
+
+Structure:
+
+document header
+status/action row
+line grid
+totals panel
+side summary or posting panel
+Pattern C: Report workspace
+
+For trial balance, ledger, income statement, balance sheet, aging.
+
+Structure:
+
+report filter bar
+report canvas
+drilldown interaction
+export/print actions
+comparison controls
+
+QuickBooks’ current reporting direction is moving toward a modern view with features like auto-refresh and drilldowns; Seeker should adopt that mindset, but in a desktop-first way.
+
+14. Accessibility and readability rules to lock
+
+These are non-negotiable:
+
+normal text target: minimum 4.5:1 contrast
+large text target: minimum 3:1
+non-text UI controls and boundaries: minimum 3:1 where applicable
+color is never the only status signal
+keyboard navigation works across tables, forms, dialogs
+focus states must be visible in both themes
+error messages must be plain-language and local to the workflow
+
+WCAG supports these thresholds directly.
+
+15. Motion and feedback
+
+Motion should be restrained.
+
+Allowed:
+
+subtle hover transitions
+dialog fade/scale
+selection transitions
+toast slide-in
+progress indicators
+
+Avoid:
+
+flashy animation
+bouncing widgets
+dashboard gimmicks
+
+Finance software should feel responsive, not theatrical.
+
+16. Seeker-specific UX principles to lock
+Accounting context is always visible.
+Company and fiscal context stay in view.
+Posting is visually serious.
+Post actions are distinct from save draft.
+Dense work beats decorative layout.
+The operator should see more records, not more whitespace.
+Tables are first-class citizens.
+This is accounting software, not a marketing site.
+Dialogs reduce page bloat.
+Main pages stay focused.
+Status must be instantly legible.
+Draft, posted, locked, overdue, partial, paid.
+Theme consistency beats individual screen creativity.
+We do not reinvent components page by page.

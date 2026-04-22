@@ -1,0 +1,2024 @@
+# Seeker Accounting Authoritative Database Schema v1
+
+## 1. Purpose
+
+This document defines the authoritative relational database schema direction for Seeker Accounting.
+
+It is designed to satisfy the locked product scope and architecture:
+
+* multi-company support with strict data separation
+* OHADA-ready accounting foundation
+* double-entry integrity as the system backbone
+* draft versus posted workflow separation
+* sales/AR, purchases/AP, cash and bank, inventory, fixed assets, payroll, reporting, and administration
+* SQLite first, but portable to PostgreSQL, Firebird, and similar relational engines
+* clean modular-monolith application architecture with database logic isolated behind repositories and services
+
+This schema is intentionally normalized and conservative. The goal is not to optimize for shortcuts or raw data-entry convenience. The goal is to create a stable accounting data backbone that can grow cleanly.
+
+---
+
+## 2. Core schema design principles
+
+### 2.1 One application database, company-scoped business data
+
+Version 1 will use one application database. Business tables are company-scoped unless they are truly global platform tables.
+
+Implication:
+
+* almost every business table has `company_id`
+* uniqueness is usually composite with `company_id`
+* repositories and services must always scope reads and writes by company
+
+### 2.2 Accounting truth is centralized
+
+Operational documents do not become accounting truth by themselves.
+
+The accounting truth lives in:
+
+* `journal_entries`
+* `journal_entry_lines`
+
+Operational documents such as invoices, bills, treasury transactions, depreciation runs, and payroll runs create accounting impact through controlled posting workflows and store linkage back to the resulting journal entry where applicable.
+
+### 2.3 No stored running balances in base tables
+
+The base schema should not store values such as:
+
+* customer current balance
+  n- supplier current balance
+* account running balance
+* stock balance on hand
+
+Those are derived from posted transactions, allocations, and stock movements.
+
+Why:
+
+* prevents update anomalies
+* preserves normalization
+* keeps reporting tied to accounting truth
+
+Where performance later needs help, we can add indexed summary queries, cached reporting tables, or controlled refresh tables. Those are optimization artifacts, not the base truth model.
+
+### 2.4 Header/line structure for business documents
+
+Documents that naturally contain multiple rows are split into header and line tables.
+
+Examples:
+
+* sales invoice / sales invoice lines
+* purchase bill / purchase bill lines
+* manual journal / journal lines
+* inventory document / inventory document lines
+* payroll run / payroll run lines
+
+### 2.5 Allocations are separate facts
+
+Settlement is not stored by mutating source documents alone.
+
+Examples:
+
+* customer receipt applied to invoice = allocation table
+* supplier payment applied to bill = allocation table
+* bank reconciliation match = reconciliation match table
+
+This is one of the most important normalization choices in the whole schema.
+
+### 2.6 Reference tables where they add clarity and portability
+
+Use reference tables for meaningful business concepts that are reused or configurable.
+
+Examples:
+
+* currencies
+* payment terms
+* tax codes
+* payroll rule sets and brackets
+* document sequence definitions
+
+Do not over-normalize trivial UI-only lists that can safely live as application enums.
+
+### 2.7 Portable primary keys and constraints
+
+Use conventional integer surrogate keys for most tables.
+
+Rules:
+
+* primary key: `id`
+* foreign keys use `*_id`
+* business codes use separate unique or composite unique constraints
+* avoid engine-specific generated columns or vendor-only types in base design
+
+### 2.8 Soft deactivation over destructive deletion
+
+For most master tables:
+
+* use `is_active`
+* optionally `deactivated_at`
+* do not hard-delete records that may already be referenced by posted history
+
+Examples:
+
+* accounts
+* customers
+* suppliers
+* employees
+* financial accounts
+* items
+
+### 2.9 Effective dating where legal or payroll logic changes over time
+
+Payroll and tax configuration should support change over time without code rewrites.
+
+Therefore use effective dates in:
+
+* tax rates
+* payroll rule sets
+* employee compensation assignments
+* contribution brackets where applicable
+
+---
+
+## 3. Naming and common-column conventions
+
+### 3.1 Table naming
+
+Use plural snake_case table names.
+
+Examples:
+
+* `companies`
+* `accounts`
+* `journal_entries`
+* `sales_invoices`
+
+### 3.2 Standard metadata columns
+
+Most business tables should include these unless there is a strong reason not to:
+
+* `created_at`
+* `updated_at`
+* `created_by_user_id` nullable initially if system-generated
+* `updated_by_user_id` nullable
+
+Posted documents often also need:
+
+* `posted_at`
+* `posted_by_user_id`
+
+### 3.3 Common status approach
+
+Do not create separate status tables for every small workflow status unless they are truly configurable.
+
+For v1, use controlled string codes or application enums persisted in columns like:
+
+* `status_code`
+* `document_status`
+* `payment_status`
+
+This is a practical balance between normalization and maintainability.
+
+### 3.4 Global versus company-scoped tables
+
+Global tables:
+
+* users
+* roles
+* permissions
+* role_permissions
+* user_roles
+* currencies
+* countries
+
+Company-scoped tables:
+
+* companies
+* fiscal_years
+* accounts
+* customers
+* suppliers
+* items
+* employees
+* journals
+* invoices
+* bills
+* payroll runs
+* tax codes
+* financial accounts
+* document sequences
+
+---
+
+## 4. Table groups overview
+
+The schema is grouped into these logical families:
+
+1. Platform and administration
+2. Company and system setup
+3. Fiscal periods and accounting core
+4. Customers, suppliers, and common commercial masters
+5. Sales and accounts receivable
+6. Purchases and accounts payable
+7. Treasury, bank, and reconciliation
+8. Inventory and stock valuation
+9. Fixed assets
+10. Payroll
+11. Import, export, and operational support
+
+---
+
+## 5. Platform and administration tables
+
+## 5.1 `users`
+
+Purpose: global application users.
+
+Columns:
+
+* `id` PK
+* `username` unique
+* `display_name`
+* `email` nullable
+* `password_hash`
+* `is_active`
+* `last_login_at` nullable
+* `created_at`
+* `updated_at`
+
+Notes:
+
+* global, not company-scoped
+* company access is managed separately
+
+## 5.2 `roles`
+
+Purpose: reusable role definitions.
+
+Columns:
+
+* `id` PK
+* `code` unique
+* `name`
+* `description` nullable
+* `is_system`
+* `created_at`
+* `updated_at`
+
+## 5.3 `permissions`
+
+Purpose: fine-grained permission definitions.
+
+Columns:
+
+* `id` PK
+* `code` unique
+* `name`
+* `module_code`
+* `description` nullable
+
+## 5.4 `role_permissions`
+
+Purpose: many-to-many mapping between roles and permissions.
+
+Columns:
+
+* `role_id` FK -> roles.id
+* `permission_id` FK -> permissions.id
+
+Constraints:
+
+* composite PK or unique on (`role_id`, `permission_id`)
+
+## 5.5 `user_roles`
+
+Purpose: many-to-many mapping between users and roles.
+
+Columns:
+
+* `user_id` FK -> users.id
+* `role_id` FK -> roles.id
+
+Constraints:
+
+* composite PK or unique on (`user_id`, `role_id`)
+
+## 5.6 `user_company_access`
+
+Purpose: which companies a user may work in.
+
+Columns:
+
+* `id` PK
+* `user_id` FK -> users.id
+* `company_id` FK -> companies.id
+* `role_scope_note` nullable
+* `is_default_company`
+* `granted_at`
+* `granted_by_user_id` nullable FK -> users.id
+
+Constraints:
+
+* unique (`user_id`, `company_id`)
+
+## 5.7 `audit_logs`
+
+Purpose: trace sensitive application and accounting actions.
+
+Columns:
+
+* `id` PK
+* `company_id` nullable FK -> companies.id
+* `user_id` nullable FK -> users.id
+* `event_code`
+* `entity_type`
+* `entity_id` nullable
+* `action_summary`
+* `before_payload` nullable text
+* `after_payload` nullable text
+* `event_timestamp`
+* `ip_or_device_info` nullable
+
+Notes:
+
+* payloads should be stored carefully and not abused as a replacement for real relational design
+
+---
+
+## 6. Company and system setup tables
+
+## 6.1 `companies`
+
+Purpose: company master.
+
+Columns:
+
+* `id` PK
+* `legal_name`
+* `display_name`
+* `registration_number` nullable
+* `tax_identifier` nullable
+* `phone` nullable
+* `email` nullable
+* `website` nullable
+* `address_line_1` nullable
+* `address_line_2` nullable
+* `city` nullable
+* `region` nullable
+* `country_code` FK -> countries.code
+* `base_currency_code` FK -> currencies.code
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique recommended on (`legal_name`)
+  or, if you prefer more flexibility, unique on (`legal_name`, `country_code`)
+
+## 6.2 `company_preferences`
+
+Purpose: one-to-one company UI and formatting preferences.
+
+Columns:
+
+* `company_id` PK/FK -> companies.id
+* `date_format_code`
+* `number_format_code`
+* `decimal_places`
+* `tax_inclusive_default`
+* `allow_negative_stock` default false initially
+* `default_inventory_cost_method` nullable
+* `updated_at`
+* `updated_by_user_id` nullable FK -> users.id
+
+## 6.3 `company_fiscal_defaults`
+
+Purpose: one-to-one company fiscal defaults.
+
+Columns:
+
+* `company_id` PK/FK -> companies.id
+* `fiscal_year_start_month`
+* `fiscal_year_start_day`
+* `default_posting_grace_days` nullable
+* `updated_at`
+
+## 6.4 `currencies`
+
+Purpose: ISO-style currency reference.
+
+Columns:
+
+* `code` PK
+* `name`
+* `symbol` nullable
+* `decimal_places`
+* `is_active`
+
+## 6.5 `countries`
+
+Purpose: country reference.
+
+Columns:
+
+* `code` PK
+* `name`
+* `is_active`
+
+## 6.6 `document_sequences`
+
+Purpose: per-company document numbering definitions.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `document_type_code`
+* `prefix` nullable
+* `suffix` nullable
+* `next_number`
+* `padding_width`
+* `reset_frequency_code` nullable
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `document_type_code`)
+
+## 6.7 `payment_terms`
+
+Purpose: reusable payment terms for customers and suppliers.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `days_due`
+* `description` nullable
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+* unique (`company_id`, `name`)
+
+## 6.8 `tax_codes`
+
+Purpose: company tax codes used on invoices, bills, and postings.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `tax_type_code`
+* `calculation_method_code`
+* `rate_percent` nullable
+* `is_recoverable` nullable
+* `is_active`
+* `effective_from`
+* `effective_to` nullable
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `code`, `effective_from`)
+
+Notes:
+
+* if tax law becomes more complex later, separate rate history into a child table; for v1 this is acceptable and still normalized because each row is one effective-dated tax definition
+
+## 6.9 `tax_code_account_mappings`
+
+Purpose: maps tax codes to accounting treatment.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `tax_code_id` FK -> tax_codes.id
+* `input_tax_account_id` nullable FK -> accounts.id
+* `output_tax_account_id` nullable FK -> accounts.id
+* `tax_payable_account_id` nullable FK -> accounts.id
+* `tax_receivable_account_id` nullable FK -> accounts.id
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `tax_code_id`)
+
+---
+
+## 7. Fiscal periods and accounting core tables
+
+## 7.1 `fiscal_years`
+
+Purpose: company fiscal-year boundaries.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `year_code`
+* `start_date`
+* `end_date`
+* `status_code`
+  expected values: draft, open, closed
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `year_code`)
+* unique (`company_id`, `start_date`, `end_date`)
+
+## 7.2 `fiscal_periods`
+
+Purpose: month or period-level posting control.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `fiscal_year_id` FK -> fiscal_years.id
+* `period_number`
+* `period_name`
+* `start_date`
+* `end_date`
+* `status_code`
+  expected values: open, closed, locked
+* `closed_at` nullable
+* `closed_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `fiscal_year_id`, `period_number`)
+
+## 7.3 `account_classes`
+
+Purpose: OHADA or internal account class definitions.
+
+Columns:
+
+* `id` PK
+* `code`
+* `name`
+* `display_order`
+* `is_active`
+
+Notes:
+
+* can be global seed/reference data
+
+## 7.4 `account_types`
+
+Purpose: semantic account type reference.
+
+Columns:
+
+* `id` PK
+* `code`
+* `name`
+* `normal_balance`
+* `financial_statement_section_code`
+* `is_active`
+
+Examples:
+
+* asset_current
+* asset_noncurrent
+* liability_current
+* equity
+* revenue
+* expense
+
+## 7.5 `accounts`
+
+Purpose: company chart of accounts.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `account_code`
+* `account_name`
+* `account_class_id` FK -> account_classes.id
+* `account_type_id` FK -> account_types.id
+* `parent_account_id` nullable FK -> accounts.id
+* `normal_balance`
+* `allow_manual_posting`
+* `is_control_account`
+* `is_active`
+* `notes` nullable
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `account_code`)
+
+Rules:
+
+* parent account must belong to same company
+* circular parent-child hierarchy must be blocked in service logic
+* a parent summary account does not have to be manually postable
+
+## 7.6 `account_role_mappings`
+
+Purpose: assign functional meanings to accounts.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `role_code`
+* `account_id` FK -> accounts.id
+* `updated_at`
+
+Examples of `role_code`:
+
+* ar_control
+* ap_control
+* inventory_control
+* cash_on_hand
+* petty_cash
+* bank_main
+* sales_revenue_default
+* purchases_expense_default
+* payroll_payable
+
+Constraints:
+
+* unique (`company_id`, `role_code`)
+
+Notes:
+
+* this avoids hard-coding operational module account IDs all over the system
+
+## 7.7 `journal_entries`
+
+Purpose: accounting journal header.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `entry_number`
+* `journal_type_code`
+* `entry_date`
+* `fiscal_period_id` FK -> fiscal_periods.id
+* `description`
+* `source_module_code` nullable
+* `source_document_number` nullable
+* `status_code`
+  expected values: draft, posted, reversed
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `reversal_of_journal_entry_id` nullable FK -> journal_entries.id
+* `created_at`
+* `updated_at`
+* `created_by_user_id` nullable FK -> users.id
+* `updated_by_user_id` nullable FK -> users.id
+
+Constraints:
+
+* unique (`company_id`, `entry_number`)
+
+Notes:
+
+* this is the accounting truth header
+* do not try to store debit and credit totals as permanent truth if avoidable; if stored for convenience, they must be system-maintained and always recomputable from lines
+
+## 7.8 `journal_entry_lines`
+
+Purpose: accounting line items.
+
+Columns:
+
+* `id` PK
+* `journal_entry_id` FK -> journal_entries.id
+* `line_number`
+* `account_id` FK -> accounts.id
+* `description` nullable
+* `debit_amount`
+* `credit_amount`
+* `party_type_code` nullable
+  customer, supplier, employee, none
+* `party_id` nullable
+* `tax_code_id` nullable FK -> tax_codes.id
+* `currency_code` nullable FK -> currencies.code
+* `exchange_rate` nullable
+* `source_line_reference` nullable
+* `created_at`
+
+Constraints:
+
+* unique (`journal_entry_id`, `line_number`)
+* check-like rule in service/app logic: one of debit or credit must be positive and the other zero
+
+Notes:
+
+* `party_type_code` + `party_id` is a controlled polymorphic reference for subledger reporting. This is one of the few places where a typed reference is acceptable because journal lines may legitimately target multiple party domains.
+* stricter integrity is still achieved because source operational documents keep their own normal foreign keys.
+
+---
+
+## 8. Customers, suppliers, and common commercial masters
+
+## 8.1 `customer_groups`
+
+Purpose: optional customer classification.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 8.2 `customers`
+
+Purpose: customer master.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `customer_code`
+* `display_name`
+* `legal_name` nullable
+* `customer_group_id` nullable FK -> customer_groups.id
+* `payment_term_id` nullable FK -> payment_terms.id
+* `tax_identifier` nullable
+* `phone` nullable
+* `email` nullable
+* `address_line_1` nullable
+* `address_line_2` nullable
+* `city` nullable
+* `region` nullable
+* `country_code` nullable FK -> countries.code
+* `credit_limit_amount` nullable
+* `is_active`
+* `notes` nullable
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `customer_code`)
+* optionally unique (`company_id`, `display_name`) only if you want stricter duplicate blocking
+
+## 8.3 `supplier_groups`
+
+Purpose: optional supplier classification.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 8.4 `suppliers`
+
+Purpose: supplier master.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `supplier_code`
+* `display_name`
+* `legal_name` nullable
+* `supplier_group_id` nullable FK -> supplier_groups.id
+* `payment_term_id` nullable FK -> payment_terms.id
+* `tax_identifier` nullable
+* `phone` nullable
+* `email` nullable
+* `address_line_1` nullable
+* `address_line_2` nullable
+* `city` nullable
+* `region` nullable
+* `country_code` nullable FK -> countries.code
+* `is_active`
+* `notes` nullable
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `supplier_code`)
+
+---
+
+## 9. Sales and accounts receivable tables
+
+## 9.1 `sales_invoices`
+
+Purpose: sales invoice header.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `invoice_number`
+* `customer_id` FK -> customers.id
+* `invoice_date`
+* `due_date`
+* `currency_code` FK -> currencies.code
+* `exchange_rate` nullable
+* `status_code`
+  expected values: draft, posted, cancelled
+* `payment_status_code`
+  expected values: unpaid, partial, paid
+* `reference_number` nullable
+* `notes` nullable
+* `subtotal_amount`
+* `tax_amount`
+* `total_amount`
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `invoice_number`)
+
+Notes:
+
+* storing header totals is acceptable because they are document snapshot values and are derived from lines under controlled service logic
+* open balance must still be derived from allocations, not stored separately as truth
+
+## 9.2 `sales_invoice_lines`
+
+Purpose: invoice detail lines.
+
+Columns:
+
+* `id` PK
+* `sales_invoice_id` FK -> sales_invoices.id
+* `line_number`
+* `item_id` nullable FK -> items.id
+* `description`
+* `quantity`
+* `unit_price`
+* `discount_percent` nullable
+* `discount_amount` nullable
+* `tax_code_id` nullable FK -> tax_codes.id
+* `revenue_account_id` FK -> accounts.id
+* `inventory_issue_line_id` nullable FK -> inventory_document_lines.id
+* `line_subtotal_amount`
+* `line_tax_amount`
+* `line_total_amount`
+
+Constraints:
+
+* unique (`sales_invoice_id`, `line_number`)
+
+Notes:
+
+* line points to revenue account explicitly for flexibility
+* stock impact linkage is optional and only used where inventory integration is active
+
+## 9.3 `customer_receipts`
+
+Purpose: money received from customers.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `receipt_number`
+* `customer_id` FK -> customers.id
+* `financial_account_id` FK -> financial_accounts.id
+* `receipt_date`
+* `currency_code` FK -> currencies.code
+* `exchange_rate` nullable
+* `amount_received`
+* `status_code`
+  expected values: draft, posted, cancelled
+* `reference_number` nullable
+* `notes` nullable
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `receipt_number`)
+
+## 9.4 `customer_receipt_allocations`
+
+Purpose: application of receipts to invoices.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `customer_receipt_id` FK -> customer_receipts.id
+* `sales_invoice_id` FK -> sales_invoices.id
+* `allocated_amount`
+* `allocation_date`
+* `created_at`
+
+Constraints:
+
+* unique optional on (`customer_receipt_id`, `sales_invoice_id`) if one receipt should only allocate to one invoice once
+
+Notes:
+
+* this table is the normalized settlement fact
+* invoice outstanding balance is derived from posted invoice total minus posted allocations
+
+---
+
+## 10. Purchases and accounts payable tables
+
+## 10.1 `purchase_bills`
+
+Purpose: supplier bill header.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `bill_number`
+* `supplier_bill_reference` nullable
+* `supplier_id` FK -> suppliers.id
+* `bill_date`
+* `due_date`
+* `currency_code` FK -> currencies.code
+* `exchange_rate` nullable
+* `status_code`
+  expected values: draft, posted, cancelled
+* `payment_status_code`
+  expected values: unpaid, partial, paid
+* `notes` nullable
+* `subtotal_amount`
+* `tax_amount`
+* `total_amount`
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `bill_number`)
+
+## 10.2 `purchase_bill_lines`
+
+Purpose: supplier bill lines.
+
+Columns:
+
+* `id` PK
+* `purchase_bill_id` FK -> purchase_bills.id
+* `line_number`
+* `item_id` nullable FK -> items.id
+* `description`
+* `quantity` nullable
+* `unit_cost` nullable
+* `expense_account_id` nullable FK -> accounts.id
+* `inventory_receipt_line_id` nullable FK -> inventory_document_lines.id
+* `tax_code_id` nullable FK -> tax_codes.id
+* `line_subtotal_amount`
+* `line_tax_amount`
+* `line_total_amount`
+
+Constraints:
+
+* unique (`purchase_bill_id`, `line_number`)
+
+Rules:
+
+* either inventory linkage or expense account usage must be valid according to line type
+
+## 10.3 `supplier_payments`
+
+Purpose: payment made to suppliers.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `payment_number`
+* `supplier_id` FK -> suppliers.id
+* `financial_account_id` FK -> financial_accounts.id
+* `payment_date`
+* `currency_code` FK -> currencies.code
+* `exchange_rate` nullable
+* `amount_paid`
+* `status_code`
+  expected values: draft, posted, cancelled
+* `reference_number` nullable
+* `notes` nullable
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `payment_number`)
+
+## 10.4 `supplier_payment_allocations`
+
+Purpose: application of supplier payments to bills.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `supplier_payment_id` FK -> supplier_payments.id
+* `purchase_bill_id` FK -> purchase_bills.id
+* `allocated_amount`
+* `allocation_date`
+* `created_at`
+
+Notes:
+
+* same normalization logic as customer receipt allocations
+
+---
+
+## 11. Treasury, bank, and reconciliation tables
+
+## 11.1 `financial_accounts`
+
+Purpose: company treasury accounts: bank, cash, petty cash.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `account_code`
+* `name`
+* `financial_account_type_code`
+  bank, cash, petty_cash
+* `gl_account_id` FK -> accounts.id
+* `bank_name` nullable
+* `bank_account_number` nullable
+* `bank_branch` nullable
+* `currency_code` FK -> currencies.code
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `account_code`)
+
+Notes:
+
+* this is not the chart of accounts table; it is the treasury operational master that maps to a GL account
+
+## 11.2 `treasury_transactions`
+
+Purpose: standalone cash or bank receipt/payment documents not covered by AR/AP documents.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `transaction_number`
+* `financial_account_id` FK -> financial_accounts.id
+* `transaction_type_code`
+  cash_receipt, cash_payment, bank_receipt, bank_payment
+* `transaction_date`
+* `counterparty_name` nullable
+* `reference_number` nullable
+* `status_code`
+  draft, posted, cancelled
+* `notes` nullable
+* `currency_code` FK -> currencies.code
+* `exchange_rate` nullable
+* `total_amount`
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `transaction_number`)
+
+## 11.3 `treasury_transaction_lines`
+
+Purpose: counterpart distribution lines for treasury documents.
+
+Columns:
+
+* `id` PK
+* `treasury_transaction_id` FK -> treasury_transactions.id
+* `line_number`
+* `account_id` FK -> accounts.id
+* `description` nullable
+* `party_type_code` nullable
+* `party_id` nullable
+* `tax_code_id` nullable FK -> tax_codes.id
+* `amount`
+
+Constraints:
+
+* unique (`treasury_transaction_id`, `line_number`)
+
+## 11.4 `treasury_transfers`
+
+Purpose: transfer between treasury accounts.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `transfer_number`
+* `from_financial_account_id` FK -> financial_accounts.id
+* `to_financial_account_id` FK -> financial_accounts.id
+* `transfer_date`
+* `amount`
+* `reference_number` nullable
+* `status_code`
+  draft, posted, cancelled
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `transfer_number`)
+
+## 11.5 `bank_statement_import_batches`
+
+Purpose: imported statement file tracking.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `financial_account_id` FK -> financial_accounts.id
+* `imported_file_name`
+* `statement_start_date` nullable
+* `statement_end_date` nullable
+* `imported_at`
+* `imported_by_user_id` nullable FK -> users.id
+
+## 11.6 `bank_statement_lines`
+
+Purpose: individual bank statement rows.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `financial_account_id` FK -> financial_accounts.id
+* `import_batch_id` nullable FK -> bank_statement_import_batches.id
+* `statement_date`
+* `value_date` nullable
+* `description` nullable
+* `reference_number` nullable
+* `debit_amount`
+* `credit_amount`
+* `running_balance` nullable
+* `is_reconciled`
+* `created_at`
+
+## 11.7 `bank_reconciliation_sessions`
+
+Purpose: user-controlled reconciliation sessions.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `financial_account_id` FK -> financial_accounts.id
+* `statement_end_date`
+* `book_balance`
+* `statement_balance`
+* `status_code`
+  draft, completed
+* `completed_at` nullable
+* `completed_by_user_id` nullable FK -> users.id
+* `created_at`
+
+## 11.8 `bank_reconciliation_matches`
+
+Purpose: links statement lines to system-side treasury facts.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `reconciliation_session_id` FK -> bank_reconciliation_sessions.id
+* `bank_statement_line_id` FK -> bank_statement_lines.id
+* `match_entity_type`
+  treasury_transaction, customer_receipt, supplier_payment, treasury_transfer
+* `match_entity_id`
+* `matched_amount`
+* `created_at`
+
+Notes:
+
+* controlled typed reference is acceptable here because the reconciliation target may legitimately belong to several modules
+
+---
+
+## 12. Inventory and stock valuation tables
+
+## 12.1 `units_of_measure`
+
+Purpose: company units of measure.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 12.2 `item_categories`
+
+Purpose: item grouping.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 12.3 `inventory_locations`
+
+Purpose: warehouse or stock locations.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 12.4 `items`
+
+Purpose: item master for stock and non-stock items.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `item_code`
+* `item_name`
+* `item_category_id` nullable FK -> item_categories.id
+* `unit_of_measure_id` FK -> units_of_measure.id
+* `item_type_code`
+  stock, non_stock, service
+* `inventory_cost_method_code` nullable
+  weighted_average, fifo
+* `sales_account_id` nullable FK -> accounts.id
+* `purchase_account_id` nullable FK -> accounts.id
+* `inventory_account_id` nullable FK -> accounts.id
+* `cogs_account_id` nullable FK -> accounts.id
+* `sales_tax_code_id` nullable FK -> tax_codes.id
+* `purchase_tax_code_id` nullable FK -> tax_codes.id
+* `reorder_level_quantity` nullable
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `item_code`)
+
+## 12.5 `inventory_documents`
+
+Purpose: stock workflow header for receipts, issues, and adjustments.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `document_number`
+* `document_type_code`
+  receipt, issue, adjustment
+* `location_id` FK -> inventory_locations.id
+* `document_date`
+* `status_code`
+  draft, posted, cancelled
+* `reference_number` nullable
+* `notes` nullable
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `document_number`)
+
+## 12.6 `inventory_document_lines`
+
+Purpose: stock document lines.
+
+Columns:
+
+* `id` PK
+* `inventory_document_id` FK -> inventory_documents.id
+* `line_number`
+* `item_id` FK -> items.id
+* `quantity`
+* `unit_cost` nullable
+* `line_amount` nullable
+* `counterparty_account_id` nullable FK -> accounts.id
+* `created_at`
+
+Constraints:
+
+* unique (`inventory_document_id`, `line_number`)
+
+Notes:
+
+* for receipts and adjustments, `unit_cost` matters directly
+* for issues, cost may be derived by valuation logic but can still be frozen when posted
+
+## 12.7 `inventory_cost_layers`
+
+Purpose: cost-layer facts used by FIFO or weighted-average logic.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `item_id` FK -> items.id
+* `inventory_document_line_id` FK -> inventory_document_lines.id
+* `layer_date`
+* `quantity_in`
+* `quantity_remaining`
+* `unit_cost`
+* `created_at`
+
+Notes:
+
+* this is a controlled valuation fact table, not a denormalized stock balance table
+* for weighted average, service logic may still maintain layer-like records or valuation snapshots carefully
+
+---
+
+## 13. Fixed assets tables
+
+## 13.1 `asset_categories`
+
+Purpose: asset grouping and accounting defaults.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `asset_account_id` FK -> accounts.id
+* `accumulated_depreciation_account_id` FK -> accounts.id
+* `depreciation_expense_account_id` FK -> accounts.id
+* `default_useful_life_months`
+* `default_depreciation_method_code`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 13.2 `assets`
+
+Purpose: fixed asset register.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `asset_number`
+* `asset_name`
+* `asset_category_id` FK -> asset_categories.id
+* `acquisition_date`
+* `capitalization_date`
+* `acquisition_cost`
+* `salvage_value` nullable
+* `useful_life_months`
+* `depreciation_method_code`
+* `status_code`
+  draft, active, fully_depreciated, disposed
+* `supplier_id` nullable FK -> suppliers.id
+* `purchase_bill_id` nullable FK -> purchase_bills.id
+* `notes` nullable
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `asset_number`)
+
+## 13.3 `asset_depreciation_runs`
+
+Purpose: batch depreciation process header.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `run_number`
+* `run_date`
+* `period_end_date`
+* `status_code`
+  draft, posted, cancelled
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+
+Constraints:
+
+* unique (`company_id`, `run_number`)
+
+## 13.4 `asset_depreciation_run_lines`
+
+Purpose: per-asset depreciation amounts for a run.
+
+Columns:
+
+* `id` PK
+* `asset_depreciation_run_id` FK -> asset_depreciation_runs.id
+* `asset_id` FK -> assets.id
+* `depreciation_amount`
+* `accumulated_depreciation_after`
+* `net_book_value_after`
+
+Constraints:
+
+* unique (`asset_depreciation_run_id`, `asset_id`)
+
+Notes:
+
+* accumulated depreciation and NBV may be stored as frozen run outputs for audit and reporting, even though they are derived values. This is acceptable because the run itself is a posting fact snapshot.
+
+---
+
+## 14. Payroll tables
+
+## 14.1 `departments`
+
+Purpose: employee department master.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 14.2 `positions`
+
+Purpose: employee position/job title master.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `code`
+* `name`
+* `is_active`
+
+Constraints:
+
+* unique (`company_id`, `code`)
+
+## 14.3 `employees`
+
+Purpose: employee master.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `employee_number`
+* `display_name`
+* `first_name`
+* `last_name`
+* `department_id` nullable FK -> departments.id
+* `position_id` nullable FK -> positions.id
+* `hire_date`
+* `termination_date` nullable
+* `phone` nullable
+* `email` nullable
+* `tax_identifier` nullable
+* `base_currency_code` FK -> currencies.code
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `employee_number`)
+
+## 14.4 `payroll_components`
+
+Purpose: reusable payroll earning/deduction/contribution definitions.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `component_code`
+* `component_name`
+* `component_type_code`
+  earning, deduction, employer_contribution, tax, informational
+* `calculation_method_code`
+  fixed_amount, percentage, rule_based, manual_input, hourly
+* `is_taxable`
+* `is_pensionable`
+* `expense_account_id` nullable FK -> accounts.id
+* `liability_account_id` nullable FK -> accounts.id
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `component_code`)
+
+## 14.5 `payroll_rule_sets`
+
+Purpose: effective-dated statutory or company payroll rules.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `rule_code`
+* `rule_name`
+* `rule_type_code`
+  pit, pension_employee, pension_employer, accident_risk, overtime, levy, other
+* `effective_from`
+* `effective_to` nullable
+* `calculation_basis_code`
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `rule_code`, `effective_from`)
+
+## 14.6 `payroll_rule_brackets`
+
+Purpose: brackets or rate lines for a payroll rule set.
+
+Columns:
+
+* `id` PK
+* `payroll_rule_set_id` FK -> payroll_rule_sets.id
+* `line_number`
+* `lower_bound_amount` nullable
+* `upper_bound_amount` nullable
+* `rate_percent` nullable
+* `fixed_amount` nullable
+* `deduction_amount` nullable
+* `cap_amount` nullable
+
+Constraints:
+
+* unique (`payroll_rule_set_id`, `line_number`)
+
+Notes:
+
+* this supports PIT brackets and similar statutory scales without hard-coding formulas
+
+## 14.7 `employee_compensation_profiles`
+
+Purpose: employee base compensation setup over time.
+
+Columns:
+
+* `id` PK
+* `employee_id` FK -> employees.id
+* `effective_from`
+* `effective_to` nullable
+* `pay_frequency_code`
+* `base_salary_amount` nullable
+* `hourly_rate_amount` nullable
+* `overtime_rule_set_id` nullable FK -> payroll_rule_sets.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`employee_id`, `effective_from`)
+
+## 14.8 `employee_component_assignments`
+
+Purpose: employee-specific recurring component setup.
+
+Columns:
+
+* `id` PK
+* `employee_id` FK -> employees.id
+* `payroll_component_id` FK -> payroll_components.id
+* `value_type_code`
+  fixed_amount, percentage, manual_default
+* `value_amount` nullable
+* `effective_from`
+* `effective_to` nullable
+* `is_active`
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`employee_id`, `payroll_component_id`, `effective_from`)
+
+## 14.9 `payroll_runs`
+
+Purpose: payroll processing batch header.
+
+Columns:
+
+* `id` PK
+* `company_id` FK -> companies.id
+* `run_number`
+* `period_start_date`
+* `period_end_date`
+* `pay_date`
+* `status_code`
+  draft, calculated, posted, paid, cancelled
+* `posted_journal_entry_id` nullable FK -> journal_entries.id
+* `posted_at` nullable
+* `posted_by_user_id` nullable FK -> users.id
+* `created_at`
+* `updated_at`
+
+Constraints:
+
+* unique (`company_id`, `run_number`)
+
+## 14.10 `payroll_run_employees`
+
+Purpose: employee-level payroll summary for one run.
+
+Columns:
+
+* `id` PK
+* `payroll_run_id` FK -> payroll_runs.id
+* `employee_id` FK -> employees.id
+* `gross_pay`
+* `total_deductions`
+* `employer_cost`
+* `net_pay`
+* `payment_status_code`
+  unpaid, partial, paid
+* `payment_date` nullable
+* `created_at`
+
+Constraints:
+
+* unique (`payroll_run_id`, `employee_id`)
+
+## 14.11 `payroll_run_lines`
+
+Purpose: detailed payroll lines per employee per run.
+
+Columns:
+
+* `id` PK
+* `payroll_run_employee_id` FK -> payroll_run_employees.id
+* `line_number`
+* `payroll_component_id` FK -> payroll_components.id
+* `source_rule_set_id` nullable FK -> payroll_rule_sets.id
+* `quantity` nullable
+* `rate_or_value` nullable
+* `amount`
+* `employer_amount` nullable
+* `notes` nullable
+
+Constraints:
+
+* unique (`payroll_run_employee_id`, `line_number`)
+
+Notes:
+
+* payslips can be generated from `payroll_run_employees` + `payroll_run_lines`
+* no separate payslip table is required in base schema unless printed output versioning later demands it
+
+---
+
+## 15. Import, export, and operational support tables
+
+## 15.1 `import_jobs`
+
+Purpose: track structured imports.
+
+Columns:
+
+* `id` PK
+* `company_id` nullable FK -> companies.id
+* `import_type_code`
+* `source_file_name`
+* `status_code`
+  uploaded, validated, imported, failed
+* `started_at`
+* `completed_at` nullable
+* `started_by_user_id` nullable FK -> users.id
+* `summary_message` nullable
+
+## 15.2 `import_job_errors`
+
+Purpose: row-level import issues.
+
+Columns:
+
+* `id` PK
+* `import_job_id` FK -> import_jobs.id
+* `row_number` nullable
+* `field_name` nullable
+* `error_message`
+
+---
+
+## 16. Normalization review by area
+
+### 16.1 First normal form
+
+Achieved because:
+
+* no repeating groups inside tables
+* header/line patterns are separated correctly
+* multiple allocations are represented as separate rows
+
+### 16.2 Second normal form
+
+Achieved because:
+
+* non-key attributes in line tables depend on the whole row identity, not only part of it
+* many-to-many mappings are split into dedicated tables such as `role_permissions`, `user_roles`, `customer_receipt_allocations`, and `supplier_payment_allocations`
+
+### 16.3 Third normal form
+
+Achieved because:
+
+* party balances are not stored redundantly in customer/supplier tables
+* stock balances are not stored as base truth on items
+* account running balances are not stored on the account master
+* payroll rules are separated from payroll runs
+* tax codes and account mappings are separated from invoices and bills
+
+### 16.4 Deliberate controlled exceptions
+
+Some values are stored even though they are derived, because they represent document or posting snapshots that must remain frozen for audit and reporting consistency.
+
+Examples:
+
+* invoice subtotal/tax/total
+* bill subtotal/tax/total
+* payroll run employee gross/net values
+* depreciation run outputs
+
+These are acceptable because they are document-state facts controlled by service logic, not casual denormalized convenience columns.
+
+---
+
+## 17. Key relationship patterns to protect
+
+### 17.1 Company scoping
+
+For almost every business relation:
+
+* child rows must belong to the same company as their parent workflow
+* services must validate same-company ownership
+
+### 17.2 Posting link pattern
+
+Documents that create accounting impact should usually carry `posted_journal_entry_id`.
+
+Examples:
+
+* sales_invoices
+* customer_receipts
+* purchase_bills
+* supplier_payments
+* treasury_transactions
+* treasury_transfers
+* inventory_documents
+* asset_depreciation_runs
+* payroll_runs
+
+This keeps posting traceable and simple.
+
+### 17.3 Allocation pattern
+
+Settlement never mutates source totals as truth.
+
+Use:
+
+* `customer_receipt_allocations`
+* `supplier_payment_allocations`
+* `bank_reconciliation_matches`
+
+### 17.4 Control-account pattern
+
+Subledger modules do not directly replace GL control.
+
+Use:
+
+* `account_role_mappings`
+* journal posting services
+* subledger reports built from source docs + posted journals
+
+---
+
+## 18. Important indexes to plan
+
+In addition to PKs and uniques, plan indexes for:
+
+* `accounts(company_id, account_code)`
+* `journal_entries(company_id, entry_date)`
+* `journal_entries(company_id, status_code)`
+* `journal_entry_lines(account_id)`
+* `journal_entry_lines(journal_entry_id, line_number)`
+* `sales_invoices(company_id, customer_id, invoice_date)`
+* `sales_invoices(company_id, payment_status_code)`
+* `customer_receipt_allocations(sales_invoice_id)`
+* `purchase_bills(company_id, supplier_id, bill_date)`
+* `supplier_payment_allocations(purchase_bill_id)`
+* `financial_accounts(company_id, financial_account_type_code)`
+* `bank_statement_lines(company_id, financial_account_id, statement_date)`
+* `items(company_id, item_code)`
+* `inventory_document_lines(item_id)`
+* `assets(company_id, asset_number)`
+* `employees(company_id, employee_number)`
+* `payroll_runs(company_id, pay_date)`
+* `audit_logs(company_id, event_timestamp)`
+
+---
+
+## 19. What not to do in this schema
+
+Do not:
+
+* store customer balance on `customers`
+* store supplier balance on `suppliers`
+* store stock on hand on `items` as the base truth
+* store GL balance on `accounts`
+* let UI tables directly become accounting truth
+* let operational modules bypass journals when posted
+* mix multiple business concepts in one giant “transactions” table
+* use SQLite-only hacks as design foundations
+* overuse free-form JSON columns for structured accounting logic
+
+---
+
+## 20. Recommended implementation sequence from this schema
+
+### Phase 1: initial migration scope
+
+Build these first:
+
+* users, roles, permissions, user_roles, role_permissions
+* companies, company_preferences, company_fiscal_defaults
+* currencies, countries
+* document_sequences, payment_terms, tax_codes, tax_code_account_mappings
+* fiscal_years, fiscal_periods
+* account_classes, account_types, accounts, account_role_mappings
+* journal_entries, journal_entry_lines
+
+This is the true accounting spine.
+
+### Phase 2: AR/AP masters and source documents
+
+* customer_groups, customers
+* supplier_groups, suppliers
+* sales_invoices, sales_invoice_lines, customer_receipts, customer_receipt_allocations
+* purchase_bills, purchase_bill_lines, supplier_payments, supplier_payment_allocations
+
+### Phase 3: treasury and reconciliation
+
+* financial_accounts
+* treasury_transactions, treasury_transaction_lines
+* treasury_transfers
+* bank_statement_import_batches, bank_statement_lines
+* bank_reconciliation_sessions, bank_reconciliation_matches
+
+### Phase 4: inventory and assets
+
+* units_of_measure, item_categories, inventory_locations, items
+* inventory_documents, inventory_document_lines, inventory_cost_layers
+* asset_categories, assets, asset_depreciation_runs, asset_depreciation_run_lines
+
+### Phase 5: payroll
+
+* departments, positions, employees
+* payroll_components, payroll_rule_sets, payroll_rule_brackets
+* employee_compensation_profiles, employee_component_assignments
+* payroll_runs, payroll_run_employees, payroll_run_lines
+
+### Phase 6: operational support
+
+* audit_logs
+* import_jobs, import_job_errors
+
+---
+
+## 21. Access analogy for clarity
+
+In Access terms, this schema deliberately prevents the classic long-term problem where:
+
+* forms write directly into disconnected tables
+* balances get stored in many places
+* a payment “marks” an invoice paid with a yes/no field
+* inventory quantity is just edited manually on the item record
+* payroll formulas are hidden in form code
+
+Instead:
+
+* headers and lines are separated cleanly
+* allocations are their own facts
+* posting creates ledger truth
+* period control has its own tables
+* company separation is structural
+* payroll rules live in tables, not just code
+
+That is the difference between a product-grade accounting database and an overgrown forms database.
+
+---
+
+## 22. Schema decisions explicitly locked by this document
+
+1. One application database with company-scoped business tables.
+2. General ledger tables are the accounting truth.
+3. No base-table running balances for AR, AP, stock, or GL.
+4. Allocation tables are mandatory for settlement workflows.
+5. Header/line decomposition is mandatory for document workflows.
+6. Tax, payroll, numbering, and account-role rules are table-driven.
+7. Inventory and payroll are modeled as first-class modules, not as add-ons.
+8. The schema remains portable and avoids engine-specific dependencies.
+9. Soft deactivation is preferred over destructive deletion for master data.
+
+---
+
+## 23. Recommended next artifact
+
+The best next artifact after approving this schema is:
+
+**SQLAlchemy model plan + first Alembic migration blueprint for Phase 1**
+
+That should translate the first-slice tables into:
+
+* actual model file boundaries
+* exact column types
+* FK declarations
+* uniqueness/index declarations
+* seed-data plan for currencies, countries, account classes, account types, permissions, and OHADA starter data
+
+That is the correct bridge from schema design into implementation.

@@ -1,0 +1,1125 @@
+# Seeker Accounting Foundation, Shell, Company Setup, and Accounting Core Blueprint v2
+
+## 1. Purpose of this blueprint
+
+This blueprint replaces the earlier first-slice blueprint and aligns it explicitly with the authoritative normalized schema.
+
+Its purpose is to define the implementation-safe structure for the first build slices so that:
+
+* folder and module names match the schema vocabulary
+* services and repositories align with normalized table boundaries
+* Codex does not invent vague model names that drift from the schema
+* the foundation work can move cleanly into SQLAlchemy models and Alembic migrations
+
+This document is now the authoritative bridge between:
+
+* the clean scope
+* the architecture blueprint
+* the normalized database schema
+
+## 2. What changed from the earlier blueprint
+
+The earlier blueprint was directionally correct, but some names were too vague for safe implementation.
+
+This corrected version fixes that by:
+
+* replacing ambiguous names such as `tax_profile`, `account_group`, and `account_mapping`
+* aligning file and model names to actual schema concepts such as `company_fiscal_defaults`, `tax_codes`, `account_classes`, `account_types`, and `account_role_mappings`
+* making the first-slice package layout reflect the real phase-1 schema
+* reserving proper module boundaries for administration and accounting-core reference data
+
+This is important because Seeker Accounting is not a loose desktop CRUD tool. It is a multi-company accounting system whose workflow and reporting must reconcile back to accounting truth.
+
+## 3. Authoritative first-slice implementation order
+
+The correct implementation order remains:
+
+### Slice 1. Foundation and platform skeleton
+
+* package structure
+* app bootstrap
+* configuration loading
+* logging
+* database engine and session factory
+* unit of work
+* dependency wiring
+* theme infrastructure skeleton
+* shared exception and validation structure
+
+### Slice 2. Application shell
+
+* main window shell
+* sidebar navigation
+* top header
+* workspace host
+* application context wiring
+* active company display
+* clean dialog and notification infrastructure
+
+### Slice 3. Administration and company foundation
+
+* users and roles foundation at the data/service level
+* company master data
+* company preferences
+* company fiscal defaults
+* user-company access groundwork
+* company selection workflow
+* seed entry points for baseline company setup
+
+### Slice 4. Accounting reference foundation
+
+* currencies
+* countries
+* document sequences
+* payment terms
+* tax codes
+* tax code account mappings
+* account classes
+* account types
+* account role mappings
+
+### Slice 5. Chart of accounts
+
+* account list/tree workspace
+* create/edit/deactivate account
+* hierarchy validation
+* OHADA chart seed
+* company-scoped chart management
+
+### Slice 6. Fiscal periods and journals
+
+* fiscal years
+* fiscal periods
+* period locking/open/close rules
+* journal entries and journal lines
+* balancing and posting controls
+
+This sequence fits the clean scope priority and the normalized schema dependencies.
+
+## 4. Authoritative first-stage folder structure
+
+```text
+src/
+  seeker_accounting/
+    __init__.py
+    main.py
+
+    app/
+      bootstrap/
+        application.py
+        startup_checks.py
+      shell/
+        main_window.py
+        workspace_host.py
+        sidebar.py
+        topbar.py
+        shell_models.py
+      context/
+        app_context.py
+        session_context.py
+        active_company_context.py
+      dependency/
+        service_registry.py
+        factories.py
+      navigation/
+        nav_ids.py
+        navigation_service.py
+
+    config/
+      settings.py
+      paths.py
+      constants.py
+
+    db/
+      base.py
+      metadata.py
+      engine.py
+      session.py
+      unit_of_work.py
+      migrations/
+
+    platform/
+      logging/
+        logging_config.py
+      exceptions/
+        app_exceptions.py
+      auth/
+        permission_codes.py
+        role_codes.py
+        authorization_service.py
+      audit/
+        audit_service.py
+      numbering/
+        numbering_service.py
+      reporting/
+        report_base.py
+      import_export/
+        file_service.py
+
+    shared/
+      dto/
+        common.py
+      enums/
+        status_codes.py
+        module_codes.py
+      validators/
+        common_rules.py
+      ui/
+        dialogs.py
+        message_boxes.py
+        table_helpers.py
+        forms.py
+        styles/
+      utils/
+        dates.py
+        money.py
+        text.py
+
+    modules/
+      administration/
+        models/
+          user.py
+          role.py
+          permission.py
+          role_permission.py
+          user_role.py
+          user_company_access.py
+        repositories/
+          user_repository.py
+          role_repository.py
+          permission_repository.py
+          user_company_access_repository.py
+        services/
+          user_service.py
+          role_service.py
+          access_service.py
+        dto/
+          user_dto.py
+          role_dto.py
+          access_dto.py
+        ui/
+          placeholders/
+
+      companies/
+        models/
+          company.py
+          company_preference.py
+          company_fiscal_default.py
+        repositories/
+          company_repository.py
+          company_preference_repository.py
+          company_fiscal_default_repository.py
+        services/
+          company_service.py
+          company_context_service.py
+          company_seed_service.py
+        dto/
+          company_commands.py
+          company_dto.py
+        ui/
+          company_list_page.py
+          company_form_dialog.py
+          company_selector_dialog.py
+          company_profile_card.py
+
+      accounting/
+        reference_data/
+          models/
+            currency.py
+            country.py
+            document_sequence.py
+            payment_term.py
+            tax_code.py
+            tax_code_account_mapping.py
+            account_class.py
+            account_type.py
+            account_role_mapping.py
+          repositories/
+            currency_repository.py
+            country_repository.py
+            document_sequence_repository.py
+            payment_term_repository.py
+            tax_code_repository.py
+            tax_code_account_mapping_repository.py
+            account_class_repository.py
+            account_type_repository.py
+            account_role_mapping_repository.py
+          services/
+            reference_data_service.py
+            tax_setup_service.py
+            numbering_setup_service.py
+            account_role_mapping_service.py
+          dto/
+            reference_data_dto.py
+            tax_setup_dto.py
+            numbering_dto.py
+          ui/
+            placeholders/
+
+        chart_of_accounts/
+          models/
+            account.py
+          repositories/
+            account_repository.py
+          services/
+            chart_of_accounts_service.py
+            chart_seed_service.py
+          dto/
+            account_commands.py
+            account_dto.py
+            chart_filters.py
+          ui/
+            chart_of_accounts_page.py
+            account_form_dialog.py
+            account_tree_view.py
+            account_filter_bar.py
+
+        periods/
+          models/
+            fiscal_year.py
+            fiscal_period.py
+          repositories/
+            fiscal_year_repository.py
+            fiscal_period_repository.py
+          services/
+            fiscal_calendar_service.py
+            period_control_service.py
+          dto/
+            fiscal_period_dto.py
+            fiscal_period_commands.py
+          ui/
+            fiscal_periods_page.py
+            fiscal_year_dialog.py
+            period_action_dialog.py
+
+        journals/
+          models/
+            journal_entry.py
+            journal_entry_line.py
+          repositories/
+            journal_entry_repository.py
+          services/
+            journal_service.py
+            journal_posting_service.py
+          dto/
+            journal_commands.py
+            journal_dto.py
+          ui/
+            journal_entry_page.py
+            journal_entry_dialog.py
+            journal_lines_grid.py
+```
+
+## 5. Dependency rules to lock
+
+These rules are mandatory and unchanged in principle, but now expressed in schema-aligned terms.
+
+### 5.1 Allowed dependency flow
+
+* UI may depend on DTOs, services, shared UI helpers, shared enums, and validation presentation helpers.
+* Services may depend on repositories, DTOs, shared validators, shared enums, shared utils, and platform services.
+* Repositories may depend on database session or unit of work, ORM models, and repository-local mapping helpers.
+* ORM models may depend only on SQLAlchemy base/types and carefully chosen shared enums.
+* Platform services may be consumed by business services but must not reach upward into feature UI.
+
+### 5.2 Forbidden dependency flow
+
+* UI must not import repositories directly.
+* UI must not open raw sessions and perform writes.
+* Repositories must not import widget classes.
+* Models must not import service classes.
+* Accounting UI must not create journal rows directly.
+* Seed workflows must not be hidden inside dialogs or pages.
+* Feature packages must not bypass service contracts to mutate another module’s tables.
+
+### 5.3 Practical meaning
+
+In Access terms:
+
+* forms are the surface
+* services are the disciplined workflow layer
+* repositories are the reusable data-access/query boundary
+* posting services are the controlled replacement for ad hoc form-event accounting logic
+
+## 6. Foundation package responsibilities
+
+### 6.1 `main.py`
+
+Responsibilities:
+
+* application entry point only
+* create Qt application
+* call bootstrap pipeline
+* start event loop
+
+Must not contain:
+
+* business logic
+* database write logic
+* shell composition logic beyond startup call
+
+### 6.2 `app/bootstrap/application.py`
+
+Responsibilities:
+
+* orchestrate startup sequence
+* load settings
+* initialize logging
+* initialize database engine and session factory
+* initialize unit of work factory
+* create service registry
+* create shell window
+* attach initial application context
+
+### 6.3 `db/engine.py`
+
+Responsibilities:
+
+* create SQLAlchemy engine from config
+* keep engine creation portable
+
+### 6.4 `db/session.py`
+
+Responsibilities:
+
+* expose session factory
+* avoid hidden global ad hoc sessions
+
+### 6.5 `db/unit_of_work.py`
+
+Responsibilities:
+
+* define transaction boundary abstraction for write workflows
+* keep commit and rollback outside widgets
+* support service-level orchestration cleanly
+
+### 6.6 `app/dependency/service_registry.py`
+
+Responsibilities:
+
+* centralize service construction and wiring
+* expose service instances to pages/dialogs
+* keep service creation out of UI widgets
+
+## 7. Shell blueprint
+
+### 7.1 Shell responsibilities
+
+The shell hosts workflows. It does not own business rules.
+
+It should provide:
+
+* navigation frame
+* workspace area
+* active company display
+* current user display
+* fiscal context placeholder, then live fiscal context later
+* command and action bar support where relevant
+* notifications and error surfacing
+
+### 7.2 Shell subcomponents
+
+#### `main_window.py`
+
+Owns:
+
+* root frame
+* top-level composition of sidebar, topbar, workspace host
+
+Must not own:
+
+* company persistence logic
+* chart validation logic
+* journal posting logic
+
+#### `workspace_host.py`
+
+Owns:
+
+* page switching
+* active workspace lifecycle
+
+#### `sidebar.py`
+
+Owns:
+
+* module navigation buttons
+* active-state presentation
+* section grouping
+
+#### `topbar.py`
+
+Owns:
+
+* active company label
+* quick shell actions
+* user menu placeholder
+* fiscal context display later
+
+### 7.3 Navigation IDs to lock now
+
+* dashboard
+* companies
+* chart_of_accounts
+* fiscal_periods
+* journals
+* reports
+* administration
+
+### 7.4 Shell behavior rules
+
+* no giant scroll-heavy pages
+* list-heavy modules should use lean action bars and strong tables/trees
+* create/edit workflows should generally use dialogs unless a full workspace is clearly better
+* active company must always be visible once selected
+* if no company exists, the shell must degrade gracefully and lead the user into company setup
+
+## 8. Application context contracts
+
+### 8.1 `AppContext`
+
+Recommended fields:
+
+* `current_user_id`
+* `current_user_display_name`
+* `active_company_id` nullable
+* `active_company_name` nullable
+* `theme_name`
+* `permission_snapshot` or permission service reference
+
+### 8.2 `CompanyContextService`
+
+Responsibilities:
+
+* set active company into runtime context
+* clear active company
+* expose current active company
+* notify the shell and page layer when company changes
+* later validate user-company access through administration services
+
+Important rule:
+Changing company is a data-boundary change, not just a UI label change.
+
+## 9. Administration foundation blueprint
+
+This module must exist from the start even if its UI is initially thin.
+
+### 9.1 Responsibilities
+
+* user persistence foundation
+* role and permission definitions
+* role-permission assignments
+* user-role assignments
+* user-company access mappings
+* access checks for active company selection and sensitive actions
+
+### 9.2 Why it is in the first-stage structure
+
+The normalized schema includes users, roles, permissions, user roles, role permissions, and user-company access in the phase-1 backbone. The product scope also explicitly requires users, roles, permissions, company access assignment, and controlled access to sensitive financial areas.
+
+### 9.3 Early implementation stance
+
+The first implementation pass may keep administration UI light, but the data models, repositories, and service boundaries must exist early because:
+
+* company activation will depend on access checks later
+* period control and journal posting will depend on permission enforcement
+* audit trails need actor identity
+
+## 10. Company module blueprint
+
+### 10.1 Responsibilities
+
+The company module covers the master company setup needed before real accounting activity begins.
+
+Included in first pass:
+
+* company listing
+* create company
+* edit company
+* company preferences
+* company fiscal defaults
+* activate company into session context
+* invoke company initialization and seed entry points
+
+Not included in first pass:
+
+* advanced branding assets
+* branch hierarchy
+* external integrations
+
+### 10.2 Company persistence boundaries
+
+These are distinct schema-aligned concepts and must remain distinct:
+
+* `companies`
+* `company_preferences`
+* `company_fiscal_defaults`
+
+Do not collapse these into one wide table or one vague repository.
+
+### 10.3 Company service contracts
+
+#### `CompanyService`
+
+Primary responsibilities:
+
+* create company
+* update company
+* list companies
+* get company details
+* update preferences and fiscal defaults through explicit workflows
+
+Recommended methods:
+
+* `list_companies() -> list[CompanyListItemDTO]`
+* `get_company(company_id: int) -> CompanyDetailDTO`
+* `create_company(command: CreateCompanyCommand) -> CompanyDetailDTO`
+* `update_company(company_id: int, command: UpdateCompanyCommand) -> CompanyDetailDTO`
+* `update_company_preferences(company_id: int, command: UpdateCompanyPreferencesCommand) -> CompanyPreferencesDTO`
+* `update_company_fiscal_defaults(company_id: int, command: UpdateCompanyFiscalDefaultsCommand) -> CompanyFiscalDefaultsDTO`
+* `deactivate_company(company_id: int) -> None`
+
+Validation rules:
+
+* legal name required
+* display name required
+* base currency required
+* country required
+* uniqueness rules enforced consistently
+
+#### `CompanyContextService`
+
+Recommended methods:
+
+* `set_active_company(company_id: int, user_id: int | None = None) -> ActiveCompanyDTO`
+* `get_active_company() -> ActiveCompanyDTO | None`
+* `clear_active_company() -> None`
+
+Important rule:
+This service must later validate user-company access, not merely set runtime state.
+
+#### `CompanySeedService`
+
+Primary responsibilities:
+
+* initialize baseline company setup after creation
+* trigger OHADA chart seed
+* trigger starter tax code seed
+* create default document-sequence definitions where applicable
+
+Recommended methods:
+
+* `initialize_new_company(company_id: int, template_code: str | None = None) -> CompanyInitializationResultDTO`
+* `seed_ohada_chart(company_id: int) -> SeedResultDTO`
+* `seed_default_tax_codes(company_id: int) -> SeedResultDTO`
+* `seed_document_sequences(company_id: int) -> SeedResultDTO`
+
+Important rule:
+Seeding belongs in service workflows, not in create-dialog click handlers.
+
+### 10.4 Company repository contracts
+
+#### `CompanyRepository`
+
+Responsibilities:
+
+* list company records
+* fetch by id
+* fetch by legal/display name for validation
+* persist company records
+
+#### `CompanyPreferenceRepository`
+
+Responsibilities:
+
+* get company preferences
+* create or update preferences
+
+#### `CompanyFiscalDefaultRepository`
+
+Responsibilities:
+
+* get fiscal defaults
+* create or update fiscal defaults
+
+## 11. Accounting reference-data blueprint
+
+This is the area that needed the biggest correction from the earlier blueprint.
+
+### 11.1 Responsibilities
+
+This package exists to hold normalized accounting reference/configuration concepts that the chart, periods, journals, and later operational modules depend on.
+
+Included in early scope:
+
+* currencies
+* countries
+* document sequences
+* payment terms
+* tax codes
+* tax code account mappings
+* account classes
+* account types
+* account role mappings
+
+### 11.2 Why this package matters
+
+Without this package, Codex is likely to scatter tax setup, numbering setup, and account-role assumptions into the company module or chart module in vague ways. That would not fit the normalized schema.
+
+### 11.3 Key service contracts
+
+#### `ReferenceDataService`
+
+Responsibilities:
+
+* list and expose reusable reference data for early modules
+* support UI dropdowns and selection datasets cleanly
+
+#### `TaxSetupService`
+
+Responsibilities:
+
+* create/update/list tax codes
+* manage tax code account mappings
+* ensure company-scoped tax configuration remains explicit
+
+Recommended methods:
+
+* `list_tax_codes(company_id: int) -> list[TaxCodeDTO]`
+* `create_tax_code(company_id: int, command: CreateTaxCodeCommand) -> TaxCodeDTO`
+* `update_tax_code(company_id: int, tax_code_id: int, command: UpdateTaxCodeCommand) -> TaxCodeDTO`
+* `set_tax_code_account_mapping(company_id: int, command: SetTaxCodeAccountMappingCommand) -> TaxCodeAccountMappingDTO`
+
+#### `NumberingSetupService`
+
+Responsibilities:
+
+* manage company-scoped document-sequence definitions
+* expose next-number preview behavior later where needed
+
+#### `AccountRoleMappingService`
+
+Responsibilities:
+
+* assign and validate functional role mappings such as AR control, AP control, inventory control, and payroll payable
+
+Important rule:
+Do not create one vague `account_mapping` model or service. Use explicit normalized mapping concepts.
+
+## 12. Chart of accounts blueprint
+
+### 12.1 Responsibilities
+
+This remains a backbone accounting module.
+
+Included in first chart pass:
+
+* company-scoped chart of accounts
+* account hierarchy
+* create account
+* edit account
+* deactivate account
+* account search/filter
+* OHADA chart seed integration
+
+### 12.2 Schema-aligned account model direction
+
+The `accounts` persistence model should align to these normalized concepts:
+
+* `company_id`
+* `account_code`
+* `account_name`
+* `account_class_id`
+* `account_type_id`
+* `parent_account_id`
+* `normal_balance`
+* `allow_manual_posting`
+* `is_control_account`
+* `is_active`
+* `notes`
+
+Important rule:
+Do not model `account_class` or `account_type` as casual free text inside the account UI/service layer. They map to normalized reference entities.
+
+### 12.3 Account design rules
+
+* account code must be unique per company
+* parent-child hierarchy must not allow cycles
+* parent account must belong to same company
+* inactive accounts remain part of historical reporting context
+* control-account designation is explicit
+* allow-manual-posting is separate from active status
+
+### 12.4 Chart service contracts
+
+#### `ChartOfAccountsService`
+
+Responsibilities:
+
+* list accounts by company
+* return tree and flat views
+* create/update/deactivate accounts
+* validate code uniqueness and hierarchy rules
+
+Recommended methods:
+
+* `list_accounts(company_id: int, filters: ChartFiltersDTO | None = None) -> list[AccountListItemDTO]`
+* `get_account(company_id: int, account_id: int) -> AccountDetailDTO`
+* `create_account(company_id: int, command: CreateAccountCommand) -> AccountDetailDTO`
+* `update_account(company_id: int, account_id: int, command: UpdateAccountCommand) -> AccountDetailDTO`
+* `deactivate_account(company_id: int, account_id: int) -> None`
+* `get_account_tree(company_id: int) -> list[AccountTreeNodeDTO]`
+* `validate_account_code(company_id: int, proposed_code: str, exclude_account_id: int | None = None) -> ValidationResultDTO`
+
+#### `ChartSeedService`
+
+Responsibilities:
+
+* load deterministic OHADA starter chart for a company
+* guard against accidental duplicate seed workflows
+
+Recommended methods:
+
+* `seed_default_chart(company_id: int, template_code: str = "OHADA_DEFAULT") -> SeedResultDTO`
+* `preview_chart_seed(template_code: str = "OHADA_DEFAULT") -> ChartSeedPreviewDTO`
+
+Important rule:
+Seeding must be versionable and deterministic enough to support migration, support, and repeatable setup.
+
+### 12.5 Chart repository contract
+
+#### `AccountRepository`
+
+Responsibilities:
+
+* fetch account by company and id
+* fetch by company and account code
+* list by company
+* provide tree-source data
+* persist account records
+
+Avoid:
+
+* unscoped account queries
+* business-rule enforcement in repository code
+
+## 13. Fiscal periods blueprint
+
+### 13.1 Responsibilities
+
+* fiscal years
+* fiscal periods
+* open/close/lock state management
+* posting-date validation support
+* current period visibility
+
+### 13.2 Schema alignment
+
+This module maps to:
+
+* `fiscal_years`
+* `fiscal_periods`
+
+### 13.3 Service contracts
+
+#### `FiscalCalendarService`
+
+Responsibilities:
+
+* create fiscal years
+* generate periods
+* list fiscal calendar structures
+
+#### `PeriodControlService`
+
+Responsibilities:
+
+* open/close/reopen/lock periods under permission rules
+* validate whether posting is allowed for a date
+
+## 14. Journals blueprint
+
+### 14.1 Responsibilities
+
+* manual journal entry workspace
+* draft save
+* debit/credit balancing validation
+* post journal
+* reverse journal later in controlled workflow
+* journal listing and detail retrieval
+
+### 14.2 Schema alignment
+
+This module maps to:
+
+* `journal_entries`
+* `journal_entry_lines`
+
+### 14.3 Service contracts
+
+#### `JournalService`
+
+Responsibilities:
+
+* create and edit draft journal entries
+* return journal detail DTOs
+* validate line structure before posting
+
+#### `JournalPostingService`
+
+Responsibilities:
+
+* final balancing validation
+* fiscal-period validation
+* controlled posting action
+* later reversal workflow
+
+Important rule:
+Journal posting must remain a controlled business action, not a loose grid save.
+
+## 15. UI blueprint for first modules
+
+### 15.1 Company UI
+
+#### Company list page
+
+Should include:
+
+* lean page header
+* company table
+* create button
+* edit button
+* select/switch company action
+* empty state when no company exists
+
+#### Company form dialog
+
+Should capture:
+
+* legal and display names
+* tax and registration identifiers
+* contact and address fields
+* country
+* base currency
+* fiscal start defaults
+
+UI rules:
+
+* clear grouped sections
+* moderate dialog height
+* do not overload first pass with secondary settings
+
+#### Company selector dialog
+
+Purpose:
+
+* explicit company switching
+* enough context to avoid selecting the wrong company
+
+### 15.2 Chart of accounts UI
+
+#### Chart of accounts page
+
+Recommended layout:
+
+* slim title/context area
+* visible active company context
+* strong tree-capable table
+* action bar with new, edit, deactivate, seed, refresh, and filter/search
+
+Recommendation:
+Use a polished tree-capable table view with dialogs for create/edit in v1.
+That is clean, desktop-appropriate, and safer than a sprawling inline editor.
+
+#### Account form dialog
+
+Fields:
+
+* account code
+* account name
+* parent account
+* account class
+* account type
+* normal balance
+* allow manual posting
+* control account
+* active flag when editing
+* notes optional
+
+Validation UX:
+
+* duplicate code validation
+* prevent self/descendant parent selection
+* explain invalid combinations clearly
+
+### 15.3 Fiscal periods UI
+
+* calendar/list page for fiscal years and periods
+* clear status badges
+* permission-protected close/reopen actions
+
+### 15.4 Journal UI
+
+* focused journal page or dialog
+* multi-line grid
+* visible total debit and total credit comparison
+* visible status badge
+* posting action visually distinct from save draft
+
+## 16. DTO and command design direction
+
+Use explicit write-command DTOs and read DTOs.
+Do not pass raw ORM entities around the UI as application state.
+
+### 16.1 Write DTO examples
+
+* `CreateCompanyCommand`
+* `UpdateCompanyCommand`
+* `UpdateCompanyPreferencesCommand`
+* `UpdateCompanyFiscalDefaultsCommand`
+* `CreateTaxCodeCommand`
+* `SetTaxCodeAccountMappingCommand`
+* `CreateAccountCommand`
+* `UpdateAccountCommand`
+* `CreateFiscalYearCommand`
+* `CreateJournalEntryCommand`
+
+### 16.2 Read DTO examples
+
+* `CompanyListItemDTO`
+* `CompanyDetailDTO`
+* `CompanyPreferencesDTO`
+* `CompanyFiscalDefaultsDTO`
+* `ActiveCompanyDTO`
+* `TaxCodeDTO`
+* `TaxCodeAccountMappingDTO`
+* `AccountListItemDTO`
+* `AccountDetailDTO`
+* `AccountTreeNodeDTO`
+* `FiscalPeriodDTO`
+* `JournalEntryDTO`
+
+## 17. Error and validation contract
+
+### 17.1 Service-layer business exceptions
+
+Use explicit business exceptions such as:
+
+* `ValidationError`
+* `NotFoundError`
+* `ConflictError`
+* `PermissionDeniedError`
+* `PeriodLockedError`
+
+### 17.2 UI responsibility
+
+UI should:
+
+* catch workflow-boundary service errors
+* show clean user-facing messages
+* avoid exposing raw database errors as business rules
+
+## 18. Audit direction for first slices
+
+Even before the full audit viewer UI exists, structure services so these actions are auditable:
+
+* company created
+* company updated
+* company activated for session
+* starter company setup initialized
+* tax setup changed
+* chart seeded
+* account created
+* account updated
+* account deactivated
+* fiscal period state changed
+* journal posted
+
+Do not bury these actions in widgets.
+
+## 19. What Codex must not do in these slices
+
+Codex must not:
+
+* collapse repositories and services into one convenience file
+* put SQLAlchemy session logic directly into widgets
+* invent vague models such as `tax_profile` or `account_group`
+* replace normalized references with loose free-text fields where the schema defines separate entities
+* make chart of accounts a flat unstructured CRUD grid
+* hide seed workflows inside UI button handlers
+* redesign unrelated future modules while implementing these slices
+* bypass company scoping in repositories
+
+## 20. Acceptance checkpoints for this corrected blueprint
+
+### Foundation is acceptable when:
+
+* app boots through a clean bootstrap pipeline
+* service wiring is centralized
+* database/session/unit-of-work setup is isolated and portable
+
+### Shell is acceptable when:
+
+* it hosts pages cleanly
+* active company is visible
+* page switching is stable
+* dialogs and notifications have consistent patterns
+
+### Administration foundation is acceptable when:
+
+* user/role/permission/company-access models and service boundaries exist
+* company activation can later validate access without redesign
+
+### Company setup is acceptable when:
+
+* companies can be listed, created, edited, and selected
+* preferences and fiscal defaults are stored through distinct schema-aligned boundaries
+* initialization and seeding are service-driven
+
+### Accounting reference data is acceptable when:
+
+* tax codes, numbering setup, account classes/types, and account-role mappings are represented explicitly
+* no vague mapping models exist
+
+### Chart of accounts is acceptable when:
+
+* accounts are company-scoped
+* hierarchy works
+* duplicate codes are blocked per company
+* create/edit/deactivate flows are service-driven
+* default OHADA chart can be seeded safely
+
+### Fiscal periods and journals are acceptable when:
+
+* periods support open/close/lock semantics
+* journal entries and lines are modeled correctly
+* posting is controlled and balancing is enforced
+
+## 21. What this means in Access terms
+
+This corrected blueprint is the equivalent of deciding, before implementation:
+
+* which forms are only UI surfaces
+* which business routines own validation and posting control
+* which query/data routines belong in structured repositories
+* how company context flows through the whole application
+* how chart setup, tax setup, period control, and journals stay normalized instead of becoming loose setup forms
+
+That discipline is what keeps Seeker Accounting from becoming a prettier but fragile Access-style monolith.
+
+## 22. Recommended next artifact
+
+The correct next artifact is now:
+
+**SQLAlchemy model plan + Phase 1 Alembic migration blueprint**
+
+It should translate this corrected blueprint and the schema into:
+
+* exact model files
+* exact column types
+* foreign keys
+* uniqueness constraints and indexes
+* seed-data boundaries
+* what belongs in migrations versus seed services
+
+That is the right bridge into implementation.

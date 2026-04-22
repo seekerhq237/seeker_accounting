@@ -1,0 +1,306 @@
+
+=== PAGE 1 ===
+  
+Direction Générale des Impôts 
+1 
+DIRECTION GENERALE DES IMPOTS 
+ 
+  
+Guide OTP pour le paiement des 
+impôts et taxes par/pour un tiers 
+ 
+ 
+ 
+ 
+ 
+ 
+GUIDE DE L’UTILISATEUR 
+
+=== PAGE 2 ===
+  
+Direction Générale des Impôts 
+2 
+Table des matières 
+Audience ................................................................................................................................................ 3 
+Contexte ................................................................................................................................................. 3 
+1 Terminologie .................................................................................................................................. 3 
+2 Comment utiliser le module de paiement pour autrui ................................................................... 4 
+2.1 Disposer d’un compte utilisateur sur OTP .............................................................................. 4 
+2.2 Mettre en place une convention de paiement par/pour autrui ............................................. 4 
+2.2.1 Initier et soumettre la convention de paiement ............................................................. 4 
+2.2.2 Accepter et signer la convention .................................................................................... 7 
+2.3 Emettre une requête de paiement ......................................................................................... 9 
+2.4 Traiter une requête de paiement reçue. .............................................................................. 12 
+2.4.1 Accepter ou rejeter la requête ..................................................................................... 12 
+2.4.2 Payer les titres d’imposition acceptés .......................................................................... 13 
+2.5 Mettre fin une convention de paiement par/pour autrui..................................................... 14 
+ 
+ 
+  
+
+=== PAGE 3 ===
+  
+Direction Générale des Impôts 
+3 
+Audience 
+Ce document s’adresse aux contribuables qui confient la gestion de leurs impôts à 
+des tiers, en particulier le paiement desdits impôts. 
+Il s’adresse également aux tiers suscités, ainsi qu’à toute personne désireuse 
+d’accompagner ces deux parties dans le paiement de leurs impôts via OTP.  
+Contexte 
+La plateforme OTP a été mise en place par la DGI pour permettre aux contribuables 
+de payer en ligne leur impôts et taxe. OTP a dématérialisé le paiement des impôts 
+par virement bancaire. 
+Qui dit virement bancaire dit disposer d’au moins un compte bancaire dans une des 
+18banques commerciales en activité au Cameroun. 
+Or de nombreux contribuables ont leurs comptes logés dans des micro  finances, et 
+payent leurs impôts via ces institutions.  
+D’autres encore préfèrent confier la gestion de leur impôts à leurs partenaires, en 
+l’occurrence leur conseils fiscaux , qui assurent le suivi de leurs impôts, jusqu’au 
+paiement. 
+Le module de paiement pour autrui  a été mis en place pour permettre à cette 
+catégorie de contribuables le payer leurs impôts par OTP. 
+ 
+1 Terminologie 
+Dans cette section, nous définissons quelques termes utiles pour la compréhension 
+de la suite du document. 
+Demandeur : le contribuable qui désire qu’un tiers paie ses impôts. 
+Payeur : le contribuable qui se charge de payer les impôts d’un autre contribuable 
+(demandeur). 
+Convention de paiement  : il s ’agit d’un accord qui est  établi une seule fois entre 
+lePayeur et Demandeur, attestant que ces deux partis sont se sont mis d’accord pour 
+que l’un paie les impôts de l’autre. 
+Requête de paiement  : il s’agit d’une demande émise par le Demandeur à 
+l’intention du Payeur. La requête de paiement précise le(s) titre(s) d’imposition qui 
+doit (doivent) être payé(s), et par qui. 
+  
+
+=== PAGE 4 ===
+  
+Direction Générale des Impôts 
+4 
+2 Comment utiliser le module de paiement pour autrui 
+ 
+1. Le Demandeur et le Payeur doivent d isposer d’un compte utilisateur sur la 
+plateforme OTP ; Le Payeur doit en plus disposer d’une APP valide. 
+2. Une des parties doit initier une convention de paiement qu’elle soumet à 
+l’autre partie pour approbation. Cette opération est faite une seule fois ; 
+3. Périodiquement, le Demandeur émet une requête de paiement au Payeur ; 
+4. Le Payeur reçoit la requête et la traite. 
+Ces principales opérations sont décrites dans la suite du document. 
+ 
+2.1 Disposer d’un compte utilisateur sur OTP 
+Chaque partie doit se créer un compte utilisateur sur OTP, si ce n’est encore fait. Cf 
+le guide de l’utilisateur OTP pour la création de compte. 
+Le Demandeur en particulier doit s’inscrire sur OTP pour avoir un compte utilisateur, 
+en précisant, au besoin, qu’il ne dispose pas de compte bancaire. 
+ 
+2.2 Mettre en place une convention de paiement par/pour autrui 
+La mise en place d’une convention de paiement se fait par les deux parties  
+(Demandeur et Payeur) . La partie initiatrice de la convention la crée, la signe et 
+l’envoie. Tandis que l’autre partie l’accepte et la signe.  La convention entre en 
+vigueur à partir de ce moment. 
+2.2.1 Initier et soumettre la convention de paiement 
+Une fois connecté à l’application , suivez les étapes ci -après : DONNEES DE BASE 
+PAIEMENT POUR AUTRUI CONVENTION DE PAIEMENT POUR/PAR AUTRUI  
+CRÉER. 
+ 
+
+=== PAGE 5 ===
+  
+Direction Générale des Impôts 
+5 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Cliquer sur le 
+menu. 
+
+=== PAGE 6 ===
+  
+Direction Générale des Impôts 
+6 
+ 
+Saisir les champs requis et cliquer sur le bouton Enregistrer comme brouillon. 
+ 
+ 
+ 
+ 
+
+=== PAGE 7 ===
+  
+Direction Générale des Impôts 
+7 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2.2.2 Accepter et signer la convention 
+L’autre partie se connecte et va cliquer sur le menu  : DONNEES DE BASE 
+PAIEMENT POUR AUTRUI CONVENTION DE PAIEMENT POUR/PAR AUTRUI  
+ACCEPTER ET SIGNER. 
+ 
+ 
+
+=== PAGE 8 ===
+  
+Direction Générale des Impôts 
+8 
+ 
+ 
+ 
+ 
+
+=== PAGE 9 ===
+  
+Direction Générale des Impôts 
+9 
+ 
+2.3 Emettre une requête de paiement 
+La convention de paiement étant établie et en vigueur,  le demandeur peut 
+périodiquement, une fois ses titres d’imposition disponible s dans OTP , émettre des 
+requêtes de paiement de ses impôts au payeur. 
+Pour cela , le demandeur doit éditer, enregistrer et soumet tre l es requêtes de 
+paiement pour traitement par le payeur. 
+ 
+ 
+ 
+ 
+
+=== PAGE 10 ===
+  
+Direction Générale des Impôts 
+10 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 11 ===
+  
+Direction Générale des Impôts 
+11 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 12 ===
+  
+Direction Générale des Impôts 
+12 
+2.4 Traiter une requête de paiement reçue. 
+2.4.1 Accepter ou rejeter la requête 
+Le Payeur se connecte et traite la requête de paiement du demandeur . Il peut soit  
+l’accepter soit la rejeter. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 13 ===
+  
+Direction Générale des Impôts 
+13 
+ 
+ 
+ 
+2.4.2 Payer les titres d’imposition acceptés 
+Les titres d’impositions acceptés sont prêts au paiement. Le payeur doit tout 
+simplement se connecter à l’application,  aller le menu PAYER POUR AUTRUI, et 
+retrouver les avis d’imposition du demandeur qu’il a accepté de payer  et suivre le 
+processus de paiement, comme s’il payait ses propres titres d’imposition. Cf le guide 
+de l’utilisateur OTP. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 14 ===
+  
+Direction Générale des Impôts 
+14 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2.5 Mettre fin une convention de paiement par/pour autrui 
+Il est possible qu’à un moment donné l’accord entre les deux parties soient caduques 
+dans ce cas l’une des parties peut mettre fin à la convention. 
+ 
+ 
+ 
+ 
+
+=== PAGE 15 ===
+  
+Direction Générale des Impôts 
+15 
+ 
+ 
+ 
+ 
+ 
+ 

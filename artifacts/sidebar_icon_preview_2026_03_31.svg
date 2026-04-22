@@ -1,0 +1,318 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="986" height="568" viewBox="0 0 986 568" fill="none">
+<rect width="100%" height="100%" fill="#F4F1EA"/>
+<style>
+.card { fill: #FFFDFC; stroke: #D8D2C7; stroke-width: 1; }
+.label { fill: #1F2933; font: 600 15px Segoe UI, Arial, sans-serif; }
+.state { fill: #7A858F; font: 12px Segoe UI, Arial, sans-serif; }
+.normal { color: #4A535D; }
+.active { color: #0F766E; }
+</style>
+<g transform="translate(28,28)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.75" y="5" width="6.75" height="6.25" rx="1.7"/>
+    <rect x="12.5" y="5" width="6.75" height="3.75" rx="1.4"/>
+    <rect x="4.75" y="12.75" width="6.75" height="6.25" rx="1.7"/>
+    <rect x="12.5" y="10.25" width="6.75" height="8.75" rx="1.7"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.75" y="5" width="6.75" height="6.25" rx="1.7"/>
+    <rect x="12.5" y="5" width="6.75" height="3.75" rx="1.4"/>
+    <rect x="4.75" y="12.75" width="6.75" height="6.25" rx="1.7"/>
+    <rect x="12.5" y="10.25" width="6.75" height="8.75" rx="1.7"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Dashboard</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(338,28)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8.75" cy="9.1" r="2.25"/>
+    <circle cx="15.25" cy="9.1" r="2.25"/>
+    <path d="M5.45 17.2c.55-2.15 2.42-3.45 4.82-3.45 1.1 0 2.12.23 2.98.72"/>
+    <path d="M10.75 14.47c.82-.48 1.83-.72 2.95-.72 2.42 0 4.28 1.3 4.85 3.45"/>
+    <path d="M11.35 10.8h1.3"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="8.75" cy="9.1" r="2.25"/>
+    <circle cx="15.25" cy="9.1" r="2.25"/>
+    <path d="M5.45 17.2c.55-2.15 2.42-3.45 4.82-3.45 1.1 0 2.12.23 2.98.72"/>
+    <path d="M10.75 14.47c.82-.48 1.83-.72 2.95-.72 2.42 0 4.28 1.3 4.85 3.45"/>
+    <path d="M11.35 10.8h1.3"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Third Parties</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(648,28)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 7.25c-1.3-1-2.95-1.5-4.95-1.5-1.2 0-2.3.2-3.3.6V17.7c1-.4 2.1-.6 3.3-.6 2 0 3.65.5 4.95 1.5"/>
+    <path d="M12 7.25c1.3-1 2.95-1.5 4.95-1.5 1.2 0 2.3.2 3.3.6V17.7c-1-.4-2.1-.6-3.3-.6-2 0-3.65.5-4.95 1.5"/>
+    <path d="M12 7.25v11.35"/>
+    <path d="M6.1 9h2.9"/>
+    <path d="M6.1 11.8h2.9"/>
+    <path d="M15 9h2.9"/>
+    <path d="M15 11.8h2.9"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 7.25c-1.3-1-2.95-1.5-4.95-1.5-1.2 0-2.3.2-3.3.6V17.7c1-.4 2.1-.6 3.3-.6 2 0 3.65.5 4.95 1.5"/>
+    <path d="M12 7.25c1.3-1 2.95-1.5 4.95-1.5 1.2 0 2.3.2 3.3.6V17.7c-1-.4-2.1-.6-3.3-.6-2 0-3.65.5-4.95 1.5"/>
+    <path d="M12 7.25v11.35"/>
+    <path d="M6.1 9h2.9"/>
+    <path d="M6.1 11.8h2.9"/>
+    <path d="M15 9h2.9"/>
+    <path d="M15 11.8h2.9"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Accounting</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(28,156)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.35 10.3h4.95"/>
+    <path d="M9.35 13.6h6.5"/>
+    <path d="M11.2 11.8 14.95 15.55"/>
+    <path d="M12.9 15.55h2.05V13.5"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.35 10.3h4.95"/>
+    <path d="M9.35 13.6h6.5"/>
+    <path d="M11.2 11.8 14.95 15.55"/>
+    <path d="M12.9 15.55h2.05V13.5"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Sales</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(338,156)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.35 10.3h5.2"/>
+    <path d="M9.35 13.6h6.5"/>
+    <path d="M14.95 11.8 11.2 15.55"/>
+    <path d="M11.2 13.5v2.05h2.05"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.35 10.3h5.2"/>
+    <path d="M9.35 13.6h6.5"/>
+    <path d="M14.95 11.8 11.2 15.55"/>
+    <path d="M11.2 13.5v2.05h2.05"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Purchases</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(648,156)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.75" y="6.25" width="14.5" height="11.5" rx="2.3"/>
+    <path d="M4.75 9.9h14.5"/>
+    <rect x="7.55" y="12.2" width="3.05" height="2.65" rx=".65"/>
+    <path d="M14.15 13.5h3.2"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.75" y="6.25" width="14.5" height="11.5" rx="2.3"/>
+    <path d="M4.75 9.9h14.5"/>
+    <rect x="7.55" y="12.2" width="3.05" height="2.65" rx=".65"/>
+    <path d="M14.15 13.5h3.2"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Treasury</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(28,284)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6.1" y="4.8" width="11.8" height="4.4" rx="1.15"/>
+    <path d="M12 4.8v4.4"/>
+    <rect x="5.1" y="10.2" width="13.8" height="4.4" rx="1.15"/>
+    <path d="M12 10.2v4.4"/>
+    <rect x="4.1" y="15.6" width="15.8" height="4.4" rx="1.15"/>
+    <path d="M12 15.6V20"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6.1" y="4.8" width="11.8" height="4.4" rx="1.15"/>
+    <path d="M12 4.8v4.4"/>
+    <rect x="5.1" y="10.2" width="13.8" height="4.4" rx="1.15"/>
+    <path d="M12 10.2v4.4"/>
+    <rect x="4.1" y="15.6" width="15.8" height="4.4" rx="1.15"/>
+    <path d="M12 15.6V20"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Inventory</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(338,284)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.9 19.2h14.2"/>
+    <path d="M6.2 19.2V10.4h11.6v8.8"/>
+    <path d="M5.2 10.4 12 5.2l6.8 5.2"/>
+    <rect x="10.65" y="14.3" width="2.7" height="4.9" rx=".55"/>
+    <path d="M8.1 12.9h1.55"/>
+    <path d="M14.35 12.9h1.55"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.9 19.2h14.2"/>
+    <path d="M6.2 19.2V10.4h11.6v8.8"/>
+    <path d="M5.2 10.4 12 5.2l6.8 5.2"/>
+    <rect x="10.65" y="14.3" width="2.7" height="4.9" rx=".55"/>
+    <path d="M8.1 12.9h1.55"/>
+    <path d="M14.35 12.9h1.55"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Fixed Assets</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(648,284)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.75" y="5.25" width="14.5" height="13.5" rx="2"/>
+    <path d="M8.25 5.25v13.5"/>
+    <path d="M10.45 8.8h6.15"/>
+    <path d="M10.45 12.05h4.25"/>
+    <path d="M10.45 15.3h5.55"/>
+    <circle cx="6.5" cy="8.8" r=".55" fill="currentColor" stroke="none"/>
+    <circle cx="6.5" cy="12.05" r=".55" fill="currentColor" stroke="none"/>
+    <circle cx="6.5" cy="15.3" r=".55" fill="currentColor" stroke="none"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.75" y="5.25" width="14.5" height="13.5" rx="2"/>
+    <path d="M8.25 5.25v13.5"/>
+    <path d="M10.45 8.8h6.15"/>
+    <path d="M10.45 12.05h4.25"/>
+    <path d="M10.45 15.3h5.55"/>
+    <circle cx="6.5" cy="8.8" r=".55" fill="currentColor" stroke="none"/>
+    <circle cx="6.5" cy="12.05" r=".55" fill="currentColor" stroke="none"/>
+    <circle cx="6.5" cy="15.3" r=".55" fill="currentColor" stroke="none"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Projects</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(28,412)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.35 10.4h5.25"/>
+    <path d="M9.35 13.6h3.8"/>
+    <circle cx="15.15" cy="16.15" r="2.45"/>
+    <path d="m14.05 16.15.78.78 1.45-1.68"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.35 10.4h5.25"/>
+    <path d="M9.35 13.6h3.8"/>
+    <circle cx="15.15" cy="16.15" r="2.45"/>
+    <path d="m14.05 16.15.78.78 1.45-1.68"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Payroll</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(338,412)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.4 16.1v-3"/>
+    <path d="M12.1 16.1v-5.15"/>
+    <path d="M14.8 16.1v-2.3"/>
+    <path d="M8.9 11.7 11.7 10.15 14.05 11.25 15.8 9.25"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.1 4.75h7.15L17 7.5v11.75H7.1V4.75Z"/>
+    <path d="M14.25 4.75V7.5H17"/>
+    <path d="M9.4 16.1v-3"/>
+    <path d="M12.1 16.1v-5.15"/>
+    <path d="M14.8 16.1v-2.3"/>
+    <path d="M8.9 11.7 11.7 10.15 14.05 11.25 15.8 9.25"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Reports</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+<g transform="translate(648,412)">
+<rect class="card" x="0" y="0" width="286" height="104" rx="18"/>
+<g class="normal" transform="translate(22,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 7h14"/>
+    <path d="M5 12h14"/>
+    <path d="M5 17h14"/>
+    <circle cx="9.25" cy="7" r="1.45" fill="currentColor" stroke="none"/>
+    <circle cx="14.75" cy="12" r="1.45" fill="currentColor" stroke="none"/>
+    <circle cx="11.25" cy="17" r="1.45" fill="currentColor" stroke="none"/>
+  </g>
+</g>
+<g class="active" transform="translate(84,18) scale(1.5)">
+  <g stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 7h14"/>
+    <path d="M5 12h14"/>
+    <path d="M5 17h14"/>
+    <circle cx="9.25" cy="7" r="1.45" fill="currentColor" stroke="none"/>
+    <circle cx="14.75" cy="12" r="1.45" fill="currentColor" stroke="none"/>
+    <circle cx="11.25" cy="17" r="1.45" fill="currentColor" stroke="none"/>
+  </g>
+</g>
+<text class="label" x="22" y="72">Administration</text>
+<text class="state" x="22" y="92">normal</text>
+<text class="state" x="84" y="92">active</text>
+</g>
+</svg>

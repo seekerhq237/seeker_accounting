@@ -1,0 +1,15 @@
+{
+  "template_code": "ohada_syscohada_v1",
+  "display_name": "OHADA SYSCOHADA",
+  "version": "1.0",
+  "description": "Seeker Accounting canonical OHADA chart template normalized from the one-time source workbook and stored as app-owned internal resources.",
+  "source_name": "OHADA Chart of Accounts.xlsx",
+  "source_format": "canonical_csv",
+  "row_count": 1374,
+  "notes": [
+    "Generated from the one-time OHADA workbook source; the runtime app does not depend on the workbook.",
+    "Workbook correction applied: code 2451 'Animals' was normalized to 2464.",
+    "Workbook correction applied: code 4821 'Tangible fixed assets' was normalized to 4822.",
+    "Skipped row 1376: account code or account name was blank."
+  ]
+}

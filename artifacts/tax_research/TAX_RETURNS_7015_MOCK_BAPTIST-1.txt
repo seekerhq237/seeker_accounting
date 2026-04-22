@@ -1,0 +1,264 @@
+
+=== PAGE 1 ===
+ 
+APPENDIX 1: CALCIULATING THE MONTHLY VAT LIABILITY  
+Description October November December 
+VAT from local sale of goods    
+VAT from local sale of services    
+VAT collected from taxable exports     
+Total VAT collected     
+Input VAT on local purchase of goods    
+Input VAT payment for local services    
+Input VAT on visible imports    
+Input VAT on invisible imports    
+State, VAT credit B/F    
+Total VAT deductible     
+VAT due    
+VAT credit C/F    
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 2 ===
+APPENDIX 2: VAT RETURN  
+(Page 2 of Tax Return for Value Added Tax – VAT) 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+4-TURNOVER REALISED   Base Rate  Amount of the Tax  
+Transactions taxable at stand. rate¹ (details appended)3 L17    
+Amount of Excise Duty (=Principal L16) L18    
+Lodging tax for lodging establishments (=L100) L19    
+Other taxable transactions (details appended) 4 L20    
+Exportations (taxable at zero rate): L21    
+Exempted Turnover: L22    
+Global Turnover Excl. taxes= L17+L18+L19+L20+L21 L23    
+ 
+5- VAT RECOVERABLE    
+Temporary Prorata (partially exempted): see STR of year n-1 L24  
+Previous credit b/f: (L38 of the previous declaration) L25  
+VAT Recoverable on local purchases of goods L26  
+VAT Recoverable on Local Services  L27  
+VAT Recoverable on purchase of goods made abroad  L28  
+VAT Recoverable on other services paid abroad  L29  
+Total VAT Recoverable: L25+L26+L27+L28+L29 L30  
+VAT recoverable at Temporary Pro rata (partially exempt subjects): L24 x L30 L31  
+ 
+6- VAT ADJUSTMENT    
+- Adjustment of VAT recoverable or VAT already retained at source (-) L32  
+Adjustment of VAT absorbed by the state (-) L33  
+Adjustment on the disposals of fixed assets to be repaid to the state (+) L34  
+Adjustment of VAT to be repaid and others (+) L35  
+ 
+7-VAT PAYABLE OR VAT CREDIT    
+VAT Collected (L17+L18+L19+L20) L36  
+VAT Recoverable:(L30)     or (L31) L37  
+Adjustment of VAT to be recovered: (L32 +L33) L38  
+Adjustment of VAT to be repaid: (L34 + L35) L39  
+VAT Payable: (L36-L37-L38+L39) L40  
+VAT Credit: L41  
+Reimbursement requested: (indicate the amount) L42  
+Credit to be carried forward: (L41 –L42) L43  
+8-TOTAL OF VAT PAYABLE   PRINCIPAL ACT FINES TOTAL 
+VAT Payable: (L40) L44     
+VAT Retained at source (approved enterprise): L45     
+VAT Retained on remuneration paid abroad: L46     
+Amount Payable: (L44 + L45+ L46) L47     
+ 
+
+=== PAGE 3 ===
+ 
+APPENDIX 3 
+Business Name:                                                                                                      Financial year ending 31-12- 
+Registration Number:                                                                                               Duration (in months):  
+CF1 
+TABLE OF TRANSFORMING ACCOUNTING PROFIT BEFORE TAX TO TAXABLE PROFIT  
+ 
+         
+          
+ 
+Line 
+Amount 
+BALANCE OF 
+NET PROFIT OR 
+LOSS BEFORE 
+TAX ON PROFIT 
+NET ACCOUNTOING PROFIT BEFORE TAX 1   
+NET ACCOUNTING LOSS BEFORE TAX 2 -  
+REINSTATEMENT OF EXPENSES AND LOSSES 
+NOT OR PARTIALLY DEDUCTINBLE FROM THE 
+TAX POINT OF VIEW  
+Non-deductible depreciation 3   
+Depreciation recorded but deferred because of losses 4   
+Non-deductible provisions & impairment  5   
+Exaggerated interest on shareholders’ current account 6   
+Head office expenses and technical assistance  7   
+Non-deductible taxes  8   
+Non-deductible fines and penalties 9   
+Non-deductible gratuities and donations   10   
+Taxes deducted at source on income from securities 11   
+Sundry 1 12   
+Sundry 2 13   
+Sundry 3 14   
+REINSTATEMENTS: Totals lines 3 to 14 15   
+  Intermediate taxable profit: line 15+line1 or line15-line 2 16   
+  Intermediate taxable loss: line 2+line 15 17   
+EXPENSES OR LOSEES, 
+REVENUE OR PROFIT 
+DEDUCTIBLE FROM THE TAX 
+POINT OF VIEW  
+Depreciation formerly deferred and allocated for the period 18   
+Previously taxed provision & impairment written back 19   
+Fraction of non-taxable capital gains from the disposal of non-current assets  20   
+Net income from subsidiaries (after the deduction of own part of expenses and loses) 21   
+Other deductible income from securities 22   
+Deductible head office expenses and technical assistance 23   
+Sundry 1   24   
+Sundry 2   25   
+Sundry 3   26   
+TOTAL DEDUCTIONS: SUM lines 18 to 26 27   
+                  
+FISCAL 
+PROFIT OR 
+LOSS 
+FISCAL PROFIT OF THE YEAR: Line 16 - Line 27 28   
+FISCAL LOSS OF THE YEAR: Line 27 - Line 16 or Line 17 + Line 27 29   
+        
+SITUATION OF COMPANY WITH REGARDS  
+TO THE MINIMUM TAX  
+PARTICULARS LINE BASE OF 
+ASSESSMENT Rate Principal tax 
+Minimum tax  Minimum proportional to turnover  30      
+Company tax 31      
+ICP & PE 32      
+  
+Profits from handicraft 
+  
+  
+33   
+34      
+35       
+36       
+Profit from Agriculture 37       
+Proportional tax 38      
+TOTAL lines 32 to 38 39       
+ 
+ 
+
+=== PAGE 4 ===
+ 
+APPENDIX 4 
+Business Name: ……………………………….                                                                              Financial year ending 31-12- …….. 
+Tax identification Number: ………………………..                                                                              Duration (Months): : 
+CF1 BIS 
+TABLE OF DETERMINATION OF THE TAX ON PROFIT :   TAX ON FISCLA PROFIT 
+              
+HEADINGS line AMOUNT 
+DETERMINA TION OF FINAL FISCAL PROFIT 
+TRANSFER OF FISCAL PROFIT OF THE YEAR 1  
+DEDUCTIONS ON ACCOUNT OF REINVESTMENTS MADE IN THE PAST  
+HEADINGS YEAR N-3 YEAR N-2 YEAR N-1  
+Allowed Reinvestments brought forward 2     Deductible reinvestment = 50% * line 2 3    
+Reinvestment effectively deducted 4    
+ 
+Total 
+ line 4 
+ 
+ 
+Reinvestment carried forward = 2* (line 
+3-line 4) 5     
+DEDUCTION FOR REINVESTMENTS OF THE PERIOD  
+Reinvestment allowed 6   Deductible reinvestment = 50%*line 6 7  
+Reinvestment deducted =50%*line1 8  
+ 
+Total  
+line 8 
+ 
+ 
+Reinvestment carried forward =2*(line7 – line 8) 9   
+ALLOCATION OF LOSSES BROUGHT FORWARD  
+HEADINGS  Year N-4 Year N-3 Year N-2 Year N-1  
+Losses brought forward 10      
+Losses allocated for the period 11     
+ 
+Total 
+ line 11 
+ 
+ 
+Losses carried forward 12      
+Definite fiscal profit (total line 1, 4, 8 et 11) 13  
+COMPUTATION OF COMPANY TAX BASED ON THE DEFINITE FISCAL PROFIT 
+ 
+Headings  Base Rate  Lin
+e  Amount  
+Company tax    14  
+Personal income tax from securities not deducted at source   15  
+Personal income tax from securities deducted at source   16  
+Other deductions    17  
+Net tax due (line14 + line 15) – (line 16 + line 17) 18  
+Additional council tax 19  
+TOTAL TAX (Line 18 + Line 19) 20  
+Advance taxes paid (brought forward line 13 table CF1 QUATER col. 6) 21  
+Net to pay  22  
+Tax credit  23  
+ 
+Account 89: Company tax 
+Headings  Amount 
+891 Company tax of the year  24  
+892 Tax arrears on previous income 25  
+895 Minimum tax 26  
+899 Tax relief and tax deductions on previous period 27  
+TOTAL 28  
+ 
+ 

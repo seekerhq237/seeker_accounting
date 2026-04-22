@@ -1,0 +1,156 @@
+code,name,symbol,decimal_places,is_active
+AED,UAE Dirham,د.إ,2,1
+AFN,Afghani,؋,2,1
+ALL,Lek,L,2,1
+AMD,Armenian Dram,֏,2,1
+ANG,Netherlands Antillean Guilder,ƒ,2,1
+AOA,Kwanza,Kz,2,1
+ARS,Argentine Peso,$,2,1
+AUD,Australian Dollar,A$,2,1
+AWG,Aruban Florin,ƒ,2,1
+AZN,Azerbaijan Manat,₼,2,1
+BAM,Convertible Mark,KM,2,1
+BBD,Barbados Dollar,Bds$,2,1
+BDT,Taka,৳,2,1
+BGN,Bulgarian Lev,лв,2,1
+BHD,Bahraini Dinar,.د.ب,3,1
+BIF,Burundi Franc,FBu,0,1
+BMD,Bermudian Dollar,BD$,2,1
+BND,Brunei Dollar,B$,2,1
+BOB,Boliviano,Bs.,2,1
+BRL,Brazilian Real,R$,2,1
+BSD,Bahamian Dollar,B$,2,1
+BTN,Ngultrum,Nu.,2,1
+BWP,Pula,P,2,1
+BYN,Belarusian Ruble,Br,2,1
+BZD,Belize Dollar,BZ$,2,1
+CAD,Canadian Dollar,CA$,2,1
+CDF,Congolese Franc,FC,2,1
+CHF,Swiss Franc,CHF,2,1
+CLP,Chilean Peso,$,0,1
+CNY,Yuan Renminbi,¥,2,1
+COP,Colombian Peso,$,2,1
+CRC,Costa Rican Colon,₡,2,1
+CUP,Cuban Peso,$,2,1
+CVE,Cabo Verde Escudo,$,2,1
+CZK,Czech Koruna,Kč,2,1
+DJF,Djibouti Franc,Fdj,0,1
+DKK,Danish Krone,kr,2,1
+DOP,Dominican Peso,RD$,2,1
+DZD,Algerian Dinar,د.ج,2,1
+EGP,Egyptian Pound,E£,2,1
+ERN,Nakfa,Nfk,2,1
+ETB,Ethiopian Birr,Br,2,1
+EUR,Euro,€,2,1
+FJD,Fiji Dollar,FJ$,2,1
+FKP,Falkland Islands Pound,£,2,1
+GBP,Pound Sterling,£,2,1
+GEL,Lari,₾,2,1
+GHS,Ghana Cedi,GH₵,2,1
+GIP,Gibraltar Pound,£,2,1
+GMD,Dalasi,D,2,1
+GNF,Guinean Franc,FG,0,1
+GTQ,Quetzal,Q,2,1
+GYD,Guyana Dollar,G$,2,1
+HKD,Hong Kong Dollar,HK$,2,1
+HNL,Lempira,L,2,1
+HTG,Gourde,G,2,1
+HUF,Forint,Ft,2,1
+IDR,Rupiah,Rp,2,1
+ILS,New Israeli Sheqel,₪,2,1
+INR,Indian Rupee,₹,2,1
+IQD,Iraqi Dinar,ع.د,3,1
+IRR,Iranian Rial,﷼,2,1
+ISK,Iceland Krona,kr,0,1
+JMD,Jamaican Dollar,J$,2,1
+JOD,Jordanian Dinar,JD,3,1
+JPY,Yen,¥,0,1
+KES,Kenyan Shilling,KSh,2,1
+KGS,Som,сом,2,1
+KHR,Riel,៛,2,1
+KMF,Comorian Franc,CF,0,1
+KPW,North Korean Won,₩,2,1
+KRW,Won,₩,0,1
+KWD,Kuwaiti Dinar,د.ك,3,1
+KYD,Cayman Islands Dollar,CI$,2,1
+KZT,Tenge,₸,2,1
+LAK,Lao Kip,₭,2,1
+LBP,Lebanese Pound,ل.ل,2,1
+LKR,Sri Lanka Rupee,Rs,2,1
+LRD,Liberian Dollar,L$,2,1
+LSL,Loti,L,2,1
+LYD,Libyan Dinar,ل.د,3,1
+MAD,Moroccan Dirham,د.م.,2,1
+MDL,Moldovan Leu,L,2,1
+MGA,Malagasy Ariary,Ar,2,1
+MKD,Denar,ден,2,1
+MMK,Kyat,K,2,1
+MNT,Tugrik,₮,2,1
+MOP,Pataca,MOP$,2,1
+MRU,Ouguiya,UM,2,1
+MUR,Mauritius Rupee,Rs,2,1
+MVR,Rufiyaa,Rf,2,1
+MWK,Malawi Kwacha,MK,2,1
+MXN,Mexican Peso,MX$,2,1
+MYR,Malaysian Ringgit,RM,2,1
+MZN,Mozambique Metical,MT,2,1
+NAD,Namibia Dollar,N$,2,1
+NGN,Naira,₦,2,1
+NIO,Cordoba Oro,C$,2,1
+NOK,Norwegian Krone,kr,2,1
+NPR,Nepalese Rupee,Rs,2,1
+NZD,New Zealand Dollar,NZ$,2,1
+OMR,Rial Omani,ر.ع.,3,1
+PAB,Balboa,B/.,2,1
+PEN,Sol,S/,2,1
+PGK,Kina,K,2,1
+PHP,Philippine Peso,₱,2,1
+PKR,Pakistan Rupee,Rs,2,1
+PLN,Zloty,zł,2,1
+PYG,Guarani,₲,0,1
+QAR,Qatari Rial,ر.ق,2,1
+RON,Romanian Leu,lei,2,1
+RSD,Serbian Dinar,din.,2,1
+RUB,Russian Ruble,₽,2,1
+RWF,Rwanda Franc,RF,0,1
+SAR,Saudi Riyal,ر.س,2,1
+SBD,Solomon Islands Dollar,SI$,2,1
+SCR,Seychelles Rupee,Rs,2,1
+SDG,Sudanese Pound,ج.س.,2,1
+SEK,Swedish Krona,kr,2,1
+SGD,Singapore Dollar,S$,2,1
+SHP,Saint Helena Pound,£,2,1
+SLE,Leone,Le,2,1
+SOS,Somali Shilling,Sh,2,1
+SRD,Surinam Dollar,Sr$,2,1
+SSP,South Sudanese Pound,SS£,2,1
+STN,Dobra,Db,2,1
+SVC,El Salvador Colon,₡,2,1
+SYP,Syrian Pound,S£,2,1
+SZL,Lilangeni,E,2,1
+THB,Baht,฿,2,1
+TJS,Somoni,SM,2,1
+TMT,Turkmenistan New Manat,T,2,1
+TND,Tunisian Dinar,د.ت,3,1
+TOP,Pa'anga,T$,2,1
+TRY,Turkish Lira,₺,2,1
+TTD,Trinidad and Tobago Dollar,TT$,2,1
+TWD,New Taiwan Dollar,NT$,2,1
+TZS,Tanzanian Shilling,TSh,2,1
+UAH,Hryvnia,₴,2,1
+UGX,Uganda Shilling,USh,0,1
+USD,US Dollar,$,2,1
+UYU,Peso Uruguayo,$U,2,1
+UZS,Uzbekistan Sum,сўм,2,1
+VES,Bolivar Soberano,Bs.S,2,1
+VND,Dong,₫,0,1
+VUV,Vatu,VT,0,1
+WST,Tala,WS$,2,1
+XAF,CFA Franc BEAC,FCFA,0,1
+XCD,East Caribbean Dollar,EC$,2,1
+XOF,CFA Franc BCEAO,CFA,0,1
+XPF,CFP Franc,F,0,1
+YER,Yemeni Rial,﷼,2,1
+ZAR,Rand,R,2,1
+ZMW,Zambian Kwacha,ZK,2,1
+ZWL,Zimbabwe Dollar,Z$,2,1

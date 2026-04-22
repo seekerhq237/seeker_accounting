@@ -1,0 +1,237 @@
+
+=== PAGE 1 ===
+ 
+CAMEROON TAX SYSTEM 
+The Cameroonian concept of income taxation is the same as in industrialized countries. There 
+are two main income taxation systems, one for individuals and the other for entities. 
+The turnover is also subject to taxation : the turnover tax (Taxe sur le Chiffre d’Affaires), is 
+borne by the final consumer, with a variable rate (general rate : 17%, reduced rate : 8%, ad 
+valorem excise duties : 25%). 
+I. INDIVIDUAL INCOME TAXATION 
+Two questions must be answered regarding foreign individuals: the initial question is the liability 
+and the second is the rate. 
+A) LIABILITY 
+Three criteria determine whether an individual is a Cameroonian tax resident. According to these 
+criteria, one is liable to individual income tax if : 
+ one’s principal income comes from an entity subject to company income taxation in Cameroon 
+ one’s income is deducted from profits made by the employer in Cameroon 
+ one spends more than 183 days per year in Cameroon 
+These rules apply when there is no double taxation treaty otherwise applicable. Cameroon has 
+such treaties with the United States, Canada and France. 
+B) REGULATION 
+1. CLASSIFICATION 
+There are two kinds of individual income taxes: proportional tax (taxe proportionnelle sur les 
+traitements et salaires) and progressive overtax (surtaxe progressive). 
+a) Proportional Tax (taxe proportionnelle sur les traitements et salaires) 
+The proportional tax is based on the total gross sum of paid salaries and awarded material 
+advantages deducted by 20% for professional expenses. 
+These material advantages are evaluated in lump sums. 
+The proportional tax is calculated at a global tax rate of 6.60 %. 
+b) Progressive Overtax (surtaxe progressive) 
+
+=== PAGE 2 ===
+The net taxable income is built on the salaries used as a basis for the proportional tax, deducted 
+by certain expenses. 
+The net taxable income is divided into a certain number of shares, while taking into account the 
+taxpayer’s family. 
+Each share of income is subject to taxation according to a progressive scale ranging from 0 % to 
+60 %. 
+The progressive overtax owed by the taxpayer is equal to the tax produced by the scale and the 
+number of parts. 
+The progressive overtax cannot fall under 3,000 FCFA. 
+2. EMPLOYERS’ OBLIGATIONS 
+Outside the monthly declaration of paid salaries and deductions that come with each pay, the 
+employer must also make an annual declaration of the salaries paid before July 31st with 
+identification of the employees and a supply of information permitting the calculation of 
+deductions. The monthly and annual deductions are made with the help of extracts from the staff 
+information document. 
+3. EMPLOYEES’ OBLIGATIONS 
+The monthly deduction of the proportional tax and the progressive overtax do not release the 
+employees from their obligation to annually declare their income before August 31st. 
+II. COMPANY INCOME TAXATION 
+Company income tax must be paid by the sociétés de capitaux (limited companies) and by 
+sociétés civiles (civil partnerships), either when they have chosen the corporation tax regime or 
+when at least one of their partners is a corporation. 
+Only profits made in Cameroon by way of industrial or commercial activity are subject to 
+taxation. This also applies to foreign companies unless there is a tax treaty between their country 
+and the Cameroon avoiding double taxation. 
+Taxation is established on the basis of profits made during the former fiscal year ending on June 
+30th. 
+There are two main categories of company income taxation : 
+ Proportional tax on income floating capital (PTOFC) – taxe proportionnelle sur les revenus de 
+capitaux mobiliers (TPRCM) 
+ Corporate tax (impôt sur les sociétés) 
+
+=== PAGE 3 ===
+1. Proportional tax on income floating capital (PTOFC) – taxe proportionnelle sur les revenus de 
+capitaux mobiliers (TPRCM) 
+There are four categories of income that are subject to proportional tax on income floating 
+capital : 
+a) income distributed by Cameroonian companies includes : 
+ income-based distributions: all income which has not been reserved or re-incorporated into the 
+company 
+ non income-based distributions: independent sums put at the shareholder’s disposal 
+b) profits made from negotiable interests ; 
+c) profits made from investments ; 
+d) profits made by foreign companies in Cameroon. 
+When these companies do not benefit from a bilateral treaty with the Cameroon, profits are 
+considered as distributed to foreign persons. 
+2. Company Income Tax 
+Company income taxation can be classified into two large categories : 
+a) Company income taxes : the unified UDEAC tax and the internal production tax. 
+The unified UDEAC tax is paid by industrial companies whose activities extend to other 
+UDEAC countries. This tax is paid only once at the last stage of production 
+The internal production tax is paid by industrial companies which are of particular interest to 
+Cameroon’s development 
+b) Specific taxes on certain products, the rates of which are independent of the company’s 
+income. 
+ 
+Tax or 
+mandatory 
+contribution 
+Payments 
+(number) 
+Notes on 
+Payments 
+Time 
+(hours) 
+Statutory 
+tax rate 
+Tax 
+base 
+Total 
+tax 
+rate (% 
+of 
+profit) 
+Notes 
+on TTR 
+
+=== PAGE 4 ===
+Corporate 
+income tax 
+13   174 
+33% on 
+profits or 
+2.2% on 
+turnover 
+whichever 
+is higher 
+taxable 
+profit 
+38.89   
+Social security 
+contributions 
+12   162 13.70% 
+gross 
+salaries 
+15.45   
+National housing 
+contribution 
+0 jointly   1.50% 
+gross 
+salaries 
+1.69   
+National 
+employment 
+fund 
+0 jointly   1% 
+gross 
+salaries 
+1.13   
+Stamp duty on 
+contracts 
+1     XAF 1,000 
+per 
+page 
+0.29   
+Truck tax 
+4     
+XAF 18,750 
+per 
+quarter 
+fixed 
+amount 
+per 
+truck 
+0.22   
+Employee Paid 
+social security 
+contributions 
+0 jointly       0 withheld 
+Fuel tax 
+1       
+included 
+in the 
+price of 
+fuel 
+0 
+small 
+amount 
+Vehicle tax 1     
+XAF 
+100,000 
+  0   
+Value added tax 
+(VAT) 
+12   294 19.25% 
+value 
+added 
+0 
+not 
+included 
+Totals: 44   630     57.7   
+ 
+ 
+ 
+Taxes by type Answer 
+Profit tax (% of profit) 
+38.9 
+
+=== PAGE 5 ===
+Labor tax and contributions (% of profit) 
+18.3 
+Other taxes (% of profit) 
+0.5 
+ 
+  Answer Score 
+Postfiling index (0-100) 48.4 
+VAT refunds   
+Does VAT/GST exist? Yes   
+Frequency of VAT/GST refund submission monthly   
+Does a VAT/GST refund process exist per 
+the case study? No   
+Restrictions on VAT refund process Company must be over 2 years 
+in activity   
+Likelihood of VAT audit N/A   
+ 
+ 
+  
+
+=== PAGE 6 ===
+Time to comply with VAT refund (hours) N/A 0 
+Time to obtain a VAT refund (weeks) N/A 0 
+Corporate income tax audits   
+Does corporate income tax exist? Yes   
+Likelihood of corporate income tax audit Unlikely   
+Time to comply with a corporate income 
+tax audit (hours) 5 93.6 
+Time to complete a corporate income tax 
+audit (weeks) 0 100 
+Administrative appeal process   
+First level administrative appeal authority Head of Regional Taxation 
+Center   
+
+=== PAGE 7 ===
+Is the appeal authority independent? Independent department within 
+tax office   
+Are appeal guidelines accessible to the 
+public? Yes   
+Source of appeal guidelines online/in printed publication/in 
+person at tax office   
+Is there a legal time limit for the appeal 
+authority to issue a decision on the tax 
+appeal? 
+Yes   
+Legal time limit 30 days   
+ 

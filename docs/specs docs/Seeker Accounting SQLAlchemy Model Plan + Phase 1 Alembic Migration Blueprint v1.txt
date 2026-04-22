@@ -1,0 +1,1117 @@
+# Seeker Accounting SQLAlchemy Model Plan + Phase 1 Alembic Migration Blueprint v1
+
+## 1. Purpose
+
+This document translates the locked architecture, corrected first-slice blueprint, and authoritative normalized schema into a concrete implementation plan for:
+
+* SQLAlchemy model boundaries
+* Phase 1 Alembic migration scope
+* exact table ownership by module
+* portable constraints and index strategy
+* what belongs in migration files versus seed services
+* what Codex must and must not implement in the first ORM/migration slice
+
+This is the bridge between database design and actual implementation.
+
+The goal is to make the first ORM and migration pass disciplined, portable, and boring in the best sense: predictable, reviewable, and safe.
+
+## 2. Why Phase 1 must stay conservative
+
+Your locked scope prioritizes foundation and accounting core first: company setup, users and roles, chart of accounts, journals, fiscal periods, tax setup, and auditability before broader transaction modules. The architecture also requires a modular monolith with clean UI/service/repository/model separation, a company-scoped database design, and SQLAlchemy + Alembic from the start with portability beyond SQLite. Therefore the first migration must establish the accounting spine and its required reference/setup tables, not attempt AR/AP, inventory, payroll, or reporting tables too early. fileciteturn11file0 fileciteturn11file2 fileciteturn11file19
+
+A disciplined first migration reduces risk in four ways:
+
+* fewer inter-table dependencies to debug early
+* easier Alembic review and rollback during project setup
+* cleaner ORM boundaries for Codex to implement
+* less temptation to let operational modules bypass accounting truth later
+
+## 3. Phase 1 migration scope to lock
+
+Phase 1 should include only these table families:
+
+### 3.1 Administration foundation
+
+* `users`
+* `roles`
+* `permissions`
+* `role_permissions`
+* `user_roles`
+* `user_company_access`
+
+### 3.2 Company and setup foundation
+
+* `companies`
+* `company_preferences`
+* `company_fiscal_defaults`
+* `currencies`
+* `countries`
+* `document_sequences`
+* `payment_terms`
+* `tax_codes`
+* `tax_code_account_mappings`
+
+### 3.3 Accounting reference foundation
+
+* `account_classes`
+* `account_types`
+* `account_role_mappings`
+
+### 3.4 Accounting core
+
+* `fiscal_years`
+* `fiscal_periods`
+* `accounts`
+* `journal_entries`
+* `journal_entry_lines`
+
+### 3.5 Optional but recommended in Phase 1
+
+* `audit_logs`
+
+Recommendation:
+Include `audit_logs` in Phase 1 if it does not slow us down materially, because auditability is part of the accounting foundation and early administrative workflows already benefit from it. If we want the leanest possible first revision, it can be Phase 1B, but not much later. fileciteturn11file10 fileciteturn11file13
+
+## 4. What is explicitly out of Phase 1
+
+These stay out of the first migration even though they are fully in scope overall:
+
+* customers, suppliers, and party masters
+* sales invoices and customer receipts
+* purchase bills and supplier payments
+* treasury transactions and reconciliation tables
+* items, stock documents, valuation layers
+* fixed asset tables
+* payroll tables
+* import-job tables
+* report cache/output helper tables if any later emerge
+
+Reason:
+Those tables depend on the accounting spine and account-role setup being correct first. This follows your locked implementation order and reduces architectural drift. fileciteturn11file18 fileciteturn11file13
+
+## 5. SQLAlchemy mapping approach to lock
+
+### 5.1 ORM style
+
+Use SQLAlchemy 2.x typed declarative mapping.
+
+Recommendation:
+
+* use `DeclarativeBase`
+* use `Mapped[...]` and `mapped_column(...)`
+* keep all model definitions explicit and readable
+* avoid magical mixin overload early
+
+This is the better professional path because it is:
+
+* modern and clear
+* strongly readable in VS Code
+* easier to refactor safely
+* better for future maintainability
+
+### 5.2 Base class strategy
+
+Create one project base class in `db/base.py`.
+
+Recommended responsibilities:
+
+* define `DeclarativeBase`
+* define common metadata naming convention for Alembic stability
+* avoid stuffing business behavior into the base class
+
+### 5.3 Metadata naming convention
+
+Use a naming convention on SQLAlchemy metadata so Alembic generates consistent, portable constraint names.
+
+Recommended convention keys:
+
+* `ix`
+* `uq`
+* `ck`
+* `fk`
+* `pk`
+
+Example pattern direction:
+
+* `ix_%(table_name)s_%(column_0_name)s`
+* `uq_%(table_name)s_%(column_0_name)s`
+* `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s`
+
+This helps SQLite now and PostgreSQL/Firebird later by keeping constraint naming disciplined.
+
+### 5.4 Common model mixins
+
+Use only a few disciplined mixins early.
+
+Recommended:
+
+* `TimestampMixin` for `created_at`, `updated_at`
+* `UserStampedMixin` for `created_by_user_id`, `updated_by_user_id` where truly needed
+* `ActiveFlagMixin` for `is_active` where that concept is real
+
+Do not overdo inheritance. If a mixin makes a model harder to read, do not use it.
+
+### 5.5 Enum strategy
+
+Do not use database-native enums in Phase 1.
+
+Recommendation:
+
+* store status and code fields as bounded strings using SQLAlchemy `String`
+* validate allowed values in services or model-level helper validation where appropriate
+* optionally add check constraints only where portable and worth the friction
+
+This is the better portable choice across SQLite, PostgreSQL, and Firebird.
+
+## 6. Column type strategy to lock
+
+### 6.1 IDs
+
+Use `Integer` primary keys for Phase 1.
+
+Recommendation:
+
+* `id = mapped_column(Integer, primary_key=True)`
+* do not jump to UUIDs yet
+* keep surrogate integer keys for portability and simplicity
+
+### 6.2 Text fields
+
+Use:
+
+* `String(length)` for bounded codes/names
+* `Text` only for genuinely longer notes or payloads
+
+Be intentional with lengths for clarity and future portability.
+
+### 6.3 Money and quantities
+
+Use `Numeric(18, 2)` for monetary amounts in Phase 1.
+
+Reason:
+
+* portable across engines
+* disciplined precision
+* avoids float errors
+
+If later inventory or payroll needs more scale in certain fields, handle that table by table in later migrations.
+
+### 6.4 Dates and timestamps
+
+Use:
+
+* `Date` for pure business dates
+* `DateTime` for audit timestamps and lifecycle timestamps
+
+Recommendation:
+
+* store datetimes in a consistent app-level convention
+* avoid overcomplicating timezone handling in Phase 1 schema
+* keep timestamps explicit and application-controlled
+
+### 6.5 Booleans
+
+Use `Boolean`, but remember SQLite emulates it.
+
+That is fine as long as we do not rely on backend-specific boolean tricks.
+
+## 7. Model file boundaries to lock
+
+These model files should exist in Phase 1 and map closely to table ownership.
+
+## 7.1 Administration module model files
+
+### `modules/administration/models/user.py`
+
+Owns:
+
+* `User`
+
+Maps to:
+
+* `users`
+
+Key fields:
+
+* `id`
+* `username`
+* `display_name`
+* `email`
+* `password_hash`
+* `is_active`
+* `last_login_at`
+* `created_at`
+* `updated_at`
+
+### `modules/administration/models/role.py`
+
+Owns:
+
+* `Role`
+
+Maps to:
+
+* `roles`
+
+### `modules/administration/models/permission.py`
+
+Owns:
+
+* `Permission`
+
+Maps to:
+
+* `permissions`
+
+### `modules/administration/models/role_permission.py`
+
+Owns:
+
+* `RolePermission`
+
+Maps to:
+
+* `role_permissions`
+
+### `modules/administration/models/user_role.py`
+
+Owns:
+
+* `UserRole`
+
+Maps to:
+
+* `user_roles`
+
+### `modules/administration/models/user_company_access.py`
+
+Owns:
+
+* `UserCompanyAccess`
+
+Maps to:
+
+* `user_company_access`
+
+Important relationship rule:
+`user_company_access.company_id` depends on `companies`, so this model references the company table but stays owned by administration.
+
+## 7.2 Company module model files
+
+### `modules/companies/models/company.py`
+
+Owns:
+
+* `Company`
+
+Maps to:
+
+* `companies`
+
+### `modules/companies/models/company_preference.py`
+
+Owns:
+
+* `CompanyPreference`
+
+Maps to:
+
+* `company_preferences`
+
+### `modules/companies/models/company_fiscal_default.py`
+
+Owns:
+
+* `CompanyFiscalDefault`
+
+Maps to:
+
+* `company_fiscal_defaults`
+
+Important rule:
+Do not collapse these three concepts into one ORM model or one table.
+
+## 7.3 Accounting reference-data model files
+
+### `modules/accounting/reference_data/models/currency.py`
+
+Owns:
+
+* `Currency`
+
+Maps to:
+
+* `currencies`
+
+### `modules/accounting/reference_data/models/country.py`
+
+Owns:
+
+* `Country`
+
+Maps to:
+
+* `countries`
+
+### `modules/accounting/reference_data/models/document_sequence.py`
+
+Owns:
+
+* `DocumentSequence`
+
+Maps to:
+
+* `document_sequences`
+
+### `modules/accounting/reference_data/models/payment_term.py`
+
+Owns:
+
+* `PaymentTerm`
+
+Maps to:
+
+* `payment_terms`
+
+### `modules/accounting/reference_data/models/tax_code.py`
+
+Owns:
+
+* `TaxCode`
+
+Maps to:
+
+* `tax_codes`
+
+### `modules/accounting/reference_data/models/tax_code_account_mapping.py`
+
+Owns:
+
+* `TaxCodeAccountMapping`
+
+Maps to:
+
+* `tax_code_account_mappings`
+
+### `modules/accounting/reference_data/models/account_class.py`
+
+Owns:
+
+* `AccountClass`
+
+Maps to:
+
+* `account_classes`
+
+### `modules/accounting/reference_data/models/account_type.py`
+
+Owns:
+
+* `AccountType`
+
+Maps to:
+
+* `account_types`
+
+### `modules/accounting/reference_data/models/account_role_mapping.py`
+
+Owns:
+
+* `AccountRoleMapping`
+
+Maps to:
+
+* `account_role_mappings`
+
+Important correction to preserve:
+Use these explicit normalized concepts. Do not invent vague replacements like `account_group` or generic `account_mapping` at implementation time.
+
+## 7.4 Periods module model files
+
+### `modules/accounting/periods/models/fiscal_year.py`
+
+Owns:
+
+* `FiscalYear`
+
+Maps to:
+
+* `fiscal_years`
+
+### `modules/accounting/periods/models/fiscal_period.py`
+
+Owns:
+
+* `FiscalPeriod`
+
+Maps to:
+
+* `fiscal_periods`
+
+## 7.5 Chart of accounts module model files
+
+### `modules/accounting/chart_of_accounts/models/account.py`
+
+Owns:
+
+* `Account`
+
+Maps to:
+
+* `accounts`
+
+Important model rule:
+`Account` must point to normalized references through:
+
+* `account_class_id`
+* `account_type_id`
+* `parent_account_id`
+
+Do not reduce those to free-text fields.
+
+## 7.6 Journals module model files
+
+### `modules/accounting/journals/models/journal_entry.py`
+
+Owns:
+
+* `JournalEntry`
+
+Maps to:
+
+* `journal_entries`
+
+### `modules/accounting/journals/models/journal_entry_line.py`
+
+Owns:
+
+* `JournalEntryLine`
+
+Maps to:
+
+* `journal_entry_lines`
+
+## 7.7 Audit model file
+
+### `platform/audit/audit_model.py` or `modules/administration/models/audit_log.py`
+
+Recommendation:
+Place `AuditLog` under `platform/audit/` only if the project convention cleanly allows platform-owned persistence models. Otherwise keep it in `modules/administration/models/` and let the audit service live under platform.
+
+Preferred practical path:
+Keep `AuditLog` in `modules/administration/models/audit_log.py` so all persistent user/security/audit entities stay together.
+
+Maps to:
+
+* `audit_logs`
+
+## 8. Table-by-table ORM design notes
+
+## 8.1 `users`
+
+Key constraints:
+
+* primary key on `id`
+* unique on `username`
+* optional unique on `email` only if you want strict email uniqueness; recommended to postpone if not required yet
+
+Relationships:
+
+* to `UserRole`
+* to `UserCompanyAccess`
+
+## 8.2 `roles`
+
+Key constraints:
+
+* unique on `code`
+
+Relationships:
+
+* to `RolePermission`
+* to `UserRole`
+
+## 8.3 `permissions`
+
+Key constraints:
+
+* unique on `code`
+
+## 8.4 `role_permissions`
+
+Design choice:
+Use a composite primary key on (`role_id`, `permission_id`) rather than a synthetic `id`.
+
+Reason:
+
+* it is a pure join table
+* normalization is clearer
+* duplicate mappings are blocked naturally
+
+Same recommendation applies to `user_roles`.
+
+## 8.5 `user_roles`
+
+Design choice:
+Composite primary key on (`user_id`, `role_id`).
+
+## 8.6 `user_company_access`
+
+Design choice:
+Use a synthetic integer `id` plus a unique constraint on (`user_id`, `company_id`).
+
+Reason:
+This table may grow metadata over time such as grant notes, company-specific access flags, or future workflow fields. The synthetic key gives more flexibility than a composite PK here.
+
+## 8.7 `companies`
+
+Key constraints:
+
+* PK on `id`
+* recommended uniqueness on `legal_name`
+  or a composite uniqueness with country if later needed
+
+Important portability note:
+Keep uniqueness simple in Phase 1 unless the business rule clearly requires a more complex version now.
+
+## 8.8 `company_preferences`
+
+Design choice:
+Use `company_id` as both PK and FK for a strict one-to-one table.
+
+## 8.9 `company_fiscal_defaults`
+
+Design choice:
+Use `company_id` as both PK and FK for a strict one-to-one table.
+
+## 8.10 `currencies`
+
+Design choice:
+Use ISO-like currency `code` as PK.
+
+Reason:
+This is stable reference data and avoids a meaningless surrogate key.
+
+## 8.11 `countries`
+
+Design choice:
+Use country `code` as PK.
+
+## 8.12 `document_sequences`
+
+Key constraints:
+
+* PK on `id`
+* unique on (`company_id`, `document_type_code`)
+
+Important note:
+Do not implement actual number issuance logic in the model. That belongs in the numbering service.
+
+## 8.13 `payment_terms`
+
+Key constraints:
+
+* unique on (`company_id`, `code`)
+* unique on (`company_id`, `name`)
+
+## 8.14 `tax_codes`
+
+Key constraints:
+
+* unique on (`company_id`, `code`, `effective_from`)
+
+Important note:
+Use one model row per effective-dated tax definition. Do not prematurely split this into extra rate tables in Phase 1.
+
+## 8.15 `tax_code_account_mappings`
+
+Key constraints:
+
+* unique on (`company_id`, `tax_code_id`)
+
+Relationship notes:
+This table points to `accounts`, so accounts must exist before final FK creation in the migration order.
+
+## 8.16 `account_classes`
+
+Design choice:
+This can be seeded reference data. Use integer PK plus unique `code`.
+
+Reason:
+Although conceptually stable, using integer IDs for classes/types keeps the account table conventional and easy to join/query consistently.
+
+## 8.17 `account_types`
+
+Same design as `account_classes`.
+
+## 8.18 `accounts`
+
+Key constraints:
+
+* PK on `id`
+* unique on (`company_id`, `account_code`)
+
+Important relationships:
+
+* `company_id` -> `companies.id`
+* `account_class_id` -> `account_classes.id`
+* `account_type_id` -> `account_types.id`
+* `parent_account_id` -> `accounts.id` nullable
+
+Important service-level rules, not DB-level overengineering:
+
+* prevent parent from referencing itself
+* prevent circular hierarchy
+* ensure parent belongs to same company
+
+Do not try to enforce tree-cycle prevention in database tricks in Phase 1.
+
+## 8.19 `account_role_mappings`
+
+Key constraints:
+
+* PK on `id`
+* unique on (`company_id`, `role_code`)
+
+Relationship notes:
+
+* `account_id` -> `accounts.id`
+
+Role codes such as `ar_control`, `ap_control`, `inventory_control`, and `payroll_payable` should remain string-coded business meanings, not a vague generic mapping structure.
+
+## 8.20 `fiscal_years`
+
+Key constraints:
+
+* unique on (`company_id`, `year_code`)
+* unique on (`company_id`, `start_date`, `end_date`)
+
+Status approach:
+Store `status_code` as string.
+
+## 8.21 `fiscal_periods`
+
+Key constraints:
+
+* unique on (`company_id`, `fiscal_year_id`, `period_number`)
+
+Relationships:
+
+* `company_id` -> `companies.id`
+* `fiscal_year_id` -> `fiscal_years.id`
+* `closed_by_user_id` -> `users.id` nullable
+
+## 8.22 `journal_entries`
+
+Key constraints:
+
+* unique on (`company_id`, `entry_number`)
+
+Relationships:
+
+* `company_id` -> `companies.id`
+* `fiscal_period_id` -> `fiscal_periods.id`
+* `posted_by_user_id` -> `users.id` nullable
+* `reversal_of_journal_entry_id` -> `journal_entries.id` nullable
+* `created_by_user_id` -> `users.id` nullable
+* `updated_by_user_id` -> `users.id` nullable
+
+Status approach:
+Store `status_code` as string with values like `draft`, `posted`, `reversed`.
+
+Important business rule:
+Posting validation belongs to services, not the model.
+
+## 8.23 `journal_entry_lines`
+
+Key constraints:
+
+* unique on (`journal_entry_id`, `line_number`)
+
+Relationships:
+
+* `journal_entry_id` -> `journal_entries.id`
+* `account_id` -> `accounts.id`
+* `tax_code_id` -> `tax_codes.id` nullable
+* `currency_code` -> `currencies.code` nullable
+
+Important note:
+Keep `party_type_code` + `party_id` as nullable polymorphic-style fields in the schema plan, but Phase 1 services may barely use them yet. They are there to support future subledger reporting without redesigning the journal line shape later.
+
+## 8.24 `audit_logs`
+
+Key constraints:
+
+* PK on `id`
+
+Relationships:
+
+* `company_id` -> `companies.id` nullable
+* `user_id` -> `users.id` nullable
+
+Payload note:
+Use text columns for `before_payload` and `after_payload` in Phase 1. Do not overcomplicate structured audit storage now.
+
+## 9. Recommended relationship loading discipline
+
+For Phase 1, keep relationship loading conservative.
+
+Recommendation:
+
+* define relationships that are useful and obvious
+* avoid eager-loading everything by default
+* do not let ORM convenience drive service behavior
+
+Examples:
+
+* `Company` may have relationships to preferences and fiscal defaults
+* `Account` may relate to parent and children
+* `JournalEntry` relates to lines
+
+But repositories and services should control query shape explicitly. We are not building a “grab giant object graph and hope” application.
+
+## 10. Alembic migration structure to lock
+
+### 10.1 Revision strategy
+
+Recommendation:
+Create one initial Phase 1 revision only if the table count remains reviewable.
+
+Better professional path:
+Use **two or three tightly scoped early revisions** instead of one giant first migration, even though we still call the whole package “Phase 1”.
+
+Recommended breakdown:
+
+#### Revision A: administration + company + global references
+
+* users
+* roles
+* permissions
+* role_permissions
+* user_roles
+* companies
+* user_company_access
+* company_preferences
+* company_fiscal_defaults
+* currencies
+* countries
+
+#### Revision B: accounting reference/configuration
+
+* document_sequences
+* payment_terms
+* tax_codes
+* account_classes
+* account_types
+* accounts
+* account_role_mappings
+* tax_code_account_mappings
+
+#### Revision C: fiscal periods + journals + audit
+
+* fiscal_years
+* fiscal_periods
+* journal_entries
+* journal_entry_lines
+* audit_logs
+
+This is the best path because it keeps review manageable, respects dependencies, and makes debugging migration failures easier.
+
+### 10.2 Why not one giant revision
+
+A giant initial migration is riskier because:
+
+* harder to inspect carefully
+* easier for Codex to hide poor ordering or odd constraints
+* more painful when you need to reset and correct during early development
+
+Multiple disciplined early revisions are more professional here.
+
+## 11. Migration ordering dependencies
+
+The migration ordering should respect these dependencies:
+
+1. global lookup/admin tables first
+2. companies before company-scoped tables
+3. account classes/types before accounts
+4. accounts before tax/account mappings and journal lines
+5. fiscal periods before journal entries
+6. journal entries before journal entry lines
+
+Important detail:
+`tax_code_account_mappings` depends on both `tax_codes` and `accounts`, so it cannot be created before accounts.
+
+## 12. Constraints and index plan for Phase 1
+
+## 12.1 Primary keys
+
+Use normal primary keys everywhere except pure join tables.
+
+Pure join tables using composite PKs:
+
+* `role_permissions`
+* `user_roles`
+
+## 12.2 Unique constraints
+
+Lock these uniques in Phase 1:
+
+* `users.username`
+* `roles.code`
+* `permissions.code`
+* `user_company_access(user_id, company_id)`
+* `document_sequences(company_id, document_type_code)`
+* `payment_terms(company_id, code)`
+* `payment_terms(company_id, name)`
+* `tax_codes(company_id, code, effective_from)`
+* `accounts(company_id, account_code)`
+* `account_role_mappings(company_id, role_code)`
+* `fiscal_years(company_id, year_code)`
+* `fiscal_years(company_id, start_date, end_date)`
+* `fiscal_periods(company_id, fiscal_year_id, period_number)`
+* `journal_entries(company_id, entry_number)`
+* `journal_entry_lines(journal_entry_id, line_number)`
+
+## 12.3 Non-unique indexes
+
+Recommended early indexes:
+
+* `accounts(company_id)`
+* `accounts(parent_account_id)`
+* `journal_entries(company_id, entry_date)`
+* `journal_entries(company_id, status_code)`
+* `journal_entry_lines(account_id)`
+* `journal_entry_lines(journal_entry_id)`
+* `fiscal_periods(company_id, status_code)`
+* `fiscal_years(company_id, status_code)`
+* `audit_logs(company_id, event_timestamp)` if audit is in Phase 1
+
+Do not index everything. Start with the obvious workload paths.
+
+## 13. Check constraints: what to do and what not to do
+
+Use check constraints sparingly in Phase 1 because SQLite support is fine but behavior and later maintenance can be noisier than service validation for some business rules.
+
+Reasonable checks:
+
+* `next_number >= 1` on `document_sequences`
+* `days_due >= 0` on `payment_terms`
+* `period_number >= 1` on `fiscal_periods`
+* maybe `debit_amount >= 0` and `credit_amount >= 0` on `journal_entry_lines`
+
+Do not try to force all accounting logic into DB checks.
+
+Examples of rules that belong in services instead:
+
+* journal total debits equal total credits
+* posting date belongs to an open period
+* parent account does not create a cycle
+* company scoping consistency across workflow operations
+
+## 14. Cascade and delete behavior strategy
+
+### 14.1 Master data
+
+For Phase 1, prefer restrictive foreign keys rather than cascading deletes on core business masters.
+
+Examples:
+
+* companies should not cascade-delete accounting truth
+* accounts should not cascade-delete journal lines
+* users should not cascade-delete audit history
+
+### 14.2 Join tables
+
+It is acceptable to use cascading deletes on pure join tables when the parent is deleted in a controlled administrative context.
+
+Examples:
+
+* `role_permissions`
+* `user_roles`
+
+### 14.3 One-to-one setup tables
+
+`company_preferences` and `company_fiscal_defaults` may safely cascade from `companies` only if company deletion is even allowed. Since real deletion may be rare or forbidden later, be conservative.
+
+Recommendation:
+Keep deletes restrictive at DB level and let services decide deactivation over deletion.
+
+## 15. What belongs in migrations versus seed services
+
+This distinction is critical.
+
+### 15.1 Belongs in Alembic migrations
+
+Migrations should create:
+
+* tables
+* columns
+* primary keys
+* foreign keys
+* indexes
+* unique constraints
+* static reference inserts only where they are truly global and stable
+
+### 15.2 Belongs in seed services
+
+Seed services should create company-scoped default data such as:
+
+* OHADA starter chart for a new company
+* default company document sequences
+* starter tax codes for a company
+* starter account-role mappings for a company
+* starter roles/permissions assignments for a new installation or company setup workflow where appropriate
+
+Important rule:
+Company-scoped setup belongs in seed services, not hardcoded into migrations.
+
+### 15.3 Global seed/reference data: migration or seed?
+
+Use this rule:
+
+Put in migration if it is:
+
+* global
+* stable
+* unlikely to vary by installation
+* required for Phase 1 tables to make sense
+
+Examples:
+
+* base `currencies` seed rows such as XAF and maybe a few others
+* `countries` base seed rows if we want a limited list or at least Cameroon
+* `account_classes`
+* `account_types`
+* base `permissions`
+* base `roles` only if they are truly system roles we want installed globally
+
+Put in seed service if it is:
+
+* company-scoped
+* template-driven
+* something the user may reasonably re-run or choose during setup
+
+Examples:
+
+* OHADA chart
+* company tax codes
+* company document sequences
+
+## 16. Recommended seed package structure
+
+Recommended files:
+
+```text
+src/
+  seeker_accounting/
+    db/
+      seeds/
+        global_reference_seed.py
+        permission_seed.py
+    modules/
+      companies/
+        services/
+          company_seed_service.py
+      accounting/
+        chart_of_accounts/
+          services/
+            chart_seed_service.py
+        reference_data/
+          services/
+            tax_setup_service.py
+            numbering_setup_service.py
+            account_role_mapping_service.py
+```
+
+This keeps global installation seeds separate from company-scoped operational seeds.
+
+## 17. Exact Phase 1 model implementation checklist
+
+Codex implementation should produce:
+
+### 17.1 Base/database infrastructure
+
+* `db/base.py`
+* `db/metadata.py` if separated cleanly
+* `db/engine.py`
+* `db/session.py`
+* `db/unit_of_work.py`
+* Alembic environment configured against project metadata
+
+### 17.2 ORM models
+
+* all Phase 1 models listed in this document
+* explicit table names matching schema names exactly
+* explicit indexes and unique constraints
+* relationships only where useful and readable
+* no business-rule-heavy model methods
+
+### 17.3 Alembic revisions
+
+* Revision A, B, C as described above
+* each revision readable and reviewable
+* no unrelated tables slipping in
+
+### 17.4 Seed entry points
+
+* global seed entry for base reference data
+* company seed orchestration service entry points only, not full business seeding logic hidden in migrations
+
+## 18. What Codex must not do in this ORM/migration slice
+
+Codex must not:
+
+* invent extra tables not justified by the schema
+* replace normalized entities with vague combined tables
+* use SQLite-only types or hacks as foundational design
+* use database-native enums in a way that harms portability
+* force accounting validation into awkward DB tricks
+* hide seed inserts in model import side effects
+* put business logic into Alembic migration scripts beyond simple stable reference inserts
+* create giant all-models-in-one-file architecture
+* bypass the corrected package structure
+
+## 19. Acceptance criteria for this blueprint
+
+This Phase 1 ORM/migration plan is acceptable when:
+
+* model files map cleanly to the corrected blueprint package structure
+* table names match the authoritative schema vocabulary exactly
+* company-scoped tables consistently include `company_id` where required
+* unique constraints and foreign keys follow the normalized schema
+* seed strategy clearly separates global stable references from company-scoped setup
+* Alembic revisions are split into reviewable chunks
+* no AR/AP, inventory, fixed-asset, or payroll tables sneak into Phase 1
+* the resulting schema is portable and not narrowly optimized for SQLite only
+
+## 20. Access analogy for clarity
+
+In Access terms, this blueprint is the equivalent of deciding before coding:
+
+* which tables are truly foundational and must exist first
+* which lookup/reference data belongs in initial setup
+* which defaults belong in startup/setup routines instead of table design
+* which validation belongs in workflow logic instead of trying to cram everything into table-level constraints
+* how to stop the database from becoming a pile of disconnected forms tables
+
+This is how we turn a clean accounting data design into a maintainable SQLAlchemy/Alembic foundation.
+
+## 21. Recommended next move after approving this blueprint
+
+The next practical step should be one narrow Codex prompt for:
+
+**project database foundation + SQLAlchemy base + Alembic setup + Phase 1 Revision A only**
+
+Do not ask Codex to implement all Phase 1 revisions at once.
+
+The safer path is:
+
+1. database foundation and Alembic environment
+2. Revision A
+3. review
+4. Revision B
+5. review
+6. Revision C
+7. review
+
+That matches your controlled-slice build discipline and will keep architecture drift low. fileciteturn11file18 fileciteturn11file17

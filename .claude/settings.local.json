@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find '/c/Users/User/Desktop/Seeker Accounting' -type f -name *smoke*sales* -o -name *smoke*invoice* -o -name *smoke*receipt*)",
+      "Bash(python -m alembic downgrade 7b8c9d0e1f2a)",
+      "Bash(python -m alembic upgrade head)",
+      "Bash(python -m scripts.smoke_sales_receivables)",
+      "Bash(python -m alembic downgrade base)",
+      "Bash(python -m alembic downgrade 8c9d0e1f2a3b)",
+      "Bash(python -c \":*)",
+      "Bash(python scripts/smoke_inventory_accounting.py)",
+      "Bash(python -m alembic downgrade b2c3d4e5f6a7)",
+      "Bash(python -m alembic downgrade d4e5f6a7b8c9)",
+      "Bash(for module:*)",
+      "Bash(do echo:*)",
+      "Read(//c/Users/User/Desktop/Seeker Accounting/$base/**)",
+      "Bash(echo '=== TREASURY \\(Cash and Bank\\) ===' 'base=c:/Users/User/Desktop/Seeker Accounting/src/seeker_accounting/modules/treasury' __NEW_LINE_415ebf942218db2d__ echo Services: find $base/services -maxdepth 1 -type f -name *.py)",
+      "Bash(.venv/Scripts/python.exe -c \":*)"
+    ]
+  }
+}

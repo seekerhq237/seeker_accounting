@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "seeker-accounting"
+version = "0.1.0"
+description = "Seeker Accounting desktop foundation and shell skeleton."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "alembic>=1.14,<2.0",
+  "bcrypt>=4.0,<6.0",
+  "cryptography>=42.0,<45.0",
+  "openpyxl>=3.1,<4.0",
+  "python-docx>=1.1,<2.0",
+  "PySide6>=6.8,<7.0",
+  "SQLAlchemy>=2.0,<3.0",
+]
+
+[project.scripts]
+seeker-accounting = "seeker_accounting.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+seeker_accounting = [
+  "app/logos/*.png",
+  "resources/chart_templates/*.csv",
+  "resources/chart_templates/*.json",
+  "modules/accounting/reference_data/seeds/*.csv",
+]

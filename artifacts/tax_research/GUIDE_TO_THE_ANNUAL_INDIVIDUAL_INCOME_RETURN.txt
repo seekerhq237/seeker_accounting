@@ -1,0 +1,94 @@
+
+=== PAGE 1 ===
+ 
+1  
+    
+
+
+=== PAGE 2 ===
+ 
+2  
+Veuillez suivre les étapes suivantes afin de déposer votre déclaration annuelle des revenus de l'exercice 2023.  
+I. ACCÉDER À LA PLATEFORME VIA LE SITE WEB 1) Accédez au site web de la DGI Cameroun en tapant l'adresse suivante dans la barre d'adresse de votre navigateur : www.impots.cm 2) Une fois le site entièrement chargé, faites défiler la page vers le bas et localisez le menu « Déclaration annuelle des revenus des particuliers » sur la barre latérale droite, comme le montre l'image ci-dessous.  
+  
+Vous arrivez sur la page de connexion ci-dessous. Choisissez votre cas pour continuer :   
+← Cliquez ici 
+1)  Si vous n’êtes pas encore immatriculé(e) (c’est-à-dire que vous ne disposez pas de NIU), cliquez ici et continuez avec la procédure décrite à la section II. 2)  Si vous avez un NIU, mais vous ne vous rappelez pas de votre NIU, cliquez ici et continuez avec la procédure décrite à la section III. 3)  Si vous connaissez votre NIU, renseignez votre identifiant (NIU) et votre mot de passe ici (si vous vous connectez pour la première fois, le mot de passe par défaut c’est quatre zéros, soit 0000) ; cliquez sur « Connexion » et continuez avec la procédure décrite à la section IV. 4)  Si vous connaissez votre NIU, mais vous avez oubliez votre mot de passe, cliquez sur « Mot de passe oublié ? » et continuez avez la procédure de récupération.  
+
+=== PAGE 3 ===
+ 
+3  
+II. S’IMMATRICULER Pour télédéclarer, le contribuable doit être immatriculé au préalable, disposer d’un Numéro d’Identifiant Unique (NIU) et d’un compte fiscal. La procédure d’immatriculation s’effectue en ligne à travers le portail web de la DGI. Pour y parvenir :  1) Après avoir cliqué sur le bouton « Je ne suis pas encore immatriculé(e) », cochez les cases : « Je suis une personne physique » et « je certifie avoir pris connaissance des dispositions légales ci-dessus » et cliquez sur le bouton « Continuer ».     2) Renseignez le formulaire d’immatriculation (tous les champs marqués par une étoile rouge sont obligatoires), cocher la case « Je certifie exactes les informations saisies », choisissez un mot de passe, confirmez-le et cliquez sur le bouton « Envoyer ». Le système génère votre numéro d’identifiant unique (NIU).  NB. Notez bien le mot de passe choisi, car c’est avec cela que vous allez désormais accéder à votre compte. 3) Vous êtes dans votre compte fiscal et pouvez poursuivre avec votre déclaration suivant la procédure décrite à la section IV. III. RETROUVER SON NIU 
+→ → 
+←    Cliquez ici 
+↑ Choisissez un mot de passe ici et confirmez-le 
+
+=== PAGE 4 ===
+ 
+4  
+ 
+1) Pour retrouver votre NIU, cliquez sur « Retrouver mon NIU », renseignez dans les espaces indiqués qui s’affichent comme ci-dessous, votre nom et votre date de naissance exactement comme sur vos pièces d’identité et cliquez sur « Rechercher ».  
+ 2) Copiez le NIU qui sera affiché et retournez à la page de connexion. Continuez selon le cas 3 avec la section IV.  
+  
+
+
+=== PAGE 5 ===
+ 
+5  
+IV. CONNEXION A VOTRE COMPTE FISCAL 1) Si vous vous connecté pour la première fois, vous arrivez d’abord sur la page ci-dessous, où vous devez renseigner votre phrase de sécurité de minimum 50 caractères (espace compris). Cette phrase vous permet de débloquer votre compte dans le futur en cas d’oubli de votre mot de passe. Cliquez sur « Enregistrer/Save ». NB : Notez cette phrase de sécurité et conservez la bien.  
+ 2) Ensuite, vous arrivez sur votre compte fiscal (profile contribuable). Veuillez cliquer sur « Déclaration des particuliers » dans la barre latérale gauche pour accéder au formulaire de déclaration.  
+    
+Cliquez ici →  
+
+=== PAGE 6 ===
+ 
+6  
+V. OUVRIR LA DÉCLARATION 1) Vérifiez que la bonne année est sélectionnée et cliquez sur « Dec. Particuliers ». Autrement dit, assurez-vous d’avoir bien sélectionné l’année 2024 avant de cliquer sur « Dec. Particuliers ». 
+  2) Vous arrivez sur la page d'aperçu de cette déclaration. Pour ouvrir le formulaire à remplir, cliquez sur la barre grise où il est mentionné « 1 - Déclaration annuelle des particuliers ».  
+   
+←  Choix la langue 
+Cliquez ici pour ouvrir une déclaration que vous avez déjà commencé ou soumis  → 
+←  Sélection de l’année ← Cliquez ici pour initier une nouvelle déclaration  
+← Retourner à la page précédente  
+↑ Une fois la déclaration est complète (vert) le bouton Soumettre s’active. 
+↑ Formulaire de déclaration Date d’échéance  → 
+
+=== PAGE 7 ===
+ 
+7  
+VI. REMPLIR LE FORMULAIRE DE DÉCLARATION D'IMPÔTS La déclaration est divisée en onze catégories de revenus. Veuillez remplir les sections qui vous concernent et laisser les autres lorsqu’elles ne vous concernent pas. Les différentes sections sont les suivantes : I. Impôt sur les Traitements, Salaires, Pensions et Rentes viagères (TS)  II. Impôt sur les Revenus de Capitaux Mobiliers (IRCM)  III. Impôt sur les Revenus fonciers (RF)  IV. Impôt sur les Bénéfices des activités Artisanales, Industrielles et Commerciales (BAIC)  V. Impôt sur les Bénéfices Agricoles (BA)  VI. Impôt sur les Bénéfices des professions Non Commerciales (BNC) VII. Impôt sur les Revenus Non Commerciaux (RNC)  VIII. Impôt sur les revenus perçus de ou obtenus à l’étranger IX. Taxe sur la propriété foncière (TPF) X. Taxe spéciale sur le revenu (TSR) XI. Impôts retenus sur les traitements, salaire, pensions et rentes viagères retenus à la source  Chaque déclaration de catégorie fiscale se com
+pose de deux parties.  § Dans la première partie, vous indiquez les revenus que vous avez perçus et, le cas échéant, vous déduisez les charges éligibles. 
+
+
+=== PAGE 8 ===
+ 
+8  
+ § Dans la deuxième partie, l'impôt dû est déterminé par le système, mais vous avez la possibilité d'indiquer l'impôt que vous avez déjà payé par anticipation ou qui ont déjà fait l’objet de retenue à la source, à travers les acomptes et précomptes ou dans votre DSF (le cas échéant) et ou le montant retenu à la source.    
+
+
+=== PAGE 9 ===
+ 
+9  
+A la fin de la déclaration, vous trouverez un récapitulatif de tous les impôts et taxes à payer, tels qu’ils apparaitront sur votre avis d'imposition. 
+ Pour terminer, vous ou votre représentant désigné devez certifier que toutes les informations fournies dans le formulaire et ses annexes sont complètes et exactes et que vous avez pris connaissance des conséquences juridiques en cas de toute violation.  La déclaration ne peut être soumise si les deux cases ne sont pas cochées.  
+ A la fin de la page, cliquez sur le bouton "Enregistrer et compléter" pour terminer le processus. Vous revenez à l'écran 2 de la section V.    
+
+
+=== PAGE 10 ===
+ 
+10  
+VII. SOUMETTRE LA DÉCLARATION ANNUELLE 1) Vérifiez que la barre est devenue verte. Si elle est encore bleue, cela signifie que vous n’avez pas rempli tous les champs obligatoires. Alors retournez au formulaire en cliquant dessus pour compléter les informations manquantes. 
+ 2) Pour soumettre votre déclaration quand la bande est devenue verte, cliquez sur le bouton « Soumettre » dans la barre latérale gauche qui s'active (devient orange) et confirmez votre choix dans le menu contextuel qui s’ouvre. 
+  NB: Une fois que la déclaration est soumise, vous ne pourrez plus rien changer dans le formulaire.   
+
+
+=== PAGE 11 ===
+ 
+11  
+3) Le statut de votre déclaration passe à "Soumis" et vous pouvez maintenant télécharger votre avis d'imposition et votre accusé de réception. La déclaration peut être également téléchargée sous format PDF. 
+ 4) Téléchargez et imprimez l'avis d'imposition. 
+  
+VIII. PAYER SON AVIS D’IMPOSITION Vous pouvez payer les impôts qui y sont liquidés : ü soit par virement bancaire ; ü soit par télépaiement (OTP via http://www.otp.dgi.cm);   ü soit par téléphone mobile (Orange via #150*3*4# et MTN via *206*1#) ; ü soit par versement en espèces dans les établissements de banques ou des établissements financiers habilités. 
+Avis d’Imposition Avis d’Imposition  → 
+Accusé de réception → 
+Produire une résumé PDF de votre déclaration  → 

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find 'c:\\\\Users\\\\User\\\\Desktop\\\\Seeker Accounting' -path */dto/* -type f)",
+      "Bash(find 'c:\\\\Users\\\\User\\\\Desktop\\\\Seeker Accounting\\\\src' -type f -name *result*)",
+      "Bash(find 'c:\\\\Users\\\\User\\\\Desktop\\\\Seeker Accounting\\\\src' -type f -name *error*)",
+      "Read(//c/Users/User/Desktop/**)",
+      "Bash(find 'c:/Users/User/Desktop/Seeker Accounting/src' -type f -name *seed*)",
+      "Bash(find 'c:/Users/User/Desktop/Seeker Accounting/src' -type f -name *import*)",
+      "Bash(python -c \":*)",
+      "Bash(find 'c:/Users/User/Desktop/Seeker Accounting/src/seeker_accounting/db/migrations/versions' -name *.py -newer 'c:/Users/User/Desktop/Seeker Accounting/src/seeker_accounting/db/migrations/versions/e7f8a9b0c1d2_slice_15_3_project_commitments.py')",
+      "Bash(python -m alembic heads)",
+      "Bash(xargs ls:*)",
+      "Bash(find 'c:/Users/User/Desktop/Seeker Accounting/src' -name *.py -newer 'c:/Users/User/Desktop/Seeker Accounting/src/seeker_accounting/db/migrations/versions/e7f8a9b0c1d2_slice_15_3_project_commitments.py')",
+      "Bash(.venv/Scripts/python.exe -c \":*)"
+    ]
+  }
+}

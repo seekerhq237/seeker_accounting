@@ -1,0 +1,795 @@
+SQLAlchemy Model Plan + Alembic Migration Blueprint
+Slices 14–16
+Projects, Contracts, Job Costing, Budgeting, and Management Accounting v1
+1. Purpose
+
+This blueprint translates the newly locked scope extension into an implementation-safe plan for:
+
+exact SQLAlchemy model ownership
+exact package placement
+migration sequencing
+relationship direction
+cross-module integration points
+service and DTO boundaries
+what Codex may implement first
+what Codex must not invent
+
+This follows the same role as the earlier Phase 1 ORM/migration blueprint: it is the bridge between locked schema direction and safe implementation.
+
+2. Architectural fit to preserve
+
+This new domain is not a sidecar. It must fit the existing Seeker architecture exactly.
+
+That means:
+
+it lives inside the same modular monolith
+it uses the same feature-package discipline
+company scoping remains mandatory
+actual accounting truth still lives in journal_entries and journal_entry_lines
+operational modules keep ownership of their own documents
+reports still read from posted accounting data and approved operational facts
+no UI widget may write these tables directly outside service workflows
+
+So the correct mental model is:
+
+new management-accounting structure over the accounting spine
+not
+a second accounting engine.
+
+3. Revised slice map to lock
+
+The prior build order ends with reporting, refinement, and deployment. This extension changes the downstream order by inserting a full management-accounting domain after payroll, while preserving the dependency logic of the existing plan.
+
+Updated order
+project foundation
+application shell
+company and system settings
+chart of accounts
+fiscal periods and posting controls
+journal engine and ledger
+cash and bank management
+customers, suppliers, and subledgers
+sales and receivables
+purchases and payables
+inventory-linked accounting
+fixed assets
+payroll
+contracts, projects, project structure, and cost-code foundations
+job costing, budgeting, commitments, and source-document integration
+management-accounting reports and dashboards
+users, roles, audit trail, imports/exports, and refinements
+backend portability, packaging, and deployment
+4. ORM conventions inherited from the existing Seeker blueprint
+
+Use the same ORM and migration discipline already locked for Seeker:
+
+SQLAlchemy 2.x typed declarative mapping
+DeclarativeBase
+Mapped[...] and mapped_column(...)
+portable String, Text, Date, DateTime, Boolean, Numeric
+no database-native enums
+integer PKs for now
+conservative mixins only where they help readability
+metadata naming convention for stable Alembic output
+
+This is non-negotiable. The new slices should look and feel like a continuation of the earlier ORM plan, not a different coding style.
+
+5. Package structure to lock
+
+This should fit under the existing feature-package layout already established in the Seeker foundation blueprint.
+
+src/
+  seeker_accounting/
+    modules/
+
+      companies/
+        models/
+          company_project_preference.py
+        repositories/
+          company_project_preference_repository.py
+        services/
+          company_project_preference_service.py
+        dto/
+          company_project_preference_dto.py
+
+      contracts_projects/
+        models/
+          contract.py
+          contract_change_order.py
+          project.py
+          project_job.py
+          project_cost_code.py
+        repositories/
+          contract_repository.py
+          contract_change_order_repository.py
+          project_repository.py
+          project_job_repository.py
+          project_cost_code_repository.py
+        services/
+          contract_service.py
+          contract_lifecycle_service.py
+          contract_change_order_service.py
+          project_service.py
+          project_structure_service.py
+          project_cost_code_service.py
+          project_validation_service.py
+        dto/
+          contract_commands.py
+          contract_dto.py
+          contract_change_order_commands.py
+          contract_change_order_dto.py
+          project_commands.py
+          project_dto.py
+          project_job_commands.py
+          project_job_dto.py
+          project_cost_code_commands.py
+          project_cost_code_dto.py
+        ui/
+          contracts_page.py
+          contract_form_dialog.py
+          contract_change_order_dialog.py
+          projects_page.py
+          project_workspace.py
+          project_form_dialog.py
+          project_jobs_panel.py
+          project_cost_codes_panel.py
+
+      budgeting/
+        models/
+          project_budget_version.py
+          project_budget_line.py
+        repositories/
+          project_budget_version_repository.py
+          project_budget_line_repository.py
+          project_budget_query_repository.py
+        services/
+          project_budget_service.py
+          budget_approval_service.py
+          budget_variance_service.py
+          budget_control_service.py
+        dto/
+          project_budget_commands.py
+          project_budget_dto.py
+          budget_variance_dto.py
+        ui/
+          budget_workspace.py
+          budget_version_dialog.py
+          budget_lines_grid.py
+          budget_variance_page.py
+
+      job_costing/
+        models/
+          project_commitment.py
+          project_commitment_line.py
+        repositories/
+          project_commitment_repository.py
+          project_actuals_query_repository.py
+          project_profitability_query_repository.py
+        services/
+          project_commitment_service.py
+          project_actual_cost_service.py
+          project_profitability_service.py
+          project_dimension_validation_service.py
+        dto/
+          project_commitment_commands.py
+          project_commitment_dto.py
+          project_profitability_dto.py
+          project_actual_cost_dto.py
+        ui/
+          project_commitments_page.py
+          commitment_dialog.py
+          project_actual_cost_page.py
+          project_profitability_page.py
+
+      management_reporting/
+        repositories/
+          project_reporting_repository.py
+          contract_reporting_repository.py
+          budget_reporting_repository.py
+        services/
+          management_dashboard_service.py
+          project_reporting_service.py
+          contract_reporting_service.py
+          budget_reporting_service.py
+        dto/
+          project_dashboard_dto.py
+          contract_summary_dto.py
+          project_profitability_report_dto.py
+          budget_variance_report_dto.py
+        ui/
+          management_dashboard_page.py
+          project_profitability_report_page.py
+          contract_summary_report_page.py
+          budget_variance_report_page.py
+6. Exact model ownership
+6.1 Company setup extension
+modules/companies/models/company_project_preference.py
+
+Owns:
+
+CompanyProjectPreference
+
+Maps to:
+
+company_project_preferences
+
+Reason:
+This is a one-to-one company-default table, so it belongs with company-level preferences and fiscal defaults, not inside the project domain itself. That matches the existing Seeker pattern for company one-to-one setup tables.
+
+6.2 Slice 14 domain models
+modules/contracts_projects/models/contract.py
+
+Owns:
+
+Contract
+
+Maps to:
+
+contracts
+modules/contracts_projects/models/contract_change_order.py
+
+Owns:
+
+ContractChangeOrder
+
+Maps to:
+
+contract_change_orders
+modules/contracts_projects/models/project.py
+
+Owns:
+
+Project
+
+Maps to:
+
+projects
+modules/contracts_projects/models/project_job.py
+
+Owns:
+
+ProjectJob
+
+Maps to:
+
+project_jobs
+modules/contracts_projects/models/project_cost_code.py
+
+Owns:
+
+ProjectCostCode
+
+Maps to:
+
+project_cost_codes
+6.3 Slice 15 budgeting models
+modules/budgeting/models/project_budget_version.py
+
+Owns:
+
+ProjectBudgetVersion
+
+Maps to:
+
+project_budget_versions
+modules/budgeting/models/project_budget_line.py
+
+Owns:
+
+ProjectBudgetLine
+
+Maps to:
+
+project_budget_lines
+6.4 Slice 15 job-costing models
+modules/job_costing/models/project_commitment.py
+
+Owns:
+
+ProjectCommitment
+
+Maps to:
+
+project_commitments
+modules/job_costing/models/project_commitment_line.py
+
+Owns:
+
+ProjectCommitmentLine
+
+Maps to:
+
+project_commitment_lines
+6.5 Payroll extension model
+
+This should extend the existing payroll module rather than being owned by job_costing.
+
+modules/payroll/models/payroll_run_employee_project_allocation.py
+
+Owns:
+
+FQy4HArVdBbZ87AHrbfdhSXRgyE5NUbrh6GaL8enMUeh
+
+Maps to:
+
+payroll_run_employee_project_allocations
+
+Reason:
+The row is a costing allocation bridge attached to a payroll-run employee result. The truth source is still payroll, so the model should stay in the payroll package even though job-costing consumes it later. That preserves clear ownership.
+
+6.6 Existing model files that must be extended, not replaced
+
+These existing operational models should gain nullable project-dimension columns and simple relationships.
+
+Sales
+modules/sales/models/sales_invoice.py
+modules/sales/models/sales_invoice_line.py
+Purchases
+modules/purchases/models/purchase_bill.py
+modules/purchases/models/purchase_bill_line.py
+Treasury
+modules/treasury/models/treasury_transaction.py
+modules/treasury/models/treasury_transaction_line.py
+Inventory
+modules/inventory/models/inventory_document.py
+modules/inventory/models/inventory_document_line.py
+Journals
+modules/accounting/journals/models/journal_entry_line.py
+
+No new “project transaction” truth table should be introduced. That would directly violate the schema discipline already established for Seeker.
+
+7. Relationship direction to lock
+
+This part matters a lot because bad relationships create import tangles and ORM bloat.
+
+7.1 Within the new domain, readable bidirectional relationships are allowed
+
+Recommended:
+
+Contract.change_orders
+Contract.projects
+Project.contract
+Project.jobs
+Project.budget_versions
+Project.commitments
+ProjectJob.project
+ProjectJob.parent
+ProjectJob.children
+ProjectBudgetVersion.project
+ProjectBudgetVersion.lines
+ProjectCommitment.project
+ProjectCommitment.lines
+
+These are domain-local and readable.
+
+7.2 Across existing operational modules, keep it mostly one-way
+
+Recommended:
+
+source document headers and lines may have many-to-one relationships to Contract, Project, ProjectJob, and ProjectCostCode
+do not create giant reverse collections like:
+Project.sales_invoice_lines
+Project.purchase_bill_lines
+Project.inventory_document_lines
+Project.journal_entry_lines
+ProjectCostCode.journal_entry_lines
+
+Reason:
+Those backrefs become noisy, slow to reason about, and tightly couple the domain to every module. Cross-module reporting should come from repositories and query services, not giant ORM collection graphs.
+
+7.3 Cross-module relationship rule
+
+Use ORM relationships where they improve readability for normal workflows.
+Use repository queries for cross-module analysis.
+
+That is the same spirit as the existing Seeker architecture: repositories own data access, services own workflow orchestration, and models should not become business engines.
+
+8. Repository boundaries to lock
+8.1 Contracts and project masters
+
+Repositories should remain narrow and table-family aligned.
+
+Recommended:
+
+ContractRepository
+ContractChangeOrderRepository
+ProjectRepository
+ProjectJobRepository
+ProjectCostCodeRepository
+
+Responsibilities:
+
+CRUD-oriented persistence
+filtered list/query support
+same-company lookup helpers
+uniqueness checks
+hierarchy-safe loading helpers
+8.2 Budgeting repositories
+
+Recommended:
+
+ProjectBudgetVersionRepository
+ProjectBudgetLineRepository
+ProjectBudgetQueryRepository
+
+Responsibilities:
+
+version persistence
+line persistence
+approved-version lookup
+budget totals and structured budget views
+8.3 Job-costing repositories
+
+Recommended:
+
+ProjectCommitmentRepository
+ProjectActualsQueryRepository
+FQy4HArVdBbZ87AHrbfdhSXRgyE5NUbrh6GaL8enMUeh
+
+Responsibilities:
+
+commitment persistence
+actual-cost aggregation from source tables
+profitability data assembly from posted source docs and budgets
+8.4 Reporting repositories
+
+Recommended:
+
+ProjectReportingRepository
+ContractReportingRepository
+BudgetReportingRepository
+
+Responsibilities:
+
+report-shaped queries only
+no workflow mutations
+no business approvals
+no posting
+9. Service boundaries to lock
+9.1 Contracts and projects services
+ContractService
+
+Owns:
+
+create/edit/activate/close contract
+customer compatibility checks
+contract-state transitions
+ContractChangeOrderService
+
+Owns:
+
+create/edit/submit/approve/reject change orders
+approved delta handling
+current contract value derivation support
+ProjectService
+
+Owns:
+
+create/edit/activate/close project
+contract linkage validation
+manager assignment
+project status rules
+ProjectStructureService
+
+Owns:
+
+create/edit/reorder/close jobs
+parent-child validation
+direct-posting eligibility rules for jobs
+ProjectCostCodeService
+
+Owns:
+
+create/edit/deactivate cost codes
+default-account linkage validation
+9.2 Budgeting services
+ProjectBudgetService
+
+Owns:
+
+create budget versions
+clone from prior version
+maintain budget lines
+freeze totals for approved versions
+BudgetApprovalService
+
+Owns:
+
+submit/approve/supersede/cancel budget versions
+BudgetControlService
+
+Owns:
+
+compare budget vs commitments vs actuals
+issue control result objects used by posting workflows
+enforce warn/hard-stop modes
+BudgetVarianceService
+
+Owns:
+
+produce variance views for dashboards and reports
+9.3 Job-costing services
+ProjectCommitmentService
+
+Owns:
+
+create/edit/approve/close commitments
+supplier linkage checks
+commitment totals
+ProjectActualCostService
+
+Owns:
+
+collect actual costs from source modules
+normalize project/job/cost-code cost views
+no posting, only costing analysis
+ProjectProfitabilityService
+
+Owns:
+
+billed revenue vs actual cost vs commitment vs budget summaries
+margin views
+drill-down DTO composition
+FQy4HArVdBbZ87AHrbfdhSXRgyE5NUbrh6GaL8enMUeh
+
+Owns:
+
+reusable validation rules called by sales, purchases, treasury, inventory, payroll, and journals when project dimensions are supplied
+
+This is important because dimension validation is cross-cutting, but it should still live in a service, not inside UI handlers or repository hacks.
+
+10. DTO boundaries to lock
+
+The UI must not receive ORM models directly. That remains consistent with the service-driven structure already established for Seeker.
+
+Use DTO groups like this:
+
+Commands
+
+For mutations:
+
+CreateContractCommand
+UpdateContractCommand
+ApproveChangeOrderCommand
+CreateProjectCommand
+CreateBudgetVersionCommand
+ApproveProjectCommitmentCommand
+Read DTOs
+
+For screens and dialogs:
+
+ContractListItemDto
+ContractDetailDto
+ProjectWorkspaceDto
+ProjectJobTreeDto
+BudgetVersionDto
+ProjectCommitmentDto
+Report DTOs
+
+For slice 16:
+
+ProjectProfitabilityReportDto
+ContractSummaryDto
+BudgetVarianceReportDto
+ManagementDashboardDto
+11. Source-module integration rule to lock
+
+This is one of the most important architectural decisions.
+
+When sales, purchases, treasury, inventory, payroll, and journals gain project fields, those modules do not transfer ownership to the new domain.
+
+They remain the owners of:
+
+invoice workflows
+bill workflows
+treasury workflows
+stock workflows
+payroll workflows
+journal workflows
+
+The new domain adds:
+
+dimensional context
+validation hooks
+analysis and control
+
+This preserves the existing Seeker rule that source-document posting services remain the way operational workflows create accounting impact.
+
+12. Alembic migration blueprint
+
+Follow the same philosophy as the earlier Phase 1 migration plan: reviewable revisions, not giant all-at-once migrations.
+
+12.1 Slice 14 revisions
+Revision 14A
+
+Create:
+
+company_project_preferences
+contracts
+contract_change_orders
+projects
+
+Purpose:
+establish company defaults and top-level domain masters first.
+
+Revision 14B
+
+Create:
+
+project_jobs
+project_cost_codes
+
+Purpose:
+add project structure and reusable cost classification once project masters exist.
+
+12.2 Slice 15 revisions
+Revision 15A
+
+Create:
+
+project_budget_versions
+project_budget_lines
+
+Purpose:
+budgeting layer first, before commitments and before source integration.
+
+Revision 15B
+
+Create:
+
+project_commitments
+project_commitment_lines
+
+Purpose:
+commitment layer next, still independent of source-document extensions.
+
+Revision 15C
+
+Extend existing tables with project dimensions:
+
+sales_invoices
+sales_invoice_lines
+purchase_bills
+purchase_bill_lines
+treasury_transactions
+treasury_transaction_lines
+inventory_documents
+inventory_document_lines
+journal_entry_lines
+
+Purpose:
+make real costing integration possible only after the domain masters exist.
+
+Revision 15D
+
+Create:
+
+payroll_run_employee_project_allocations
+
+Purpose:
+add payroll bridge after payroll itself already exists and after project dimensions are stable.
+
+12.3 Slice 16 revisions
+Default recommendation
+
+No new truth tables in slice 16.
+
+Slice 16 should be primarily:
+
+repositories
+query services
+report DTOs
+UI/report pages
+Optional future-only revision
+
+Create reporting helper tables only if performance later proves it necessary, and only as controlled cache/snapshot artifacts. Do not do that in the first pass.
+
+That stays faithful to the existing Seeker schema rule that summary/cached artifacts may exist later, but must not replace base truth.
+
+13. What belongs in migrations versus services
+13.1 Migrations own
+table creation
+indexes
+foreign keys
+unique constraints
+nullable/non-nullable structure
+simple static reference inserts only if truly stable
+13.2 Services own
+numbering orchestration
+state transitions
+same-company validation
+contract/project compatibility checks
+budget approval rules
+budget-control warnings and stops
+project dimension inheritance from header to line
+project actual-cost derivation logic
+profitability assembly logic
+
+That is the same discipline already locked in Seeker: workflow logic belongs in services, not hidden inside Alembic or UI code.
+
+14. What Codex may implement first
+
+The safest first Codex slice is:
+
+First implementation prompt
+create new model files for:
+company_project_preference.py
+contract.py
+contract_change_order.py
+project.py
+wire them into metadata imports
+add Alembic revision 14A only
+do not touch any existing operational modules yet
+
+Then review.
+
+Second prompt
+implement:
+project_job.py
+project_cost_code.py
+add Alembic revision 14B only
+
+Then review.
+
+Third prompt
+implement budgeting models and repositories
+add revision 15A only
+
+Then review.
+
+Fourth prompt
+implement commitment models and repositories
+add revision 15B only
+
+Then review.
+
+Fifth prompt
+extend source-document models and migrations for revision 15C
+no UI
+no workflow redesign
+
+Then review.
+
+Sixth prompt
+add payroll allocation bridge and revision 15D
+
+Then review.
+
+Seventh prompt
+implement query repositories and report DTOs for slice 16
+no cache tables
+no summary truth tables
+
+This keeps the build controlled and matches your narrow-prompt discipline.
+
+15. What Codex must not do
+
+Codex must not:
+
+invent purchase-order tables in this slice
+invent timesheet tables in this slice
+invent WIP/revenue-recognition tables in this slice
+invent a giant project_transactions table
+add reverse ORM collections everywhere across modules
+redesign sales, purchases, payroll, treasury, inventory, or journals
+put project-profitability logic in widgets
+place business logic in Alembic migrations
+use SQLite-only features as the design basis
+add report cache tables in the first reporting slice
+merge contracts, projects, budgets, and commitments into one vague model family
+
+These prohibitions follow directly from Seeker’s broader architecture discipline and the earlier ORM plan’s “Codex must not invent architecture” rule.
+
+16. Acceptance criteria
+
+This blueprint is acceptable when:
+
+the new models map exactly to the locked schema extension
+company-scoped tables consistently include company_id where required
+cross-module project dimensions are added only where planned
+source modules keep ownership of their workflows
+actual costing is query-derived from posted source documents and approved allocations
+no second accounting truth is introduced
+Alembic revisions are split into reviewable chunks
+slice 16 reporting introduces no base truth tables
+the code structure still reads like Seeker, not like a separate subsystem

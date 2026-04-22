@@ -1,0 +1,2 @@
+"""Shell navigation package."""
+

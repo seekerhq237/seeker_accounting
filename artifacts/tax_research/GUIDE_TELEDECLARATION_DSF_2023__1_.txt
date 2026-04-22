@@ -1,0 +1,486 @@
+
+=== PAGE 1 ===
+DIRECTORATE  GENERAL  OF  TAXATION  
+GUIDE  ON  THE  E-FILING  OF  THE  STATISTIC  AND  TAX  
+ONLINE  DSF  ELECTRONIC  REPORTING  PROCESS
+RETURN  
+GENERAL  DIRECTORATE  OF  TAXES
+MNISTRY  OF  FINANCE  
+MINISTRY  OF  FINANCE
+Taxpayers  of  CSIPLI  and  CSI  EPA /  Liberal
+Professionals  and  Public  Establishments  (STCLP  &  STCPE)  
+CIME  taxpayers /  Medium  Size  Taxpayers  (MTO)
+Large  Taxpayers  (LTO)
+Contribuables  des  CDI /  Small  Size  Taxpayers  (SST)  
+1  
+Machine Translated by Google
+
+=== PAGE 2 ===
+2  
+8-  UPLOADING /  ADD  ATTACHMENTS /  UPLOADING  THE  ANNEXES ........................  6
+9-  OBTAINING  THE  ACKNOWLEDGMENT  OF  RECEIPT ..............................  7
+2-  HOW  TO  ACCESS  THE  ELECTRONIC  DECLARATION  AREA /  GETTING  CONNECTED .........  3
+3-  CONFIGURE  YOUR  ELECTRONIC  REPORTING  AREA /  SETTING  UP  YOUR  PROFILE .......  3
+4-  CONFIGURATION  DE  L’API  (POUR  LES  SYSTÈMES  WEB  BASED) /  HOW  TO  CONFIGURE  THE  API  (FOR  WEB-BASED  
+SYSTEMS) ........................................................................................  4  
+10-  PRINT  YOUR  DSF  IN  PDF  FORMAT /  PRINT  YOUR  STR  AFTER  SUBMISSION ........... 7  
+5-  CHOOSING  A  CURRENCY  AND  EXCHANGE  RATE
+11-  REPORT  YOUR  BALANCES  AND  GENERATE  THE  TAX  NOTICE /  PAYING  THE  TAX  
+BALANCES ...................................................................................................................................  8
+EXCHANGE  RATE ........................................................................................................................  5  
+12-  CODE  FOR  COMPLETING  FORM  R2 /  CODES  FOR  COMPLETING  FORM  R2 ................  9  13-  
+CORRESPONDENCE  TABLE  OF  DOCUMENTS  TO  BE  ATTACHED  TO  THE  DSF  2022 /
+CORRESPONDING  TABLES  FOR  ATTACHMENTS .....................................................................  10  
+6-  SUBMIT  YOUR  DSF  BY  ELECTRONIC  TRANSFER  OF  EXCEL  FILES  (DGI  FORMAT)
+/HOW  TO  SUBMIT  YOUR  DSF  BY  UPLOADING  THE  DGI  EXCEL  FILE .........................................  5  
+Table  of  Contents
+7-  COMPLETING  THE  INFORMATION /  COMPLETING  THE  FORMS ................................................  6
+14-  HOW  TO  ACTIVATE  THE  “SAVE”  BUTTON /  HOW  TO  ACTIVATE  SAVE  BUTTON ...........  11
+1-  THE  DIFFERENT  SUBMISSION  PROCEDURES /  FLIPPING  OPTIONS .............................  3
+Machine Translated by Google
+
+=== PAGE 3 ===
+3  
+Go  to  the  DGI  website  at  (www.impots.cm),  then  click  on  "  
+tele-declaration"  and  enter  your  login  details  (Unique  Identification  
+Number  (NIU)  and  password).  Click  on  "  connection  "  to  validate.
+Go  to  the  DGI  website  at  (www.impots.cm),  then  
+click  on  "Teledeclaration"  then  enter  your  connection  
+parameters  (Taxpayer  Identifier  Number  (TIN)  and  password).  
+Click  "Connexion"  to  validate.  
+There  exist  three  options  
+1-  By  direct  entry  in  the  interface  (not  recommended);  Manually  on  the  interface
+2-  By  uploading  the  Excel  file  (DGI  format)  for  “non-web  based”  accounting  systems;
+The  following  window  opens.  Click  on  the  "  DSF  
+(electronic  declaration)  "  menu  to  continue.
+Click  on  the  “ DSF  (electronic  declaration) ”  link.
+Uploading  the  approved  DGT  Excel  STR  format  for  non-web  based  accounting  systems;  
+3-  CONFIGURE  YOUR  ELECTRONIC  REPORTING  AREA /  SETTING  UP
+3-  By  Application  Programming  Interface  (API)  -  if  you  have  a  web-based  accounting  system.
+YOUR  PROFILE  
+Go  to  settings  to  update  your  location  information.
+Through  the  Application  Programming  Interface  (API)  -  for  web  based  accounting  systems  (after  
+having  updated  your  API  system,  Note  3F  has  been  modified).  
+2-  HOW  TO  ACCESS  THE  ELECTRONIC  DECLARATION /  GETTING  AREA
+1-  THE  DIFFERENT  SUBMISSION  PROCEDURES /  FLIPPING  OPTIONS
+CONNECTED  
+Go  to  settings  to  update  your  location  information.  
+There  are  3  easy  ways  to  submit  your  DSF:
+Machine Translated by Google
+
+=== PAGE 4 ===
+4  
+NB:  If  you  want  to  submit  your  DSF  via  API,  click  on  “ API  
+configuration ”  then  check  the  “API  active”  box  and  set  a  
+password,  then  click  on  “ save ”.
+Follow  the  instructions  to  obtain  an  authentication  token,  then  create,  add  and  submit  all  
+pages  of  a  return  from  your  online  accounting  system.  
+CONFIGURE  THE  API  (FOR  WEB-BASED  SYSTEMS)  
+Carefully  read  the  instructions  and  then  click  on  « API  documentation »  to  obtain  detailed  
+information.  
+Follow  the  instructions  to  obtain  an  authentication  token,  then  create,  add  and  submit  all  
+pages  of  a  return  from  your  online  accounting  system.
+4-  API  CONFIGURATION  (FOR  WEB  BASED  SYSTEMS) /  HOW  TO
+Company  "
+Read  the  instructions  carefully  and  click  on  “ API  documentation ”  for  detailed  instructions.
+Fill  in  the  fields  and  click  "save".  
+Click  on  the  Help  tab  on  the  page  to  view  the  API  requirements  in  the  section  « API  
+Configuration ».  
+Fill  in  the  fields  then  click  on  “ save ”.
+-  Click  on  the  “ help ”  tab  in  the  interface  to  consult  the  API  
+specifications  in  the  “ API  configuration ”  section.
+Download  or  copy  the  API  specifications  of  each  page  of  the  DSF  in  the  body  part  of  the  pages.  
+Click  on  the  "  Company  Profile  "  tab
+-  Authenticate  using  username  and  password  and  get  the  
+temporary  token.
+Log  in  with  your  username  and  password  to  obtain  the  temporary  token.  
+Download  or  copy  the  API  specifications  for  each  DSF  page  into  the  body  of  the  pages.  
+Then,  map  your  database  values  to  the  corresponding  "json"  specifications  (see  Help).
+If  you  wish  to  submit  your  DSF  using  the  API,  click  on  « API  
+Configuration »  then  select  the  check  box  « Activate  API »  
+compose  and  enter  a  new  password  then  click  on  « Save ».  
+Modify  or  create  code  within  your  system  according  to  the  API  specifications.
+Machine Translated by Google
+
+=== PAGE 5 ===
+5  
+ÿ  Get  all  declarations
+Specify  the  currency  and  exchange  rate  if  you  are  paying  your  
+balance  in  foreign  currency  (EURO /  DOLLAR)  then  confirm  by  
+clicking  on  the  “ Save ”  button.
+ÿ  Delete  the  declaration /  Delete  a  declaration
+5-  CHOOSING  THE  CURRENCY  AND  EXCHANGE  RATE /  CHOOSING  A  CURRENCY
+AND  EXCHANGE  RATE  
+Click  on  « New  DSF »;  Depending  on  your  sector  of  operations,  
+choose  the  DSF  form  to  be  completed.  You  can  choose  between  
+DSF  Normal,  DSF  Insurance,  DSF  Banking,  DSF  SMT  and  DSF  
+Petroleum.  
+ÿ  Add  a  declaration
+ÿ  Connexion /  Connect  
+ÿ  Submit  the  declaration /  Submit  report
+Click  on  “ New  DSF ”;  Depending  on  the  sector  in  which  you  operate,  choose  the  DSF  form  to  
+complete.  You  can  choose  between  DSF  Normal,  DSF  Insurance,  
+DSF  Bank,  DSF  SMT  and  DSF  Upstream  Oil.
+Once  this  last  step  is  done  for  all  the  pages  of  the  DSF,  call  the  API.  À  ce  
+stade,  nous  avons  huit  (8)  points  de  terminaison  API  différents  (appels  API) /  At  this  stage,  we  will  have  
+eight  (8)  different  APIs  (API  calls)  
+ÿ  Add /  modify /  delete  a  page /  Add /  modify /  delete  a  page
+EXCEL  FILE  
+Once  this  last  step  is  done  for  all  the  DSF  pages,  call  the  API.
+given  year  
+6-  SUBMIT  YOUR  DSF  BY  ELECTRONIC  PAYMENT  OF  EXCEL  FILES
+(FORMAT  DGI) /HOW  TO  SUBMIT  YOUR  DSF  BY  UPLOADING  THE  DGI  
+Then  map  the  values  in  your  database  to  the  corresponding  json  specifications  (see  Help).  
+year  
+ÿ  Get  specific  declarations  for  a  given  year /  Get  specific  declaration  for  a
+By  default  the  system  uses  XAF  (Central  African  CFA  franc). /  By  default  the  system  uses  XAF  
+(Central  African  CFA  franc).
+ÿ  Get  all  declarations  for  a  given  year
+Specify  the  currency  and  the  exchange  rate  if  you  pay  your  
+balance  in  currency  (EURO /  DOLLAR)  then  confirm  by  clicking  on  the  
+"Save"  button.  
+Machine Translated by Google
+
+=== PAGE 6 ===
+6  
+2-  Fill  in  the  Excel  file  correctly.  Save  and  close  it  then  click  on  the  “ choose  a  file ”  
+button.
+Complete  the  Excel  file  correctly.  Save  the  file  on  your  device  then  on  the  
+declaration  page  click  « choose  a  File»  
+3-  To  upload  this  file,  click  the  “ Upload ”  button.  The  system  will  automatically  fill  
+in  the  forms  for  you.
+Browse  through  each  section  to  confirm  that  the  data  
+is  correct.  To  save  information  click  on  « Save».  
+To  Download  the  DSF  in  the  DGI  
+Excel  Format  DSF-Normal »  click  on  the  additional  
+links  to  download  the  appendices  
+Format  click  on  the  link:  « Download  in  
+Download  the  DSF  DGI  Excel  format  
+provided  on  the  online  declaration  interface,  
+along  with  the  annexes.  Click  on  the  link:  "  
+Download  ".
+7-  COMPLETING  THE  INFORMATION /  COMPLETING  THE  FORMS
+Browse  the  pages  to  check  and  complete  
+any  missing  information.  You  can  save  the  
+information  at  any  time  by  clicking  the  "  
+Save  "  button.
+To  upload  the  file,  click  on  « Upload ».  The  system  will  automatically  fill  the  online  pages  for  you.  
+To  navigate  from  one  page  to  another  click  on  « Previous»  or  « Next»  at  the  bottom  of  the  page.  
+8-  UPLOAD /  ADD  ATTACHMENTS /  UPLOADING  THE  ANNEXES
+To  navigate  from  one  page  to  another,  click  the  "  Previous  "  or  "  Next  "  button  at  the  bottom  of  the  page.
+Machine Translated by Google
+
+=== PAGE 7 ===
+7  
+Click  on  the  “ Produce  PDF ”  button  and  download  the  PDF  file  that  appears  and  then  print  it  for
+4–  Click  on  the  “ Submit ”  button  for  your  DSF  to  be  taken  into  
+account  by  the  system.
+Click  on  the  button  « Submit»  for  the  system  to  process  your  DSF.  
+NB:  See  the  cross-reference  table  of  mandatory  attachments  (at  the  end  of  this  document).
+Click  on  the  “ Acknowledgement  of  Receipt ”  button  to  view  and  print  your  
+acknowledgment  of  receipt.
+Supplier  and  customer  lists  must  be  uploaded  directly  
+through  the  reserved  spaces.
+The  supplier  and  customer  listings  must  be  uploaded  
+directly  through  the  reserved  spaces  
+At  the  bottom  of  some  of  the  online  pages  you  will  see  the  
+button  « Attachment »  which  allows  you  to  upload  attachments.  
+At  the  bottom  of  some  pages  there  is  an  “ attachment ”  
+button  which  allows  you  to  easily  attach  supporting  documents.
+The  button  « Delete »  allows  you  to  delete  all  the  information  and  start  the  process  again.  
+9-  OBTAIN  ACKNOWLEDGMENT  OF  RECEIPT
+10-  PRINT  YOUR  DSF  IN  PDF  FORMAT /  PRINT  YOUR  STR  AFTER
+5–  The  “ Delete ”  button  allows  you  to  delete  the  file  and  start  the  
+procedure  again.
+Click  on  the  button  « Acknowledgement  of  Receipt »  to  view  and  print  your  
+submission  acknowledgement  receipt.  
+SUBMISSION  
+Machine Translated by Google
+
+=== PAGE 8 ===
+TAX  BALANCES  
+11-  DECLARE  YOUR  BALANCES  AND  GENERATE  THE  TAX  NOTICE /  PAYING  THE
+The  company  tax,  Oil  company  tax  and  VAT  are  
+automatically  filled.  Complete  the  remaining  balances  with  
+the  corresponding  amounts  and  select  « Enregistrer  et  compléter »  
+Click  on  the  “ Generate  Tax  Notice ”  button  then  on  “ Tax  Notice ”.
+NB:  IS,  VAT  and  oil  IS  balances  are  
+automatically  filled  in.  Complete  the  missing  balances  if  
+necessary  then  click  on  "  Save  and  complete  "
+Click  on  “ Generate  
+Tax ”  then  “Tax ”.
+If  there  is  a  balance,  click  on  “ Balance  Declaration ”.
+In  case  of  additional  tax  balance,  select  “DSF  balance  declaration”
+Click  on  the  "Produire  PDF"  button  and  download  the  PDF  file  that  appears  and  then  print  to  keep  
+your  DSF  in  hard  copy.  
+keep  your  DSF  in  paper  version.
+the  Notice
+By  selecting  « Avis  d’imposition »  download  and  print  it  out.  
+"  Notice
+8  
+Click  on  “ Tax  Notice ”  to  download  and  print.
+Machine Translated by Google
+
+=== PAGE 9 ===
+this  or  click  
+9  
+Regarding  the  activities  table,  use  the  standard  codes  of  the  National  Institute  of  Statistics,  available  on  the  website  
+(www.statistics-cameroon.org)  or  directly  via  the  link:  Microsoft  Word  -  NACAM_NPC_RÃ©v.1_final_05.02.2013.docx  (ins-
+cameroun.cm)
+For  the  activity  codes,  kindly  use  the  standard  codes  of  the  National  Institute  of  Statistics  detailed  on  their  (www.statistics-
+cameroon.org)  website  link  (http://www.stat.cm/downloads/NOMENCLATURE_CAMEROUNAISE_DES_ACTIVITES_PRODUITS_2013.pdf).  
+To  complete  FORM  R2,  please  use  the  codes  specified  in  the  table  below.  
+To  complete  the  first  table  of  SHEET  R2,  please  use  the  codes  detailed  in  the  table  below.
+NOTE  36:  CODE  TABLE
+CODIFICATION  TABLE  
+on  
+12-  CODE  FOR  COMPLETING  FICHER2 /  CODES  FOR  COMPLETING  FORM
+R2
+09  
+General  Partnership  (SNC) /  Partnership  firms 41  
+3  
+Asian  countries /  Asian  countries
+France  
+Company  
+Countries  
+49  
+Synthetic /  Synthetic
+(2)  Benin  =  01,  Burkina  =  02,  Ivory  Coast  =  03,  Guinea  Bissau  =  04,  Mali  =  05,  Niger  =  06,  Senegal  =  07,  Togo  =  08,  Cameroon  =  09,
+02  
+Association  
+Public  Limited  Company  (SA)  with  public  participation /  Public  Limited
+European  Union  Countries  
+50  
+Legal  form
+08  
+Partnerships  
+Canada  
+2  
+01  
+Group  
+Limited  Liability  Company  (LLC) /  Joint  Stock
+U.S.A  
+Simplified  Joint  Stock  Company  (SAS)
+05  
+Simplified  Real
+Other  African  countries /  Other  African
+(1)  Replace  0  by  1  if  the  entity  benefits  from  priority  approval /  Replace  0  by  1  if  the  entity  is  the  beneficiary  of  a  preferential  regime
+Package /  Presumptive
+1-Legal  form  code  (¹) /  Legal  form  code  (¹)
+Other  countries  of  the  European  Union /  Other
+06  
+Other  legal  form  (specify) /  Other  Legal  forms  (specify)
+04  
+Limited  Liability  Partnership  (SCS)
+99  
+Limited  liability  company
+03  
+Joint  Ventures  (JV)
+Real  normal /  Actual
+00  
+OHADA  Country  CODE  (²) /  OHADA  Country  (²)  CODE
+Other  American  countries /  Other  countries  
+from  the  Americas
+2-Code  régime  fiscal /  Assessment  System  Code  
+4  
+Other  countries /  Other  countries
+3-code  pays  du  siège  social /  head  office  country  
+code  
+23  
+Company  
+40  
+21  
+Economic  Interest  Group  (GIE) /  Economic  Interest
+1  
+07  
+Congo=10,  Gabon=11,  Central  African  Republic=12,  Chad=13,  Comoros=14,  Equatorial  Guinea=16,  Congo  DRC=17
+Liability  Company  
+39  
+Machine Translated by Google
+
+=== PAGE 10 ===
+Annual  declaration  of  purchases  by  
+supplier /  The  annual  declaration  of  
+purchases  by  supplier
+Sheet  2
+11  Etat  des  stocks /  Inventory  
+14B,  
+most  
+cash  
+based  str
+Sheet  3
+Extract  
+balance  
+sheet  provided
+8  
+13  
+INSURANCE  
+°  
+Follow-up  statement  of  
+outstanding  receivables
+BE  ATTACHED  
+Auxiliary  customer  balance  in  format
+Appendix
+SHEET  R2  SHEET  R2
+4B  et
+Note  24  
+1  
+3  
+T4
+10  
+Sheet  1
+8Bis
+Annual  declaration  of  sums  paid  to  
+third  parties
+SHEET  R2  SHEET  R2
+Note  1  
+SMT/Mi
+14A,  
+R3  SHEET  R3  SHEET  ID2
+N  
+T4
+Amount  paid
+Note  3  
+14B  and
+Note  2  Note  7  
+ur  
+Amortisation  table  
+Note  24  
+Monthly  bank  statement  per  bank  
+and  monthly  cash  statement  per  cashier
+Annex  1
+COMPULSORY  DOCUMENTS  TO  
+Attestation  de  visa /  Visa  attestation  from  
+the  certifying  accountant  
+5  
+Table  2Bis
+9  
+Note  5  
+,  
+Painting
+14  
+ID1
+Table  of  
+amounts  paid,
+Certificate  of  dematerialization  of  
+securities
+Painting
+7  
+DSF  
+10  
+12  
+ASSURANCE /  
+Note  17  
+Note  17  
+Depreciation  table /
+2  
+Statement  of  receivables  and  payables  not  
+due  before  31  December
+Note  6  
+16B,  
+Sheet  2
+ANNEX  TO  THE  DSF /
+14C,  
+4  
+MANDATORY  ELEMENTS  A
+6  
+Subsidiary  account  balance  for  
+suppliers  in  Excel  format
+14A  
+STR  
+Sheet  R1  Sheet  R1  Sheet  R1
+Note  4  
+Declaration  of  tax  expenditures /  Tax  
+expenditure  documentation  
+Declaration  of  transfer  pricing  according  to  
+the  attached  model. /  Transfer  pricing  
+documentation
+Note  7  
+Note  3C  Note  3C  
+14C  
+Excel /  Subsidiary  account  balance  for  
+customers  
+7,  ID1
+ID2  
+DSF  
+16  B  
+Note  17  
+Note  17  
+Annex  2
+Annexe  5  Annexes  1-6  
+Note  2  
+Equipment,  furniture  and  deposits  
+tracking  table
+13-  CORRESPONDENCE  TABLE  OF  DOCUMENTS  TO  BE  ATTACHED  TO  THE  DSF  2022 /
+CORRESPONDING  TABLES  FOR  ATTACHMENTS  
+DSF  
+TANKER/
+Oil  &  Gas  /  BANK  NORMAL  
+STR  
+NORMAL /  
+DSF  DSF  
+BANK
+STR  STR  
+Machine Translated by Google
+
+=== PAGE 11 ===
+Observe  the  page  and  click  on  the  
+refresh  button  so  that  the  system  loads  your  
+information  as  in  this  image
+so  that  the  system  loads  your  information  as  in  
+this  image  
+Click  on  the  Settings  menu
+Complete  the  missing  information  and
+While  all  the  pages  are  green,  you  receive  the  message  
+(Please  complete  all  fields  in  your  profile  before  you  can  
+complete  your  DSF).  
+Observe  the  page  and  click  on  the  refresh  button  
+While  all  pages  are  green,  you  receive  the  message  
+(Please  fill  in  all  fields  of  your  profile  before  you  can  complete  
+your  DSF).
+14-  HOW  TO  ACTIVATE  THE  “SAVE”  BUTTON
+select  the  municipality  from  the  list  that  appears
+Complete  the  missing  information  and  select  
+the  municipality  from  the  list  that  appears  
+CF1
+Staff  Employee /  EID:  Employee
+Quarter
+T9
+Prepayment  and  deposit  withheld  
+to  be  paid  back
+Table  20
+Quarter
+11  
+C1  Note  
+Follow-up  statement  of  payable  
+Note  4  
+15  
+27A
+C1  Note  27A  
+18  
+accounts  
+T9 CF1  Quater  
+19  Excise  duties
+Information  Document  
+Table  17
+CF1
+Debt  Tracking  Log /
+16  
+Prepayment  and  deposit  withheld  
+to  be  deducted
+C2  
+NOTE25  
+Note  6  
+Painting
+17  
+CF1  Quater  
+DIPE:  Information  Document  on  the
+Painting
+At  the  end  the  save  button  is  automatically  activated  
+At  the  end  
+the  Save  button  is  automatically  activated
+Machine Translated by Google
+
+=== PAGE 12 ===
+12  
+Machine Translated by Google

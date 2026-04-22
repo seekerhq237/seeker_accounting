@@ -1,0 +1,641 @@
+Formal Seeker Scope Extension and Architecture Blueprint
+Projects, Contracts, Job Costing, Budgeting, and Management Accounting
+1. Formal position in the product
+
+This extension adds a new domain family to Seeker:
+
+Projects, Contracts & Job Costing
+with
+Budgeting & Management Accounting as the planning, control, and profitability layer above it.
+
+This is an extension to the existing scope, not a replacement for it. The accounting core, AR, AP, cash/bank, inventory, fixed assets, payroll, reporting, audit, and portability direction all remain valid and continue to anchor the system.
+
+2. Purpose of the extension
+
+The purpose of this extension is to let Seeker do more than statutory and transactional accounting.
+
+It must also support:
+
+contract-level financial control
+project and job cost accumulation
+budget planning and revision control
+actual-versus-budget monitoring
+contract and project profitability analysis
+cost accountability across purchases, payroll, inventory usage, expenses, and billing
+
+This makes Seeker useful not only for bookkeeping and financial statements, but also for internal operational control and management decision-making.
+
+3. Scope statement to lock
+
+Seeker Accounting is extended to include a company-scoped management-accounting domain for contracts, projects, jobs, cost coding, budgeting, commitments, cost accumulation, and profitability analysis, fully integrated with the existing accounting engine. This extension must preserve double-entry integrity, period control, company isolation, service-driven posting, and database portability. Actual financial truth remains in posted journals and posted operational documents; project and management views must reconcile back to that truth rather than replacing it.
+
+4. Product boundaries
+In scope
+
+The extension includes:
+
+contract master
+project master
+job or work-package structure
+project/customer linkage
+optional contract-to-project hierarchy
+project cost codes / cost categories
+budget versions and budget lines
+approved budget versus working budget
+commitments and committed-cost tracking
+actual cost capture from existing operational modules
+project billing context and billing traceability
+project/job profitability reporting
+budget variance analysis
+forecast-oriented management views
+project/contract dashboards
+import of project structures and budgets
+Not in scope for the first pass
+
+The extension does not turn Seeker into a full project-management suite. Therefore, exclude:
+
+Gantt charts
+dependency scheduling
+resource scheduling engines
+tender management
+procurement workflow redesign
+manufacturing/MRP
+advanced earned-value analytics in the first pass
+fully automated long-duration revenue-recognition engines in the first pass
+external project-management integrations
+
+This keeps the module accounting-first and avoids ERP bloat.
+
+5. Core conceptual model
+
+The domain model should be locked like this:
+
+Customer / internal sponsor
+→ Contract
+→ Project
+→ Job / work package / task group
+→ Cost code / budget line / cost classification
+
+This gives us two useful top-down views:
+
+First, the commercial view:
+
+what was agreed
+with whom
+for how much
+over what period
+
+Second, the cost-control view:
+
+where costs are planned
+where costs are committed
+where costs are incurred
+where revenue is billed
+what margin remains
+Recommended meaning of each layer
+
+Contract
+Commercial container. Holds customer, overall contract value, dates, reference numbers, billing basis, status, and change-order control.
+
+Project
+Operational execution container. A contract may have one project or several projects. Internal projects may exist without customer contracts.
+
+Job / Work Package
+Execution breakdown. This is the practical costing target used by users. Jobs are where day-to-day cost attribution becomes meaningful.
+
+Cost Code
+Standardized cost grouping. Examples: materials, direct labor, subcontract, equipment, logistics, permits, overhead recovery, travel.
+
+This structure should be first-class and explicit. We should not replace it with vague tags or a loose generic transaction bucket. That would conflict with the current Seeker direction against vague models and against mixing business concepts in one giant transaction structure.
+
+6. How it fits the existing Seeker architecture
+
+The extension must obey the same architecture rules as the rest of Seeker:
+
+UI remains a surface only
+services own validation, orchestration, and workflow rules
+repositories own persistence and query boundaries
+posting remains a controlled service action
+widgets must not open sessions or mutate tables directly
+company context remains mandatory for company-scoped operations
+
+That means this domain will not be implemented as:
+
+a few extra columns in forms with no service logic
+ad hoc reports that bypass module services
+an isolated mini-engine that invents its own financial truth
+budget totals typed into UI and treated as accounting facts
+7. Accounting position of the extension
+
+This is critical.
+
+7.1 What remains accounting truth
+
+The accounting truth still lives in:
+
+journal_entries
+journal_entry_lines
+
+Posted sales, purchases, treasury, inventory, fixed asset, and payroll actions continue to create accounting impact through posting services. That rule must remain untouched.
+
+7.2 What this extension adds
+
+This extension adds:
+
+operational costing structure
+management-control structure
+budget structure
+commitment tracking
+project profitability views
+analysis dimensions tied to real transactions
+7.3 What it must never do
+
+It must never:
+
+create a second general ledger
+store project balances as base truth independent of posted data
+bypass journals for posted operational impacts
+turn project reporting into a disconnected spreadsheet inside the app
+
+This follows the current schema rule that base truth should not rely on stored running balances and that operational modules must not bypass journals when posted.
+
+8. Formal module family
+
+I recommend we add this as a new domain family made of three coordinated feature modules.
+
+8.1 Contracts & Projects
+
+Responsibilities:
+
+contracts
+projects
+job/work-package structures
+customer linkage
+project lifecycle status
+change-order / variation control
+project billing context
+project master search and navigation
+8.2 Job Costing
+
+Responsibilities:
+
+cost-code structure
+actual cost capture across source modules
+cost attribution validation
+project/job cost rollups
+labor-costing flows
+inventory usage costing against jobs
+expense capture against jobs
+project P&L assembly
+8.3 Budgeting & Control
+
+Responsibilities:
+
+budget versions
+budget approvals
+budget revisions
+commitment recording
+budget-versus-actual
+budget-versus-commitment
+forecast completion views
+management alerts and exceptions
+8.4 Reporting impact
+
+The existing reporting module stays in place, but it grows to include:
+
+contract profitability
+project profitability
+job-cost reports
+budget variance reports
+commitment exposure
+forecast margin views
+drill-down to source transactions
+
+So reporting is expanded, not replaced. That fits the current blueprint, where reporting already sits as a cross-cutting downstream layer over operational modules.
+
+9. Integration effect on existing parts of the system
+
+This is the most important section.
+
+9.1 Company and system setup
+
+Add company-level setup for:
+
+project numbering
+contract numbering
+job numbering
+default budget control settings
+commitment-warning thresholds
+optional default cost-code templates
+
+These should live through explicit setup services, not hidden inside UI handlers, consistent with existing Seeker service-driven initialization and seeding rules.
+
+9.2 Chart of accounts and account-role mappings
+
+We should add new optional account-role mappings for this domain, such as:
+
+contract_revenue_default
+project_wip_asset
+project_billed_not_earned
+project_cost_recovery
+project_budget_variance_reporting
+project_retention_receivable
+contract_liability_deferred_revenue
+
+Not all of these need to be active in the first implementation pass, but the account-role pattern is the correct way to integrate them, because the existing schema already uses role-coded mappings to avoid hardcoding account IDs all over the system.
+
+9.3 Fiscal periods and posting controls
+
+Nothing changes in principle:
+
+project-related postings must still respect fiscal periods
+locked periods must still block posting
+budget revisions may be allowed outside posting workflows, but accounting-impact actions remain period-controlled
+
+This extension must consume period-control services, not invent its own date-control logic. That follows the existing architecture and service model.
+
+9.4 Journal engine and ledger
+
+Manual journals may need optional project/job/cost-code attribution for exceptional adjustments, reallocations, or accruals.
+
+Recommendation:
+
+allow project/job/cost-code references on controlled journal lines
+keep posting validation in services
+do not let the journal UI become a free-for-all coding grid without guardrails
+
+That stays consistent with Seeker’s rule that accounting UI must not create loose business truth and that posting validation belongs in services.
+
+9.5 Customers and sales / receivables
+
+Sales remains the invoicing engine.
+
+The extension should integrate by adding:
+
+optional contract reference on sales invoices
+optional project reference on sales invoices
+optional job or cost-code reference where billing granularity requires it
+project billing status and billed-to-date reporting
+project/customer exposure and collection visibility
+
+Important rule:
+The project module must not replace the sales module. Customer invoices still belong to sales/AR and still post through sales posting services. The extension only adds project awareness and reporting depth. That matches the current separation of customers/AR and sales workflows.
+
+9.6 Suppliers and purchases / payables
+
+Purchases becomes one of the main actual-cost sources for job costing.
+
+Add:
+
+optional project reference on purchase bills
+optional job reference on purchase bill lines
+optional cost-code reference on purchase bill lines
+commitment-to-actual traceability where a committed cost later becomes an actual bill
+supplier spend by project/job report views
+
+Again, purchases/AP keeps ownership of bills and supplier payments. Job costing only consumes and analyzes the costing classification.
+
+9.7 Cash, bank, and petty cash
+
+Treasury transactions and petty-cash expenses may also need optional project/job/cost-code attribution.
+
+Use cases:
+
+direct field expense to a job
+transport expense to a project
+urgent petty-cash material purchase for a work package
+
+These transactions still belong to treasury/cash services; the project domain reads them for cost analysis once posted.
+
+9.8 Inventory-linked accounting
+
+Inventory is one of the highest-value integration points.
+
+Add:
+
+project/job issue of stock
+cost-coded material consumption
+project material usage reporting
+stock issue value flowing into project actual cost
+
+Inventory documents remain the source operational record; project costing consumes the cost impact from inventory movements and their linked accounting effects. That aligns with the current blueprint that inventory is a first-class operational module with accounting integration, not an isolated stock form.
+
+9.9 Fixed assets
+
+Fixed assets should not be redesigned around projects, but they may optionally integrate in two controlled ways:
+
+acquisition assigned to a project when the asset is contract-specific
+depreciation allocation to a project/job where the asset is dedicated or rule-based allocated
+
+Asset posting still remains inside fixed-asset services and depreciation runs. Project costing only receives the attributed cost view.
+
+9.10 Payroll
+
+Payroll is another major integration point.
+
+Add:
+
+labor allocation against project/job
+costing by payroll component where appropriate
+payroll-driven project labor actuals
+labor cost reporting by project/job/cost code
+
+Recommendation:
+Do not redesign payroll around the project module. Instead, add a controlled labor-allocation layer that feeds project costing from payroll outputs. That preserves payroll’s own integrity while making labor visible in management accounting. This is consistent with the existing payroll-first-class-module approach.
+
+9.11 Reporting and dashboards
+
+The reporting module must expand to include:
+
+contract summary
+project summary
+project P&L
+job cost detail
+budget vs actual
+budget vs commitment
+actual vs billed
+customer project profitability
+cost-code variance
+top overruns
+low-margin projects
+contract aging by stage
+unbilled cost exposure
+
+These should remain report services and query models, not UI-side table calculations. That fits the existing reporting philosophy and your current discipline around service-driven reporting.
+
+9.12 Users, roles, permissions, and audit
+
+Add permissions such as:
+
+contracts.view
+contracts.manage
+projects.manage
+jobs.manage
+budgets.edit
+budgets.approve
+commitments.manage
+project_profitability.view
+project_cost_adjustments.post
+
+Audit events should include:
+
+contract created/updated/closed
+project created/updated/closed
+budget submitted/approved/revised
+commitment created/approved/closed
+project-coding override on source document
+project-cost reallocation journal posted
+
+This matches the current audit direction that sensitive workflow actions belong in auditable services, not widgets.
+
+10. Data-model direction to lock
+
+This is the recommended schema direction. It is still high-level enough to remain architecture-safe, but specific enough to prevent drift.
+
+New table families
+
+Add a new schema family after payroll and before operational support expansions:
+
+contracts
+contract_change_orders
+projects
+project_jobs
+project_cost_codes
+project_budget_versions
+project_budget_lines
+project_commitments
+project_commitment_lines
+project_status_history later if promoted
+project_billing_links or equivalent linkage table if needed
+project_budget_alerts later if promoted
+Extensions to existing tables
+
+Expect selective additions to existing operational line tables such as:
+
+project reference
+job reference
+cost-code reference
+contract reference where header-level commercial context matters
+
+Likely impact points:
+
+sales_invoices / sales_invoice_lines
+purchase_bill_lines
+treasury_transaction_lines
+inventory_document_lines
+payroll allocation structures
+possibly journal_entry_lines
+Important design rule
+
+Do not add a giant generic “management transactions” table as a second truth engine.
+
+For v1 of this extension:
+
+actual cost should come from posted operational documents and posted journal structures
+commitment is a separate operational fact
+budgets are planning facts
+reporting joins and aggregates these controlled facts
+
+That stays faithful to the existing schema philosophy against giant mixed transaction tables and against disconnected truth stores.
+
+11. Costing logic to lock
+11.1 Cost sources
+
+Actual project/job cost may come from:
+
+supplier bills
+treasury expenses
+inventory issues
+payroll allocations
+fixed-asset depreciation allocations
+manual project-cost adjustment journals
+11.2 Revenue sources
+
+Project/contract revenue should come from:
+
+posted sales invoices
+approved project-billing links to invoices
+later specialized contract-billing workflows if promoted
+11.3 Commitment sources
+
+Committed cost may come from:
+
+approved internal commitment records
+later purchase-order style workflows if those are promoted
+reservation of budget against expected spend
+11.4 Cost control outputs
+
+The system should be able to produce:
+
+original budget
+current approved budget
+commitment
+actual cost
+billed revenue
+remaining budget
+projected margin
+cost overrun flags
+12. Workflow stance to lock
+12.1 Draft versus approved versus posted
+
+This domain should use controlled workflow states.
+
+Recommended examples:
+
+contract: draft / active / suspended / completed / closed / cancelled
+project: draft / active / on_hold / completed / closed / cancelled
+budget version: draft / submitted / approved / superseded
+commitment: draft / approved / closed / cancelled
+12.2 Important distinction
+
+Not every workflow state here is an accounting posting state.
+
+Budgets and commitments are management-control records.
+Invoices, bills, payroll runs, inventory movements, treasury postings, and journals remain the accounting-impact workflows.
+
+That distinction must stay very clear in the service layer and in the UI.
+
+13. UI and UX direction
+
+This domain should follow the same premium desktop rules as the rest of Seeker:
+
+focused workspaces
+calm dense tables
+clear company context
+visible project context
+strong status chips
+controlled dialogs instead of sprawling overloaded forms
+drill-down from summary to transactions
+no cluttered ERP ugliness
+
+Recommended workspaces:
+
+Contracts page
+Projects page
+Project detail workspace
+Jobs and cost-code structure page
+Budget workspace
+Commitment workspace
+Project profitability dashboard
+Budget variance report page
+
+The shell remains the host; these modules do not get their own parallel shell. That remains aligned with the existing shell and navigation blueprint.
+
+14. Recommended package fit
+
+A clean fit inside the current Seeker module structure would be:
+
+modules/
+  contracts_projects/
+    models/
+      contract.py
+      contract_change_order.py
+      project.py
+      project_job.py
+      project_cost_code.py
+    repositories/
+      contract_repository.py
+      project_repository.py
+      project_job_repository.py
+      project_cost_code_repository.py
+    services/
+      contract_service.py
+      project_service.py
+      project_structure_service.py
+      project_context_service.py
+    dto/
+      contract_commands.py
+      contract_dto.py
+      project_commands.py
+      project_dto.py
+    ui/
+      contracts_page.py
+      contract_form_dialog.py
+      projects_page.py
+      project_workspace.py
+      project_form_dialog.py
+      project_jobs_panel.py
+      project_cost_codes_panel.py
+
+  job_costing/
+    models/
+      project_commitment.py
+      project_commitment_line.py
+    repositories/
+      project_commitment_repository.py
+      project_cost_query_repository.py
+    services/
+      project_costing_service.py
+      project_commitment_service.py
+      project_profitability_service.py
+      project_actuals_service.py
+    dto/
+      project_costing_dto.py
+      project_profitability_dto.py
+      commitment_commands.py
+    ui/
+      commitments_page.py
+      project_cost_view.py
+      profitability_dashboard_page.py
+
+  budgeting/
+    models/
+      project_budget_version.py
+      project_budget_line.py
+    repositories/
+      project_budget_repository.py
+    services/
+      project_budget_service.py
+      budget_control_service.py
+      budget_variance_service.py
+      forecast_service.py
+    dto/
+      budget_commands.py
+      budget_dto.py
+      variance_dto.py
+    ui/
+      budget_workspace.py
+      budget_version_dialog.py
+      budget_line_grid.py
+      variance_page.py
+
+This follows your existing feature-based modular-monolith pattern and keeps the domain scalable.
+
+15. Revised slice order to lock
+
+The best professional path is to keep slices 1 through 13 unchanged, then extend the order like this:
+
+project foundation
+application shell
+company and system settings
+chart of accounts
+fiscal periods and posting controls
+journal engine and ledger
+cash and bank management
+customers, suppliers, and subledgers
+sales and receivables
+purchases and payables
+inventory-linked accounting
+fixed assets
+payroll
+contracts, projects, and job structure
+job costing, commitments, and budgeting control
+management accounting reports and dashboards
+audit, imports/exports, refinement, and operational polish
+backend portability, packaging, and deployment
+
+This preserves the dependency logic of the current plan while inserting the new domain only after the modules it depends on are already in place.
+
+16. Decisions explicitly locked by this extension
+This is a first-class Seeker domain, not a side feature.
+It is accounting-integrated, not accounting-separate.
+General ledger remains the financial truth source.
+Budgets and commitments are management-control facts, not ledger truth.
+Project/job costing must reconcile to posted source transactions.
+Company scoping remains mandatory throughout.
+Service-layer orchestration remains mandatory.
+Existing operational modules keep ownership of their own documents.
+Reporting expands, but reporting does not become a second database of truth.
+We do not introduce vague generic transaction or tagging structures as the foundation.
+We do not redesign Seeker into a project-management suite.
+The current architecture through slice 13 remains valid.

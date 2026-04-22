@@ -1,0 +1,560 @@
+from __future__ import annotations
+
+import logging
+
+from datetime import date
+from decimal import Decimal, InvalidOperation
+
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QDateEdit,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPlainTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.modules.purchases.dto.purchase_order_commands import (
+    ConvertPurchaseOrderCommand,
+    CreatePurchaseOrderCommand,
+    PurchaseOrderLineCommand,
+    UpdatePurchaseOrderCommand,
+)
+from seeker_accounting.modules.purchases.dto.purchase_order_dto import (
+    PurchaseOrderConversionResultDTO,
+    PurchaseOrderDetailDTO,
+)
+from seeker_accounting.modules.purchases.ui.purchase_order_lines_grid import PurchaseOrderLinesGrid
+from seeker_accounting.platform.exceptions import ValidationError
+from seeker_accounting.shared.ui.forms import create_field_block
+from seeker_accounting.shared.ui.searchable_combo_box import SearchableComboBox
+
+_log = logging.getLogger(__name__)
+
+
+class PurchaseOrderDialog(QDialog):
+    """Create or edit a draft purchase order."""
+
+    def __init__(
+        self,
+        service_registry: ServiceRegistry,
+        company_id: int,
+        company_name: str,
+        order_id: int | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._service_registry = service_registry
+        self._company_id = company_id
+        self._order_id = order_id
+        self._saved_order: PurchaseOrderDetailDTO | None = None
+
+        is_edit = order_id is not None
+        self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Purchase Order - {company_name}")
+        self.setModal(True)
+        self.resize(960, 700)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        layout.addWidget(self._build_header_section())
+        layout.addWidget(self._build_lines_section(), 1)
+        layout.addWidget(self._build_totals_panel())
+
+        self._error_label = QLabel(self)
+        self._error_label.setObjectName("FormError")
+        self._error_label.setWordWrap(True)
+        self._error_label.hide()
+        layout.addWidget(self._error_label)
+
+        self._button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel, self
+        )
+        self._button_box.accepted.connect(self._handle_submit)
+        self._button_box.rejected.connect(self.reject)
+        save_button = self._button_box.button(QDialogButtonBox.StandardButton.Save)
+        if save_button is not None:
+            save_button.setText("Create Order" if not is_edit else "Save Changes")
+            save_button.setProperty("variant", "primary")
+        cancel_button = self._button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        if cancel_button is not None:
+            cancel_button.setProperty("variant", "secondary")
+        layout.addWidget(self._button_box)
+
+        self._load_reference_data()
+        if is_edit:
+            self._load_order()
+
+        from seeker_accounting.shared.ui.help_button import install_help_button
+        install_help_button(self, "dialog.purchase_order")
+
+    @property
+    def saved_order(self) -> PurchaseOrderDetailDTO | None:
+        return self._saved_order
+
+    @classmethod
+    def create_order(
+        cls,
+        service_registry: ServiceRegistry,
+        company_id: int,
+        company_name: str,
+        parent: QWidget | None = None,
+    ) -> PurchaseOrderDetailDTO | None:
+        dialog = cls(service_registry, company_id, company_name, parent=parent)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return dialog.saved_order
+        return None
+
+    @classmethod
+    def edit_order(
+        cls,
+        service_registry: ServiceRegistry,
+        company_id: int,
+        company_name: str,
+        order_id: int,
+        parent: QWidget | None = None,
+    ) -> PurchaseOrderDetailDTO | None:
+        dialog = cls(service_registry, company_id, company_name, order_id=order_id, parent=parent)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return dialog.saved_order
+        return None
+
+    # ------------------------------------------------------------------
+    # UI building
+    # ------------------------------------------------------------------
+
+    def _build_header_section(self) -> QWidget:
+        card = QFrame(self)
+        card.setObjectName("PageCard")
+
+        grid = QGridLayout(card)
+        grid.setContentsMargins(14, 10, 14, 10)
+        grid.setSpacing(6)
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(1, 1)
+
+        # Row 0: Supplier | Order Date + Expected Delivery
+        self._supplier_combo = SearchableComboBox(card)
+        grid.addWidget(create_field_block("Supplier", self._supplier_combo), 0, 0)
+
+        dates_row = QWidget(card)
+        dates_layout = QHBoxLayout(dates_row)
+        dates_layout.setContentsMargins(0, 0, 0, 0)
+        dates_layout.setSpacing(10)
+
+        self._order_date_edit = QDateEdit(card)
+        self._order_date_edit.setCalendarPopup(True)
+        self._order_date_edit.setDate(date.today())
+        dates_layout.addWidget(create_field_block("Order Date", self._order_date_edit))
+
+        self._delivery_date_edit = QDateEdit(card)
+        self._delivery_date_edit.setCalendarPopup(True)
+        self._delivery_date_edit.setSpecialValueText("No expected date")
+        self._delivery_date_edit.setMinimumDate(date(2000, 1, 1))
+        self._delivery_date_edit.setDate(date.today())
+        dates_layout.addWidget(create_field_block("Expected Delivery (opt.)", self._delivery_date_edit))
+
+        grid.addWidget(dates_row, 0, 1)
+
+        # Row 1: Currency + Rate | Reference
+        currency_row = QWidget(card)
+        currency_layout = QHBoxLayout(currency_row)
+        currency_layout.setContentsMargins(0, 0, 0, 0)
+        currency_layout.setSpacing(10)
+
+        self._currency_combo = SearchableComboBox(card)
+        currency_layout.addWidget(create_field_block("Currency", self._currency_combo))
+
+        self._exchange_rate_input = QLineEdit(card)
+        self._exchange_rate_input.setPlaceholderText("Base currency")
+        self._exchange_rate_input.setFixedWidth(120)
+        self._exchange_rate_input.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._exchange_rate_input.setEnabled(False)
+        currency_layout.addWidget(create_field_block("Rate", self._exchange_rate_input))
+
+        grid.addWidget(currency_row, 1, 0)
+
+        self._reference_input = QLineEdit(card)
+        self._reference_input.setPlaceholderText("Optional PO reference or RFQ number")
+        grid.addWidget(create_field_block("Reference", self._reference_input), 1, 1)
+
+        # Row 2: Contract | Project
+        self._contract_combo = SearchableComboBox(card)
+        grid.addWidget(create_field_block("Contract", self._contract_combo), 2, 0)
+
+        self._project_combo = SearchableComboBox(card)
+        grid.addWidget(create_field_block("Project", self._project_combo), 2, 1)
+
+        # Row 3: Notes (full width)
+        self._notes_input = QPlainTextEdit(card)
+        self._notes_input.setMinimumHeight(64)
+        self._notes_input.setMaximumHeight(96)
+        self._notes_input.setPlaceholderText("Notes or instructions for supplier")
+        grid.addWidget(create_field_block("Notes", self._notes_input), 3, 0, 1, 2)
+
+        return card
+
+    def _build_lines_section(self) -> QWidget:
+        self._lines_grid = PurchaseOrderLinesGrid(self._service_registry, self._company_id, self)
+        return self._lines_grid
+
+    def _build_totals_panel(self) -> QWidget:
+        panel = QFrame(self)
+        panel.setObjectName("InfoCard")
+
+        outer = QHBoxLayout(panel)
+        outer.setContentsMargins(14, 8, 14, 8)
+        outer.setSpacing(10)
+
+        self._line_count_label = QLabel("0 lines", panel)
+        self._line_count_label.setObjectName("ToolbarMeta")
+        outer.addWidget(self._line_count_label)
+        outer.addStretch(1)
+
+        totals = QGridLayout()
+        totals.setSpacing(6)
+        totals.setColumnMinimumWidth(1, 110)
+
+        lbl_sub = QLabel("Subtotal", panel)
+        lbl_sub.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        totals.addWidget(lbl_sub, 0, 0)
+        self._subtotal_value = QLabel("0.00", panel)
+        self._subtotal_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._subtotal_value.setObjectName("TotalsValue")
+        totals.addWidget(self._subtotal_value, 0, 1)
+
+        lbl_tax = QLabel("Tax", panel)
+        lbl_tax.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        totals.addWidget(lbl_tax, 1, 0)
+        self._tax_value = QLabel("0.00", panel)
+        self._tax_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._tax_value.setObjectName("TotalsValue")
+        totals.addWidget(self._tax_value, 1, 1)
+
+        sep = QFrame(panel)
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setObjectName("TotalsSeparator")
+        totals.addWidget(sep, 2, 0, 1, 2)
+
+        lbl_total = QLabel("Total", panel)
+        lbl_total.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        lbl_total.setObjectName("CardTitle")
+        totals.addWidget(lbl_total, 3, 0)
+        self._total_value = QLabel("0.00", panel)
+        self._total_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._total_value.setObjectName("TotalsGrandTotal")
+        totals.addWidget(self._total_value, 3, 1)
+
+        outer.addLayout(totals)
+        return panel
+
+    # ------------------------------------------------------------------
+    # Data loading
+    # ------------------------------------------------------------------
+
+    def _load_reference_data(self) -> None:
+        try:
+            suppliers = self._service_registry.supplier_service.list_suppliers(
+                self._company_id, active_only=True
+            )
+            self._supplier_combo.set_items(
+                [(f"{s.supplier_code} - {s.display_name}", s.id) for s in suppliers],
+                placeholder="-- Select supplier --",
+                search_texts=[f"{s.supplier_code} {s.display_name}" for s in suppliers],
+            )
+
+            contracts = self._service_registry.contract_service.list_contracts(self._company_id)
+            self._contract_combo.set_items(
+                [(f"{c.contract_number} - {c.contract_title}", c.id) for c in contracts],
+                placeholder="-- No contract --",
+            )
+
+            projects = self._service_registry.project_service.list_projects(self._company_id)
+            self._project_combo.set_items(
+                [(f"{p.project_code} - {p.project_name}", p.id) for p in projects],
+                placeholder="-- No project --",
+            )
+
+            currencies = self._service_registry.reference_data_service.list_active_currencies()
+            self._currency_combo.set_items(
+                [(currency.code, currency.code) for currency in currencies],
+                placeholder="-- Select currency --",
+            )
+
+            base_currency_code = self._base_currency_code()
+            if base_currency_code:
+                self._currency_combo.set_current_value(base_currency_code)
+
+            self._supplier_combo.value_changed.connect(self._on_data_changed)
+            self._contract_combo.value_changed.connect(self._on_data_changed)
+            self._project_combo.value_changed.connect(self._on_data_changed)
+            self._order_date_edit.dateChanged.connect(self._on_data_changed)
+            self._delivery_date_edit.dateChanged.connect(self._on_data_changed)
+            self._currency_combo.value_changed.connect(self._on_currency_changed)
+            self._exchange_rate_input.textChanged.connect(self._on_data_changed)
+            self._reference_input.textChanged.connect(self._on_data_changed)
+            self._notes_input.textChanged.connect(self._on_data_changed)
+            self._lines_grid.lines_changed.connect(self._on_data_changed)
+            self._on_currency_changed(self._currency_combo.current_value())
+        except Exception as exc:
+            self._show_error(f"Failed to load reference data: {exc}")
+
+    def _base_currency_code(self) -> str | None:
+        try:
+            ctx = self._service_registry.active_company_context
+            return ctx.base_currency_code if ctx else None
+        except Exception:
+            return None
+
+    def _load_order(self) -> None:
+        if self._order_id is None:
+            return
+        try:
+            detail = self._service_registry.purchase_order_service.get_order(
+                self._company_id, self._order_id
+            )
+        except Exception:
+            _log.warning("PO form data load error", exc_info=True)
+            return
+
+        self._supplier_combo.set_current_value(detail.supplier_id)
+        self._contract_combo.set_current_value(detail.contract_id)
+        self._project_combo.set_current_value(detail.project_id)
+
+        self._order_date_edit.setDate(detail.order_date)
+        if detail.expected_delivery_date is not None:
+            self._delivery_date_edit.setDate(detail.expected_delivery_date)
+
+        self._currency_combo.set_current_value(detail.currency_code)
+
+        if detail.exchange_rate is not None:
+            self._exchange_rate_input.setText(str(detail.exchange_rate))
+
+        self._reference_input.setText(detail.reference_number or "")
+        self._notes_input.setPlainText(detail.notes or "")
+        self._lines_grid.set_lines(detail.lines)
+
+        self._on_currency_changed(self._currency_combo.current_value())
+        self._update_totals()
+
+    # ------------------------------------------------------------------
+    # Event handlers
+    # ------------------------------------------------------------------
+
+    def _on_data_changed(self, *_args: object) -> None:
+        self._update_totals()
+
+    def _on_currency_changed(self, _value: object) -> None:
+        current_currency = self._currency_combo.current_value()
+        base_currency = self._base_currency_code()
+        is_base_currency = bool(current_currency) and current_currency == base_currency
+
+        if is_base_currency:
+            self._exchange_rate_input.clear()
+            self._exchange_rate_input.setEnabled(False)
+            self._exchange_rate_input.setPlaceholderText("Base currency")
+        else:
+            self._exchange_rate_input.setEnabled(True)
+            self._exchange_rate_input.setPlaceholderText("Required for foreign currency")
+
+        self._update_totals()
+
+    def _update_totals(self) -> None:
+        subtotal, tax_total, total, line_count = self._lines_grid.calculate_totals()
+        self._line_count_label.setText("1 line" if line_count == 1 else f"{line_count} lines")
+        self._subtotal_value.setText(f"{subtotal:,.2f}")
+        self._tax_value.setText(f"{tax_total:,.2f}")
+        self._total_value.setText(f"{total:,.2f}")
+
+    # ------------------------------------------------------------------
+    # Submit
+    # ------------------------------------------------------------------
+
+    def _handle_submit(self) -> None:
+        self._error_label.hide()
+
+        supplier_id = self._supplier_combo.current_value()
+        if not supplier_id:
+            self._show_error("Supplier is required")
+            return
+
+        order_date = self._order_date_edit.date().toPython()
+        delivery_date: date | None = self._delivery_date_edit.date().toPython()
+        if delivery_date == date(2000, 1, 1):
+            delivery_date = None
+
+        currency_code = self._currency_combo.current_value()
+        if not currency_code:
+            self._show_error("Currency is required")
+            return
+
+        exchange_rate: Decimal | None = None
+        if self._exchange_rate_input.text().strip():
+            try:
+                exchange_rate = Decimal(self._exchange_rate_input.text().replace(",", "").strip())
+            except InvalidOperation:
+                self._show_error("Invalid exchange rate")
+                return
+
+        reference_number = self._reference_input.text().strip() or None
+        notes = self._notes_input.toPlainText().strip() or None
+        contract_id = self._contract_combo.current_value()
+        project_id = self._project_combo.current_value()
+
+        line_commands = self._lines_grid.get_line_commands()
+        if not line_commands:
+            self._show_error("At least one order line is required.")
+            return
+
+        try:
+            if self._order_id is None:
+                cmd = CreatePurchaseOrderCommand(
+                    supplier_id=supplier_id,
+                    order_date=order_date,
+                    expected_delivery_date=delivery_date,
+                    currency_code=currency_code,
+                    exchange_rate=exchange_rate,
+                    reference_number=reference_number,
+                    notes=notes,
+                    contract_id=contract_id,
+                    project_id=project_id,
+                    lines=tuple(line_commands),
+                )
+                self._saved_order = self._service_registry.purchase_order_service.create_draft_order(
+                    self._company_id, cmd
+                )
+            else:
+                cmd_update = UpdatePurchaseOrderCommand(
+                    supplier_id=supplier_id,
+                    order_date=order_date,
+                    expected_delivery_date=delivery_date,
+                    currency_code=currency_code,
+                    exchange_rate=exchange_rate,
+                    reference_number=reference_number,
+                    notes=notes,
+                    contract_id=contract_id,
+                    project_id=project_id,
+                    lines=tuple(line_commands),
+                )
+                self._saved_order = self._service_registry.purchase_order_service.update_draft_order(
+                    self._company_id, self._order_id, cmd_update
+                )
+            self.accept()
+        except (ValidationError, Exception) as exc:
+            self._show_error(str(exc))
+
+    def _show_error(self, message: str) -> None:
+        self._error_label.setText(message)
+        self._error_label.show()
+
+
+# ---------------------------------------------------------------------------
+# Conversion dialog
+# ---------------------------------------------------------------------------
+
+
+class ConvertOrderDialog(QDialog):
+    """Collect bill date, due date, and optional overrides for PO → Bill conversion."""
+
+    def __init__(
+        self,
+        order_number: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Convert Order to Bill — {order_number}")
+        self.setModal(True)
+        self.resize(440, 280)
+
+        self._result: ConvertPurchaseOrderCommand | None = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        card = QFrame(self)
+        card.setObjectName("PageCard")
+        grid = QGridLayout(card)
+        grid.setContentsMargins(14, 10, 14, 10)
+        grid.setSpacing(6)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+
+        self._bill_date_edit = QDateEdit(card)
+        self._bill_date_edit.setCalendarPopup(True)
+        self._bill_date_edit.setDate(date.today())
+        grid.addWidget(create_field_block("Bill Date", self._bill_date_edit), 0, 0)
+
+        self._due_date_edit = QDateEdit(card)
+        self._due_date_edit.setCalendarPopup(True)
+        self._due_date_edit.setDate(date.today())
+        grid.addWidget(create_field_block("Due Date", self._due_date_edit), 0, 1)
+
+        self._reference_input = QLineEdit(card)
+        self._reference_input.setPlaceholderText("Optional bill reference (e.g. supplier invoice #)")
+        grid.addWidget(create_field_block("Reference", self._reference_input), 1, 0, 1, 2)
+
+        self._notes_input = QPlainTextEdit(card)
+        self._notes_input.setMinimumHeight(56)
+        self._notes_input.setMaximumHeight(80)
+        self._notes_input.setPlaceholderText("Notes for bill (optional)")
+        grid.addWidget(create_field_block("Notes", self._notes_input), 2, 0, 1, 2)
+
+        layout.addWidget(card)
+
+        self._error_label = QLabel(self)
+        self._error_label.setObjectName("FormError")
+        self._error_label.setWordWrap(True)
+        self._error_label.hide()
+        layout.addWidget(self._error_label)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self
+        )
+        button_box.accepted.connect(self._handle_submit)
+        button_box.rejected.connect(self.reject)
+        ok_button = button_box.button(QDialogButtonBox.StandardButton.Ok)
+        if ok_button is not None:
+            ok_button.setText("Convert to Bill")
+            ok_button.setProperty("variant", "primary")
+        cancel_button = button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        if cancel_button is not None:
+            cancel_button.setProperty("variant", "secondary")
+        layout.addWidget(button_box)
+
+    @property
+    def result_command(self) -> ConvertPurchaseOrderCommand | None:
+        return self._result
+
+    @classmethod
+    def run_conversion(
+        cls,
+        order_number: str,
+        parent: QWidget | None = None,
+    ) -> ConvertPurchaseOrderCommand | None:
+        dialog = cls(order_number, parent=parent)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            return dialog.result_command
+        return None
+
+    def _handle_submit(self) -> None:
+        bill_date = self._bill_date_edit.date().toPython()
+        due_date = self._due_date_edit.date().toPython()
+        reference_number = self._reference_input.text().strip() or None
+        notes = self._notes_input.toPlainText().strip() or None
+
+        self._result = ConvertPurchaseOrderCommand(
+            bill_date=bill_date,
+            due_date=due_date,
+            reference_number=reference_number,
+            notes=notes,
+        )
+        self.accept()

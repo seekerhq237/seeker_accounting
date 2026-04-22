@@ -1,0 +1,1694 @@
+================================================================================
+  SEEKER ACCOUNTING — COMPLETE MODULE INVENTORY
+  Generated: March 28, 2026
+================================================================================
+
+TABLE OF CONTENTS
+─────────────────
+  1.  System Overview
+  2.  Architecture & Infrastructure
+  3.  Companies Module
+  4.  Accounting Module (4 sub-modules)
+  5.  Customers Module
+  6.  Suppliers Module
+  7.  Sales Module
+  8.  Purchases Module
+  9.  Treasury Module
+  10. Inventory Module
+  11. Fixed Assets Module
+  12. Payroll Module
+  13. Contracts & Projects Module
+  14. Job Costing Module
+  15. Budgeting Module
+  16. Reporting Module
+  17. Management Reporting Module
+  18. Administration Module
+  19. Audit Module
+  20. Parties Module
+  21. Sidebar Navigation Map
+  22. Database Migrations
+  23. Summary Statistics
+
+
+================================================================================
+  1. SYSTEM OVERVIEW
+================================================================================
+
+Seeker Accounting is a production-grade desktop accounting application for SMEs,
+built with Python, PySide6 (Qt Widgets), SQLAlchemy, Alembic, and SQLite.
+
+Product direction:
+  - Multi-company support
+  - OHADA-ready accounting foundation (SysCohada chart of accounts)
+  - Full double-entry general ledger
+  - Sales & receivables (invoices, receipts, allocations)
+  - Purchases & payables (bills, payments, allocations)
+  - Cash & bank management with reconciliation
+  - Inventory with FIFO/weighted average costing
+  - Fixed assets with 14 depreciation methods
+  - Comprehensive payroll (Cameroon statutory compliance)
+  - Contracts, projects, job costing, budgeting
+  - Financial reporting (Trial Balance, GL, OHADA & IAS/IFRS statements)
+  - Users, roles, and audit trail
+
+Tech stack:
+  - Python 3.11+
+  - PySide6 / Qt Widgets (desktop UI)
+  - SQLAlchemy ORM (persistence)
+  - Alembic (migrations)
+  - SQLite (default; portable to PostgreSQL)
+
+
+================================================================================
+  2. ARCHITECTURE & INFRASTRUCTURE
+================================================================================
+
+DEPENDENCY FLOW:
+  UI → Service → Repository → Database Models/Session
+
+LAYERING RULES:
+  - UI collects input, displays results, calls services only
+  - Services own validation, orchestration, posting, workflow state
+  - Repositories own persistence and query shape only
+  - Models define persistence structure
+
+─── app/ ──────────────────────────────────────────────────────────────────────
+
+  Bootstrap:
+    - bootstrap_application() → Settings → DB init → Contexts → ServiceRegistry
+    - Creates MainWindow with Sidebar + TopBar + WorkspaceHost
+
+  Shell (MainWindow):
+    - Left sidebar with navigation sections
+    - Compact top context bar (active company, user)
+    - Central workspace area (pages swap on navigation)
+
+  Navigation:
+    - NavigationService (QObject + signals)
+    - 38 nav_ids defined (see Section 21)
+    - Sidebar emits nav_id → WorkspaceHost swaps page
+
+  Context:
+    - AppContext: immutable application data
+    - ActiveCompanyContext: signals on company change
+    - SessionContext: DB session factories
+
+  Dependency Injection:
+    - ServiceRegistry: dataclass holding 100+ service instances
+    - Factory functions organized by module
+    - Single construction at bootstrap time
+
+─── platform/ ─────────────────────────────────────────────────────────────────
+
+  Exceptions (8 types):
+    - ConfigurationError
+    - ValidationError
+    - NotFoundError
+    - ConflictError
+    - PermissionDeniedError
+    - PeriodLockedError
+    - PayrollSetupError
+    - MissingAccountMappingError
+
+  NumberingService:
+    - issue_next_number(company_id, document_type_code) → str
+    - Auto-generates document numbers with prefix/suffix/padding
+    - Validates sequence exists and is active
+    - Company-scoped
+
+  Logging:
+    - Dual output: console + rotating file (1MB, 3 backups)
+
+─── shared/ ───────────────────────────────────────────────────────────────────
+
+  UI Components:
+    - BaseDialog: modal template (520×320, body_layout + button_box)
+    - SearchableComboBox: live-search dropdown with value binding
+    - ThemeManager: global theme controller (light/dark)
+    - TokenManager: typography, spacing, radius, color tokens
+    - Table helpers: compact dense table configuration
+    - Status chips: consistent styling across modules
+
+  Message Boxes:
+    - show_info(parent, title, message)
+    - show_warning(parent, title, message)
+    - show_error(parent, title, message)
+    - show_configuration_error(parent, title, message, action_label) → bool
+
+  Utilities:
+    - text_utils: humanize, truncate, coalesce
+    - money_utils: quantize (2dp), format_currency
+    - date_utils: format_date, format_month, parse_date
+
+─── db/ ───────────────────────────────────────────────────────────────────────
+
+  Engine: SQLite default, portable to PostgreSQL
+  Session: autoflush=False, expire_on_commit=False
+  Base: DeclarativeBase with TimestampMixin, ActiveFlagMixin
+  UnitOfWork: context manager for transaction control
+  Migrations: 27 versioned Alembic migrations (see Section 22)
+
+─── config/ ───────────────────────────────────────────────────────────────────
+
+  AppSettings: dataclass loaded from .env + environment variables
+  Constants: app name, window size, file names, defaults
+  RuntimePaths: data/logs/config/db directories; auto-creates; logo/icon paths
+
+
+================================================================================
+  3. COMPANIES MODULE
+================================================================================
+
+  Package: modules/companies/
+
+  SCOPE:
+    Multi-company support. Create/manage companies with profiles, preferences,
+    fiscal defaults, and project preferences. Select active company for context.
+
+  MODELS (4):
+    ┌──────────────────────────┬──────────────────────────────┐
+    │ Model                    │ Table                        │
+    ├──────────────────────────┼──────────────────────────────┤
+    │ Company                  │ companies                    │
+    │ CompanyPreference        │ company_preferences          │
+    │ CompanyFiscalDefault     │ company_fiscal_defaults      │
+    │ CompanyProjectPreference │ company_project_preferences  │
+    └──────────────────────────┴──────────────────────────────┘
+
+    Company: legal_name, display_name, registration_number, tax_identifier,
+      phone, email, website, address, city, region, country_code (FK),
+      base_currency_code (FK), is_active
+
+    CompanyPreference: date_format, number_format, decimal_places,
+      tax_inclusive_default, allow_negative_stock, default_inventory_cost_method
+
+    CompanyFiscalDefault: fiscal_year_start_month, fiscal_year_start_day,
+      default_posting_grace_days
+
+    CompanyProjectPreference: allow_projects_without_contract,
+      default_budget_control_mode, default_commitment_control_mode,
+      budget_warning_threshold, require_job_on_cost_posting,
+      require_cost_code_on_cost_posting
+
+  SERVICES (3):
+    CompanyService:
+      - list_companies() → list[CompanyListItemDTO]
+      - get_company(company_id)
+      - create_company(command)
+      - update_company(company_id, command)
+      - update_company_preferences(company_id, command)
+      - update_company_fiscal_defaults(company_id, command)
+      - deactivate_company(company_id)
+      - list_available_countries() / list_available_currencies()
+
+    CompanyContextService:
+      - set_active_company(company_id, user_id)
+      - get_active_company()
+      - clear_active_company()
+
+    CompanyProjectPreferenceService:
+      - get_company_project_preferences(company_id)
+      - update_company_project_preferences(company_id, command)
+      - ensure_defaults(company_id)
+
+    CompanySeedService:
+      - initialize_new_company(company_id, seed_built_in_chart, template_code)
+      - seed_built_in_chart(company_id, template_code)
+
+  REPOSITORIES (4):
+    CompanyRepository, CompanyPreferenceRepository,
+    CompanyFiscalDefaultRepository, CompanyProjectPreferenceRepository
+
+  UI (3):
+    CompanyListPage — table of companies; create, edit, select active
+    CompanyFormDialog — create/edit company profile + preferences + fiscal
+    CompanySelectorDialog — choose active company
+
+  DTOs/Commands (11):
+    CompanyListItemDTO, CompanyDetailDTO, CompanyPreferencesDTO,
+    CompanyFiscalDefaultsDTO, ActiveCompanyDTO, ReferenceOptionDTO,
+    CompanyProjectPreferenceDTO + 4 command classes
+
+
+================================================================================
+  4. ACCOUNTING MODULE (4 Sub-Modules)
+================================================================================
+
+  Package: modules/accounting/
+
+  ─── 4A. CHART OF ACCOUNTS ───────────────────────────────────────────────────
+
+  SCOPE:
+    Company-scoped chart of accounts with hierarchical structure. Account
+    classes (1-9 OHADA), account types, parent-child relationships.
+    Chart seeding from OHADA SysCohada templates. Account role mappings.
+
+  MODELS (1):
+    Account (accounts): company_id, account_code, account_name,
+      account_class_id (FK), account_type_id (FK), parent_account_id (self-FK),
+      normal_balance, allow_manual_posting, is_control_account, notes, is_active
+    UC: (company_id, account_code)
+
+  SERVICES (3):
+    ChartOfAccountsService:
+      - list_accounts(company_id, active_only)
+      - get_account(company_id, account_id)
+      - list_account_tree(company_id, active_only)
+      - list_account_lookup_options(company_id, active_only, exclude_account_id)
+      - create_account(company_id, command)
+      - update_account(company_id, account_id, command)
+      - deactivate_account(company_id, account_id)
+
+    ChartTemplateImportService:
+      - Import chart from external template files; preview + batch creation
+
+    ChartSeedService:
+      - seed_built_in_chart(company_id, template_code)
+      - OHADA SysCohada v1 default template
+
+  REPOSITORIES (1):
+    AccountRepository: list_by_company, get_by_id, get_by_code, list_children,
+      add, save, account_code_exists
+
+  UI (3):
+    ChartOfAccountsPage — tree/list view; create, import, role mappings
+    AccountFormDialog — create/edit account
+    ChartImportDialog — template import with preview
+
+  DTOs/Commands (10):
+    AccountLookupDTO, AccountListItemDTO, AccountDetailDTO, AccountTreeNodeDTO,
+    ChartSeedResultDTO, ChartImportPreviewDTO, ChartImportResultDTO,
+    CreateAccountCommand, UpdateAccountCommand, SeedBuiltInChartCommand
+
+  ─── 4B. FISCAL PERIODS ──────────────────────────────────────────────────────
+
+  SCOPE:
+    Fiscal years and periods. Generate monthly/quarterly/custom periods.
+    Period lifecycle: Open → Closed → Locked. Posting date validation.
+
+  MODELS (2):
+    FiscalYear (fiscal_years): company_id, year_code, year_name,
+      start_date, end_date, status_code, is_active
+      UC: (company_id, year_code)
+
+    FiscalPeriod (fiscal_periods): company_id, fiscal_year_id, period_number,
+      period_code, period_name, start_date, end_date, status_code,
+      is_adjustment_period
+      UC: (company_id, fiscal_year_id, period_number)
+
+  SERVICES (2):
+    FiscalCalendarService:
+      - list_fiscal_years(company_id)
+      - get_fiscal_year(company_id, fiscal_year_id)
+      - create_fiscal_year(company_id, command)
+      - update_fiscal_year(company_id, fiscal_year_id, command)
+      - list_fiscal_periods(company_id, fiscal_year_id)
+      - generate_fiscal_periods(company_id, fiscal_year_id, command)
+
+    PeriodControlService:
+      - open_period(company_id, fiscal_period_id, actor_user_id)
+      - close_period(company_id, fiscal_period_id, actor_user_id)
+      - reopen_period(company_id, fiscal_period_id, actor_user_id)
+      - lock_period(company_id, fiscal_period_id, actor_user_id)
+      - validate_posting_date(company_id, posting_date)
+
+  REPOSITORIES (2):
+    FiscalYearRepository, FiscalPeriodRepository
+
+  UI (3):
+    FiscalPeriodsPage — fiscal year list + period grid; status controls
+    FiscalYearDialog — create/edit fiscal year
+    GeneratePeriodsDialog — generate periods (monthly/quarterly/custom)
+
+  DTOs/Commands (8):
+    FiscalYearListItemDTO, FiscalYearDTO, FiscalPeriodListItemDTO,
+    FiscalPeriodDTO, PeriodStatusChangeResultDTO,
+    CreateFiscalYearCommand, UpdateFiscalYearCommand, GenerateFiscalPeriodsCommand
+
+  ─── 4C. JOURNALS ────────────────────────────────────────────────────────────
+
+  SCOPE:
+    Double-entry general ledger. Manual journal entries (draft → posted).
+    Immutable once posted. All posting services create journal entries here.
+
+  MODELS (2):
+    JournalEntry (journal_entries): company_id, fiscal_period_id, entry_number,
+      entry_date, journal_type_code, reference_text, description,
+      source_module_code, source_document_type, source_document_id,
+      status_code (DRAFT/POSTED/REVERSED), posted_at, posted_by_user_id
+      UC: (company_id, entry_number)
+
+    JournalEntryLine (journal_entry_lines): journal_entry_id, line_number,
+      account_id, line_description, debit_amount (18,2), credit_amount (18,2),
+      contract_id, project_id, project_job_id, project_cost_code_id
+      UC: (journal_entry_id, line_number)
+
+  SERVICES (2):
+    JournalService:
+      - list_journal_entries(company_id, status_code)
+      - get_journal_entry(company_id, journal_entry_id)
+      - create_draft_journal(company_id, command)
+      - update_draft_journal(company_id, journal_entry_id, command)
+      - delete_draft_journal(company_id, journal_entry_id)
+
+    JournalPostingService:
+      - post_journal(company_id, journal_entry_id, actor_user_id)
+      - Validates: double-entry balance, period status, account validity
+      - Generates entry_number, marks POSTED, immutable thereafter
+
+  REPOSITORIES (2):
+    JournalEntryRepository, JournalEntryLineRepository
+
+  UI (2):
+    JournalsPage — journal entry list by status; create, edit, view, post
+    JournalEntryDialog — create/edit with line grid (account, debit, credit)
+
+  DTOs/Commands (7):
+    JournalLineDTO, JournalTotalsDTO, JournalEntryListItemDTO,
+    JournalEntryDetailDTO, JournalPostResultDTO,
+    CreateJournalEntryCommand, UpdateJournalEntryCommand
+
+  ─── 4D. REFERENCE DATA ──────────────────────────────────────────────────────
+
+  SCOPE:
+    Global and company-scoped reference data. Tax codes with account mappings.
+    Payment terms. Document numbering sequences. Account role mappings.
+    Seed data for countries, currencies, account classes, account types.
+
+  MODELS (9):
+    Global (not company-scoped):
+      AccountClass (account_classes): code, name, display_order
+      AccountType (account_types): code, name, normal_balance, financial_statement_section
+      Country (countries): code (PK, 2-char), name
+      Currency (currencies): code (PK, 3-char), name, symbol, decimal_places
+
+    Company-scoped:
+      TaxCode (tax_codes): company_id, code, name, tax_type_code,
+        calculation_method_code, rate_percent, is_recoverable, effective dates
+        UC: (company_id, code, effective_from)
+
+      TaxCodeAccountMapping (tax_code_account_mappings): company_id, tax_code_id,
+        sales_account_id, purchase_account_id, tax_liability_account_id,
+        tax_asset_account_id
+        UC: (company_id, tax_code_id)
+
+      PaymentTerm (payment_terms): company_id, code, name, days_due, description
+        UC: (company_id, code)
+
+      DocumentSequence (document_sequences): company_id, document_type_code,
+        prefix, suffix, next_number, padding_width, reset_frequency_code
+        UC: (company_id, document_type_code)
+
+      AccountRoleMapping (account_role_mappings): company_id, role_code, account_id
+        UC: (company_id, role_code)
+
+  SERVICES (4):
+    ReferenceDataService:
+      - list_active_currencies() / list_active_countries()
+      - ensure_global_reference_data_seed()
+      - list_account_classes() / list_account_types()
+      - CRUD for payment terms (list, get, create, update, deactivate)
+
+    TaxSetupService:
+      - CRUD for tax codes (list, get, create, update, deactivate)
+      - Tax code account mappings (list, get, set, clear)
+
+    NumberingSetupService:
+      - CRUD for document sequences (list, get, create, update, deactivate)
+      - preview_document_sequence()
+
+    AccountRoleMappingService:
+      - list_role_options()
+      - list_account_role_mappings(company_id)
+      - get/set/clear account role mapping
+
+  REPOSITORIES (9):
+    TaxCodeRepository, TaxCodeAccountMappingRepository,
+    PaymentTermRepository, DocumentSequenceRepository,
+    AccountRoleMappingRepository, AccountClassRepository,
+    AccountTypeRepository, CountryRepository, CurrencyRepository
+
+  UI (8):
+    TaxCodesPage + TaxCodeDialog + TaxCodeAccountMappingDialog
+    PaymentTermsPage + PaymentTermDialog
+    DocumentSequencesPage + DocumentSequenceDialog
+    AccountRoleMappingDialog
+
+  DTOs/Commands (20+):
+    Reference options, tax codes, payment terms, document sequences,
+    account role mappings — list items, detail, and command classes
+
+
+================================================================================
+  5. CUSTOMERS MODULE
+================================================================================
+
+  Package: modules/customers/
+
+  SCOPE:
+    Customer master data with grouping. Links to payment terms and country.
+    Credit limits. Used by Sales module for invoicing and receipts.
+
+  MODELS (2):
+    Customer (customers): company_id, customer_code, display_name, legal_name,
+      customer_group_id, payment_term_id, tax_identifier, contact info,
+      address, credit_limit_amount, notes, is_active
+      UC: (company_id, customer_code)
+
+    CustomerGroup (customer_groups): company_id, code, name, is_active
+      UC: (company_id, code)
+
+  SERVICES (1):
+    CustomerService:
+      - list_customers / get_customer / create_customer / update_customer / deactivate_customer
+      - list_customer_groups / get_customer_group / create_customer_group /
+        update_customer_group / deactivate_customer_group
+
+  REPOSITORIES (2):
+    CustomerRepository, CustomerGroupRepository
+
+  UI (3):
+    CustomersPage — customer list with group filtering
+    CustomerDialog — create/edit customer
+    CustomerGroupDialog — create/edit customer group
+
+  DTOs/Commands (6):
+    CustomerListItemDTO, CustomerDetailDTO, CustomerGroupListItemDTO,
+    CustomerGroupDTO + 4 command classes
+
+
+================================================================================
+  6. SUPPLIERS MODULE
+================================================================================
+
+  Package: modules/suppliers/
+
+  SCOPE:
+    Supplier master data with grouping. Links to payment terms and country.
+    Used by Purchases module for bills and payments.
+
+  MODELS (2):
+    Supplier (suppliers): company_id, supplier_code, display_name, legal_name,
+      supplier_group_id, payment_term_id, tax_identifier, contact info,
+      address, notes, is_active
+      UC: (company_id, supplier_code)
+
+    SupplierGroup (supplier_groups): company_id, code, name, is_active
+      UC: (company_id, code)
+
+  SERVICES (1):
+    SupplierService:
+      - list_suppliers / get_supplier / create_supplier / update_supplier / deactivate_supplier
+      - list_supplier_groups / get_supplier_group / create_supplier_group /
+        update_supplier_group / deactivate_supplier_group
+
+  REPOSITORIES (2):
+    SupplierRepository, SupplierGroupRepository
+
+  UI (3):
+    SuppliersPage — supplier list with group filtering
+    SupplierDialog — create/edit supplier
+    SupplierGroupDialog — create/edit supplier group
+
+  DTOs/Commands (6):
+    SupplierListItemDTO, SupplierDetailDTO, SupplierGroupListItemDTO,
+    SupplierGroupDTO + 4 command classes
+
+
+================================================================================
+  7. SALES MODULE
+================================================================================
+
+  Package: modules/sales/
+
+  SCOPE:
+    Sales invoices (draft → posted) with multi-line items. Customer receipts
+    with allocation against open invoices. GL posting creates journal entries
+    for revenue, A/R control, and tax. Payment status tracking (open/partial/paid).
+    Project dimension support on header and lines.
+
+  MODELS (4):
+    SalesInvoice (sales_invoices): company_id, invoice_number, customer_id,
+      invoice_date, due_date, currency_code, exchange_rate, status_code,
+      payment_status_code, reference_number, notes, subtotal/tax/total amounts,
+      posted_journal_entry_id, contract_id, project_id
+      UC: (company_id, invoice_number)
+
+    SalesInvoiceLine (sales_invoice_lines): sales_invoice_id, line_number,
+      description, quantity, unit_price, discount_percent/amount,
+      tax_code_id, revenue_account_id, line subtotal/tax/total amounts,
+      contract_id, project_id, project_job_id, project_cost_code_id
+
+    CustomerReceipt (customer_receipts): company_id, receipt_number,
+      customer_id, financial_account_id, receipt_date, currency_code,
+      exchange_rate, amount_received, status_code, posted_journal_entry_id
+      UC: (company_id, receipt_number)
+
+    CustomerReceiptAllocation (customer_receipt_allocations):
+      company_id, customer_receipt_id, sales_invoice_id,
+      allocated_amount, allocation_date
+
+  SERVICES (4):
+    SalesInvoiceService:
+      - list_sales_invoices(company_id, status, payment_status)
+      - get_sales_invoice(company_id, invoice_id)
+      - create_draft_invoice(company_id, command)
+      - update_draft_invoice(company_id, invoice_id, command)
+      - cancel_draft_invoice(company_id, invoice_id)
+      - list_open_invoices_for_customer(company_id, customer_id)
+
+    SalesInvoicePostingService:
+      - post_invoice(company_id, invoice_id, actor_user_id)
+      - Document type: SALES_INVOICE
+      - Creates JE: DR A/R control, CR revenue accounts, CR/DR tax accounts
+
+    CustomerReceiptService:
+      - list_customer_receipts / get / create_draft / update_draft / cancel
+      - list_allocatable_invoices(company_id, customer_id)
+
+    CustomerReceiptPostingService:
+      - post_receipt(company_id, receipt_id, actor_user_id)
+      - Document type: CUSTOMER_RECEIPT
+      - Creates JE: DR bank/cash, CR A/R control
+
+  REPOSITORIES (4):
+    SalesInvoiceRepository, SalesInvoiceLineRepository,
+    CustomerReceiptRepository, CustomerReceiptAllocationRepository
+
+  UI (6):
+    SalesInvoicesPage — invoice list with status/payment filters; post/cancel
+    SalesInvoiceDialog — create/edit invoice with line grid
+    SalesInvoiceLinesGrid — embedded editable line items table
+    CustomerReceiptsPage — receipt list with status filter; post/cancel
+    CustomerReceiptDialog — create/edit receipt with allocation panel
+    CustomerReceiptAllocationsPanel — select invoices to allocate against
+
+  DTOs/Commands (12):
+    SalesInvoiceListItemDTO, SalesInvoiceLineDTO, SalesInvoiceTotalsDTO,
+    SalesInvoiceDetailDTO, CustomerOpenInvoiceDTO, SalesPostingResultDTO,
+    CustomerReceiptListItemDTO, CustomerReceiptAllocationDTO,
+    CustomerReceiptDetailDTO, ReceiptPostingResultDTO + command classes
+
+
+================================================================================
+  8. PURCHASES MODULE
+================================================================================
+
+  Package: modules/purchases/
+
+  SCOPE:
+    Purchase bills (draft → posted) with multi-line items. Supplier payments
+    with allocation against open bills. GL posting creates journal entries
+    for expenses, A/P control, and tax. Payment status tracking.
+    Project dimension support on header and lines.
+
+  MODELS (4):
+    PurchaseBill (purchase_bills): company_id, bill_number, supplier_id,
+      supplier_bill_reference, bill_date, due_date, currency_code,
+      exchange_rate, status_code, payment_status_code, subtotal/tax/total,
+      posted_journal_entry_id, contract_id, project_id
+      UC: (company_id, bill_number)
+
+    PurchaseBillLine (purchase_bill_lines): purchase_bill_id, line_number,
+      description, quantity, unit_cost, expense_account_id, tax_code_id,
+      line subtotal/tax/total, project dimensions
+      UC: (purchase_bill_id, line_number)
+
+    SupplierPayment (supplier_payments): company_id, payment_number,
+      supplier_id, financial_account_id, payment_date, currency_code,
+      exchange_rate, amount_paid, status_code, posted_journal_entry_id
+      UC: (company_id, payment_number)
+
+    SupplierPaymentAllocation (supplier_payment_allocations):
+      company_id, supplier_payment_id, purchase_bill_id,
+      allocated_amount, allocation_date
+
+  SERVICES (4):
+    PurchaseBillService:
+      - list / get / create_draft / update_draft / cancel
+      - list_open_bills_for_supplier(company_id, supplier_id)
+
+    PurchaseBillPostingService:
+      - post_bill (doc type: PURCHASE_BILL)
+      - Creates JE: DR expense accounts, DR tax asset, CR A/P control
+
+    SupplierPaymentService:
+      - list / get / create_draft / update_draft / cancel
+      - list_allocatable_bills(company_id, supplier_id)
+
+    SupplierPaymentPostingService:
+      - post_payment (doc type: SUPPLIER_PAYMENT)
+      - Creates JE: DR A/P control, CR bank/cash
+
+  REPOSITORIES (4):
+    PurchaseBillRepository, PurchaseBillLineRepository,
+    SupplierPaymentRepository, SupplierPaymentAllocationRepository
+
+  UI (6):
+    PurchaseBillsPage, PurchaseBillDialog, PurchaseBillLinesGrid,
+    SupplierPaymentsPage, SupplierPaymentDialog,
+    SupplierPaymentAllocationsPanel
+
+  DTOs/Commands (12):
+    PurchaseBillListItemDTO, PurchaseBillLineDTO, PurchaseBillTotalsDTO,
+    PurchaseBillDetailDTO, SupplierOpenBillDTO, PurchasePostingResultDTO,
+    SupplierPaymentListItemDTO, SupplierPaymentAllocationDTO,
+    SupplierPaymentDetailDTO, PaymentPostingResultDTO + command classes
+
+
+================================================================================
+  9. TREASURY MODULE
+================================================================================
+
+  Package: modules/treasury/
+
+  SCOPE:
+    Financial accounts (bank/cash) linked to GL accounts. Treasury transactions
+    (receipts, expenses — multi-line). Inter-account transfers. Bank statement
+    import (CSV/OFX). Manual statement lines. Bank reconciliation with session-
+    based matching of statement lines to posted GL transactions.
+
+  MODELS (8):
+    FinancialAccount (financial_accounts): company_id, account_code, name,
+      financial_account_type_code, gl_account_id (FK→accounts), bank_name,
+      bank_account_number, bank_branch, currency_code, is_active
+      UC: (company_id, account_code)
+
+    TreasuryTransaction (treasury_transactions): company_id,
+      transaction_number, transaction_type_code, financial_account_id,
+      transaction_date, currency_code, exchange_rate, total_amount,
+      status_code, reference_number, description, notes,
+      posted_journal_entry_id, contract_id, project_id
+      UC: (company_id, transaction_number)
+
+    TreasuryTransactionLine (treasury_transaction_lines):
+      treasury_transaction_id, line_number, account_id, line_description,
+      party_type, party_id (polymorphic), tax_code_id, amount,
+      project dimensions
+
+    TreasuryTransfer (treasury_transfers): company_id, transfer_number,
+      from_financial_account_id, to_financial_account_id, transfer_date,
+      currency_code, exchange_rate, amount, status_code,
+      posted_journal_entry_id
+      UC: (company_id, transfer_number)
+
+    BankStatementLine (bank_statement_lines): company_id,
+      financial_account_id, import_batch_id, line_date, value_date,
+      description, reference, debit_amount, credit_amount, is_reconciled
+
+    BankStatementImportBatch (bank_statement_import_batches):
+      company_id, financial_account_id, file_name, import_source,
+      statement_start/end_date, line_count, imported_at
+
+    BankReconciliationSession (bank_reconciliation_sessions):
+      company_id, financial_account_id, statement_end_date,
+      statement_ending_balance, status_code, completed_at
+
+    BankReconciliationMatch (bank_reconciliation_matches):
+      reconciliation_session_id, bank_statement_line_id,
+      match_entity_type, match_entity_id (polymorphic), matched_amount
+
+  SERVICES (7):
+    FinancialAccountService:
+      - list / get / create / update / deactivate
+
+    TreasuryTransferService:
+      - list / get / create_draft / update_draft / cancel
+
+    TreasuryTransferPostingService:
+      - post_transfer (doc type: TREASURY_TRANSFER)
+      - Creates JE: DR to-account GL, CR from-account GL
+
+    TreasuryTransactionService:
+      - list / get / create_draft / update_draft / cancel
+
+    TreasuryTransactionPostingService:
+      - post_transaction (doc type: TREASURY_TRANSACTION)
+      - Creates JE from multi-line transaction
+
+    BankStatementService:
+      - list_statement_lines / get / import / create_manual / delete
+
+    BankReconciliationService:
+      - list_sessions / get / create_session / add_match / remove_match / complete
+
+  REPOSITORIES (8):
+    FinancialAccountRepository, TreasuryTransferRepository,
+    TreasuryTransactionRepository, TreasuryTransactionLineRepository,
+    BankStatementLineRepository, BankStatementImportBatchRepository,
+    BankReconciliationSessionRepository, BankReconciliationMatchRepository
+
+  UI (10):
+    FinancialAccountsPage + FinancialAccountDialog
+    TreasuryTransfersPage + TreasuryTransferDialog
+    TreasuryTransactionsPage + TreasuryTransactionDialog
+    StatementLinesPage + StatementImportDialog + ManualStatementLineDialog
+    BankReconciliationPage
+
+  DTOs/Commands (22+):
+    Financial account, transfer, transaction, statement, reconciliation DTOs
+    and their corresponding command classes
+
+
+================================================================================
+  10. INVENTORY MODULE
+================================================================================
+
+  Package: modules/inventory/
+
+  SCOPE:
+    Items (stock, non-stock, service) with categories and UOMs. Inventory
+    locations. Inventory documents (receipt, issue, adjustment) with lines.
+    FIFO and weighted average costing via cost layers. Stock position and
+    valuation reporting. GL posting for inventory movements.
+
+  MODELS (7):
+    UnitOfMeasure (units_of_measure): company_id, code, name
+      UC: (company_id, code)
+
+    ItemCategory (item_categories): company_id, code, name
+      UC: (company_id, code)
+
+    Item (items): company_id, item_code, item_name, item_type_code
+      (stock|non_stock|service), unit_of_measure_id, item_category_id,
+      inventory_cost_method_code, inventory_account_id, cogs_account_id,
+      expense_account_id, revenue_account_id, purchase/sales tax_code_id,
+      reorder_level_quantity
+      UC: (company_id, item_code)
+
+    InventoryLocation (inventory_locations): company_id, code, name
+      UC: (company_id, code)
+
+    InventoryDocument (inventory_documents): company_id, document_number,
+      document_type_code (receipt|issue|adjustment), document_date,
+      status_code (draft|posted), location_id, total_value,
+      posted_journal_entry_id, contract_id, project_id
+      UC: (company_id, document_number)
+
+    InventoryDocumentLine (inventory_document_lines):
+      inventory_document_id, line_number, item_id, quantity, unit_cost,
+      line_amount, counterparty_account_id, project dimensions
+
+    InventoryCostLayer (inventory_cost_layers): company_id, item_id,
+      inventory_document_line_id, layer_date, quantity_in,
+      quantity_remaining, unit_cost
+
+  SERVICES (8):
+    UnitOfMeasureService: CRUD for UOMs
+    ItemCategoryService: CRUD for item categories
+    ItemService: CRUD for items
+    InventoryLocationService: CRUD for locations
+
+    InventoryDocumentService:
+      - list / get / create_draft / update_draft
+
+    InventoryValuationService (read-only reporting):
+      - get_stock_position(company_id, item_id)
+      - list_stock_positions(company_id, low_stock_only)
+      - get_inventory_valuation_summary(company_id)
+
+    InventoryPostingService:
+      - post_inventory_document(company_id, document_id, actor_user_id)
+      - Document type: INVENTORY_DOCUMENT
+      - Receipt: DR inventory, CR counterparty; creates cost layers
+      - Issue: DR counterparty, CR inventory; consumes FIFO/WAM layers
+      - Adjustment: reconciliation entries
+
+  REPOSITORIES (7):
+    UnitOfMeasureRepository, ItemCategoryRepository, ItemRepository,
+    InventoryLocationRepository, InventoryDocumentRepository,
+    InventoryDocumentLineRepository, InventoryCostLayerRepository
+
+  UI (8):
+    ItemsPage + ItemDialog
+    ItemCategoriesPage
+    UnitsOfMeasurePage
+    InventoryLocationsPage
+    InventoryDocumentsPage + InventoryDocumentDialog (with line grid)
+    InventoryStockView — valuation/on-hand/reorder reporting
+
+  DTOs/Commands (16):
+    UnitOfMeasureDTO, ItemCategoryDTO, InventoryLocationDTO,
+    ItemListItemDTO, ItemDetailDTO, InventoryDocumentListItemDTO,
+    InventoryDocumentDetailDTO, InventoryDocumentLineDTO,
+    InventoryStockPositionDTO, InventoryValuationSummaryDTO,
+    InventoryPostingResultDTO + command classes
+
+
+================================================================================
+  11. FIXED ASSETS MODULE
+================================================================================
+
+  Package: modules/fixed_assets/
+
+  SCOPE:
+    Asset master with categories. 14 depreciation methods: straight-line,
+    declining balance (single, double, 150%), sum-of-years-digits,
+    units-of-production, depletion (natural resources), component accounting,
+    group/composite pooling, annuity, sinking fund, MACRS (US tax), and
+    amortization. Depreciation run batches with GL posting. Usage records
+    for production-based methods. Asset lifecycle (draft → active →
+    fully_depreciated → disposed).
+
+  MODELS (12):
+    AssetCategory (asset_categories): company_id, code, name,
+      asset_account_id, accumulated_dep_account_id, dep_expense_account_id,
+      default_useful_life_months, default_depreciation_method_code
+      UC: (company_id, code)
+
+    Asset (assets): company_id, asset_number, asset_name, asset_category_id,
+      acquisition_date, capitalization_date, acquisition_cost, salvage_value,
+      useful_life_months, depreciation_method_code,
+      status_code (draft|active|fully_depreciated|disposed),
+      supplier_id, purchase_bill_id
+      UC: (company_id, asset_number)
+
+    AssetComponent (asset_components): parent_asset_id (CASCADE),
+      component_name, acquisition_cost, salvage_value, useful_life_months,
+      depreciation_method_code
+
+    AssetDepreciationSettings (asset_depreciation_settings): asset_id,
+      declining_factor, switch_to_straight_line, expected_total_units,
+      interest_rate, macrs_profile_id, macrs_convention_code
+
+    AssetDepreciationRun (asset_depreciation_runs): company_id, run_number,
+      run_date, period_end_date, status_code (draft|posted|cancelled),
+      posted_journal_entry_id
+      UC: (company_id, run_number)
+
+    AssetDepreciationRunLine (asset_depreciation_run_lines):
+      asset_depreciation_run_id, asset_id, depreciation_amount,
+      accumulated_depreciation_after, net_book_value_after
+
+    DepreciationMethod (depreciation_methods): GLOBAL seeded.
+      code, name, asset_family_code (PPE|INTANGIBLE|NATURAL_RESOURCE|TAX),
+      requires_settings, requires_components, requires_usage_records,
+      requires_pool, requires_depletion_profile, has_switch_to_sl
+
+    AssetUsageRecord (asset_usage_records): asset_id, usage_date,
+      units_used, notes
+
+    AssetDepreciationPool (asset_depreciation_pools): company_id, code,
+      name, pool_type_code (group|composite), depreciation_method_code,
+      useful_life_months
+      UC: (company_id, code)
+
+    AssetDepreciationPoolMember (asset_depreciation_pool_members):
+      pool_id, asset_id, joined_date, left_date
+
+    MacrsProfile (macrs_profiles): GLOBAL seeded.
+      class_code, convention_code (half_year|mid_quarter|mid_month),
+      recovery_period_years, gds_rates_json
+
+    AssetDepletionProfile (asset_depletion_profiles): asset_id,
+      resource_type (oil|gas|timber|mineral|other),
+      estimated_total_units, unit_description
+
+  SERVICES (10):
+    AssetCategoryService: CRUD for asset categories
+    AssetService: CRUD for assets (status enforcement)
+    AssetComponentService: CRUD for components (validates parent method = component)
+    DepreciationMethodService: list_methods, get_method, list_macrs_profiles (read-only)
+    AssetDepreciationSettingsService: get/upsert/delete settings
+    AssetUsageService: list/create/delete usage records
+
+    DepreciationScheduleService:
+      - generate_schedule_for_asset(company_id, asset_id)
+      - preview_schedule(command)
+      - Supports all 14 depreciation methods
+
+    DepreciationRunService:
+      - list / get / create_run / cancel_run
+      - Batch computes depreciation for all eligible active assets
+
+    DepreciationPostingService:
+      - post_run(company_id, run_id, actor_user_id)
+      - Aggregates entries by category account pair
+      - Creates single JE: DR depreciation expense, CR accumulated depreciation
+      - Auto-marks fully depreciated assets
+
+    AssetDepreciationPoolService:
+      - list / get / create / update / add_member
+
+  REPOSITORIES (11):
+    AssetRepository, AssetCategoryRepository, AssetComponentRepository,
+    AssetDepreciationRunRepository, AssetDepreciationRunLineRepository,
+    AssetDepreciationSettingsRepository, AssetUsageRecordRepository,
+    AssetDepreciationPoolRepository, DepreciationMethodRepository,
+    MacrsProfileRepository, AssetDepletionProfileRepository
+
+  UI (6):
+    AssetsPage — asset list with search, status filter
+    AssetDialog — create/edit asset
+    AssetCategoryDialog — create/edit category with account mappings
+    DepreciationRunsPage — run list with status filter; view/post
+    DepreciationRunDialog — create new run (date, period)
+    DepreciationSchedulePreviewDialog — full schedule with monthly lines
+
+
+================================================================================
+  12. PAYROLL MODULE
+================================================================================
+
+  Package: modules/payroll/
+
+  SCOPE:
+    Comprehensive payroll processing with Cameroon statutory compliance.
+    Employees, departments, positions. Compensation profiles (effective-dated).
+    Payroll components with type classification (earning/deduction/employer/tax).
+    Rule sets with progressive tax brackets. Variable input batches.
+    8 pure-function calculation engines. Payroll run lifecycle
+    (draft → calculated → approved → posted). GL posting. Payment tracking.
+    Statutory remittance batches. Payslip generation and export.
+    Project cost allocation. Import/export capabilities.
+
+  MODELS (18):
+    ┌──────────────────────────────────────────┬───────────────────────────────────────────┐
+    │ Model                                    │ Table                                     │
+    ├──────────────────────────────────────────┼───────────────────────────────────────────┤
+    │ Employee                                 │ employees                                 │
+    │ Department                               │ departments                               │
+    │ Position                                 │ positions                                 │
+    │ EmployeeCompensationProfile              │ employee_compensation_profiles             │
+    │ PayrollComponent                         │ payroll_components                         │
+    │ EmployeeComponentAssignment              │ employee_component_assignments             │
+    │ PayrollRun                               │ payroll_runs                               │
+    │ PayrollRunEmployee                       │ payroll_run_employees                      │
+    │ PayrollRunLine                           │ payroll_run_lines                          │
+    │ PayrollRunEmployeeProjectAllocation      │ payroll_run_employee_project_allocations   │
+    │ PayrollRuleSet                           │ payroll_rule_sets                          │
+    │ PayrollRuleBracket                       │ payroll_rule_brackets                      │
+    │ PayrollInputBatch                        │ payroll_input_batches                      │
+    │ PayrollInputLine                         │ payroll_input_lines                        │
+    │ PayrollPaymentRecord                     │ payroll_payment_records                    │
+    │ PayrollRemittanceBatch                   │ payroll_remittance_batches                 │
+    │ PayrollRemittanceLine                    │ payroll_remittance_lines                   │
+    │ CompanyPayrollSetting                    │ company_payroll_settings                   │
+    └──────────────────────────────────────────┴───────────────────────────────────────────┘
+
+    Key unique constraints:
+      Employee: (company_id, employee_number)
+      Department/Position: (company_id, code)
+      PayrollComponent: (company_id, component_code)
+      PayrollRun: (company_id, run_reference), (company_id, period_year, period_month)
+      PayrollRuleSet: (company_id, rule_code, effective_from)
+      PayrollInputBatch: (company_id, batch_reference)
+      PayrollRemittanceBatch: (company_id, batch_number)
+
+  CALCULATION ENGINES (8 pure-function engines):
+    Executed in order by PayrollCalculationService:
+      1. Earnings Engine — base salary, fixed allowances, manual earnings
+      2. Overtime Engine — hours × multiplier (default 150%)
+      3. Benefits-in-Kind Engine — housing BIK, transport BIK
+      4. CNPS Engine — employee 4.2% + employer 4.2% (cap 750K XAF/month)
+      5. Salary Deductions Engine — CCF, CFC, FNE employee, etc.
+      6. TDL Engine — Taxe de Développement Local
+      7. IRPP Engine — progressive brackets (10/15/25/35%) + CAC (10%) + CRTV
+      8. Employer Contribution Engine — FNE employer, Family Allowances, Accident Risk
+
+    Six preserved payroll bases on PayrollRunEmployee:
+      gross_earnings, taxable_salary_base, tdl_base,
+      cnps_contributory_base, employer_cost_base, net_payable
+
+  STATUTORY PACKS:
+    Cameroon 2024 Pack (CMR_2024_V1):
+      - IRPP progressive brackets: 10%, 15%, 25%, 35%
+      - CNPS: 8.4% total (4.2% employee + 4.2% employer), cap 750K/month
+      - Abattement: 30% professional expenses
+      - Minimum vital: 500,000 XAF/year (41,667/month)
+      - CAC: 10% of IRPP
+      - TDL, FNE, Family Allowances, Accident Risk classes
+      - Pack versioning with rollover mechanism
+
+  SERVICES (24):
+    Setup & Seeding:
+      PayrollSetupService — company settings, departments, positions
+      CameroonPayrollSeedService — statutory seed data
+
+    Employee Management:
+      EmployeeService — CRUD (4 methods)
+
+    Compensation & Components:
+      CompensationProfileService — profiles (5 methods)
+      PayrollComponentService — components (4 methods)
+      ComponentAssignmentService — assignments (5 methods)
+
+    Rules:
+      PayrollRuleService — rule sets and brackets (6 methods)
+
+    Core Processing:
+      PayrollRunService — create, calculate, approve, void (8 methods)
+      PayrollCalculationService — orchestrates 8 engines (1 method)
+      PayrollInputService — input batches and lines (8 methods)
+
+    Posting & Accounting:
+      PayrollPostingService — post to GL journal entry (1 method)
+      PayrollPostingValidationService — pre-posting validation (1 method)
+
+    Settlements:
+      PayrollProjectAllocationService — project cost allocations (3 methods)
+      PayrollPaymentTrackingService — payment records (5 methods)
+      PayrollRemittanceService — remittance batches/lines (9 methods)
+      PayrollRemittanceDeadlineService — deadline tracking (1 method)
+
+    Statutory Packs:
+      PayrollStatutoryPackService — apply pack (2 methods)
+      PayrollPackVersionService — versioning and rollover (3 methods)
+
+    Validation & Audit:
+      PayrollValidationService — period validation (1 method)
+      PayrollValidationDashboardService — full assessment (1 method)
+
+    Reporting & Export:
+      PayrollPayslipPreviewService — preview (1 method)
+      PayrollPrintService — payslip & summary data (3 methods)
+      PayrollExportService — PDF/CSV export (4 methods)
+      PayrollSummaryService — run & period summaries (2 methods)
+      PayrollOutputWarningService — export warnings (1 method)
+      PayrollImportService — employee/component import (2 methods)
+
+  REPOSITORIES (14):
+    PositionRepository, EmployeeRepository, ComponentAssignmentRepository,
+    PayrollInputBatchRepository, PayrollComponentRepository,
+    PayrollRunRepository, PayrollRunEmployeeProjectAllocationRepository,
+    PayrollRuleSetRepository, DepartmentRepository,
+    CompensationProfileRepository, PayrollSummaryRepository,
+    PayrollRemittanceRepository, PayrollPaymentRecordRepository,
+    CompanyPayrollSettingRepository
+
+  UI — 4 Workspaces + 20 Dialogs:
+    PayrollSetupPage:
+      - Company payroll settings, departments, positions management
+
+    PayrollCalculationWorkspace (4 tabs):
+      - Compensation Profiles tab
+      - Component Assignments tab
+      - Variable Inputs tab (input batches)
+      - Payroll Runs tab (create, calculate, approve, view)
+
+    PayrollOperationsWorkspace (5 tabs):
+      - Validation tab
+      - Statutory Packs tab (apply, rollover)
+      - Imports tab (employee/component data)
+      - Print tab (payslips, summaries)
+      - Audit tab
+
+    PayrollAccountingWorkspace (4 tabs):
+      - Posting tab (post to GL)
+      - Employee Payments tab (payment tracking)
+      - Remittances tab (statutory remittances)
+      - Summary tab (run & period summaries)
+
+    Dialogs (20):
+      PositionManagementDialog, DepartmentManagementDialog,
+      EmployeeFormDialog, CompensationProfileDialog,
+      ComponentAssignmentDialog, PayrollComponentFormDialog,
+      PayrollRuleSetFormDialog, PayrollRuleBracketsDialog,
+      CompanyPayrollSettingsDialog, ApplyStatutoryPackDialog,
+      PayrollRunDialog, PayrollInputBatchDialog,
+      PayrollProjectAllocationsDialog, PayrollPaymentRecordDialog,
+      PayrollRemittanceBatchDialog, PayrollRemittanceLineDialog,
+      PayrollPostRunDialog, PayrollRunEmployeeDetailDialog,
+      PayslipPreviewDialog, PayrollExportDialog
+
+  STATE MACHINES:
+    PayrollRun: draft → calculated → approved → posted (void from any pre-posted)
+    PayrollInputBatch: draft → approved (void from draft)
+    PayrollRemittanceBatch: draft → open → partial → paid (cancel from draft/open)
+
+  PERMISSIONS (16 codes):
+    PAYROLL_SETUP_MANAGE, PAYROLL_EMPLOYEE_MANAGE, PAYROLL_COMPONENT_MANAGE,
+    PAYROLL_RULE_MANAGE, PAYROLL_PACK_APPLY, PAYROLL_INPUT_MANAGE,
+    PAYROLL_RUN_CREATE, PAYROLL_RUN_CALCULATE, PAYROLL_RUN_APPROVE,
+    PAYROLL_RUN_POST, PAYROLL_PAYMENT_MANAGE, PAYROLL_REMITTANCE_MANAGE,
+    PAYROLL_IMPORT, PAYROLL_PRINT, PAYROLL_AUDIT_VIEW
+
+  DTOs/Commands (50+):
+    Employee, compensation, component, assignment, rule, input, run,
+    posting, payment, remittance, validation, summary, export, import DTOs
+    and their corresponding command classes
+
+
+================================================================================
+  13. CONTRACTS & PROJECTS MODULE
+================================================================================
+
+  Package: modules/contracts_projects/
+
+  SCOPE:
+    Master contracts with change order tracking. Projects under contracts
+    (or standalone). Hierarchical project structure: projects → jobs →
+    cost codes. Contract types: fixed_price, time_and_material, cost_plus,
+    framework. Change order workflow (draft → submitted → approved).
+
+  MODELS (5):
+    Contract (contracts): company_id, contract_number, contract_name,
+      customer_id, contract_type_code, status_code, start/end dates,
+      original/current_value, notes
+      UC: (company_id, contract_number)
+      Status: draft|active|on_hold|completed|closed|cancelled
+
+    Project (projects): company_id, project_code, project_name,
+      contract_id (nullable), project_manager_employee_id,
+      status_code, start/end dates, budget_amount, notes
+      UC: (company_id, project_code)
+      Status: draft|active|on_hold|completed|closed|cancelled
+
+    ContractChangeOrder (contract_change_orders): company_id, contract_id,
+      change_order_number, description, amount_change, new_end_date,
+      status_code, submitted/approved dates and actors
+      UC: (company_id, contract_id, change_order_number)
+      Status: draft|submitted|approved|rejected|cancelled
+
+    ProjectJob (project_jobs): company_id, project_id, job_code,
+      job_name, parent_job_id (self-FK for hierarchy)
+      UC: (company_id, project_id, job_code)
+
+    ProjectCostCode (project_cost_codes): company_id, project_id,
+      cost_code, cost_code_name, cost_type_code (labor|material|
+      subcontract|equipment|overhead|other)
+      UC: (company_id, project_id, cost_code)
+
+  SERVICES (5):
+    ContractService: list / get / create / update (5 methods)
+    ProjectService: list / get / create / update (5 methods)
+    ContractChangeOrderService:
+      - list / get / create / submit / approve / reject (6 methods)
+      - Approval updates contract current_value
+    ProjectStructureService: manage project jobs (3 methods)
+    ProjectCostCodeService: manage cost codes (3 methods)
+
+  REPOSITORIES (5):
+    ContractRepository, ProjectRepository, ContractChangeOrderRepository,
+    ProjectJobRepository, ProjectCostCodeRepository
+
+  UI (7):
+    ContractsPage — contract list; create/edit
+    ContractFormDialog — create/edit contract
+    ProjectsPage — project list; create/edit
+    ProjectFormDialog — create/edit project
+    ChangeOrdersPage — change order list; submit/approve/reject
+    ChangeOrderDialog — create change order
+    ProjectStructureDialog — manage jobs and cost codes
+
+  DTOs/Commands (16):
+    ContractListItemDTO, ContractDetailDTO, ProjectListItemDTO,
+    ProjectDetailDTO, ChangeOrderListItemDTO, ChangeOrderDetailDTO,
+    ProjectJobDTO, ProjectCostCodeDTO + 8 command classes
+
+
+================================================================================
+  14. JOB COSTING MODULE
+================================================================================
+
+  Package: modules/job_costing/
+
+  SCOPE:
+    Project commitments (POs, subcontracts) with line items linked to
+    project/job/cost code. Actual cost tracking from posted GL entries.
+    Profitability analysis by project, job, and cost code. Project dimension
+    validation service. Commitment lifecycle: draft → submitted → approved →
+    partially_consumed → closed.
+
+  MODELS (2):
+    ProjectCommitment (project_commitments): company_id, commitment_number,
+      commitment_type_code (purchase_order|subcontract|other),
+      project_id, supplier_id, commitment_date, total_amount,
+      status_code, reference_number, notes
+      UC: (company_id, commitment_number)
+      Status: draft|submitted|approved|rejected|partially_consumed|closed
+
+    ProjectCommitmentLine (project_commitment_lines): commitment_id,
+      line_number, description, project_job_id, project_cost_code_id,
+      quantity, unit_cost, line_amount
+
+  SERVICES (4):
+    ProjectCommitmentService:
+      - list / get / create / update / submit / approve / reject (7 methods)
+      - Validates project ownership and structure
+
+    ProjectActualCostService:
+      - get_actual_costs_by_project(company_id, project_id) — queries posted JE lines
+      - get_actual_costs_by_job(company_id, project_id, job_id)
+
+    ProjectProfitabilityService:
+      - get_project_profitability(company_id, project_id) — revenue vs costs
+      - Combines budget, commitment, and actual data
+
+    ProjectDimensionValidationService:
+      - validate_project_dimensions(company_id, ...) — validates project/job/cost_code
+      - Used by all modules when posting with project dimensions
+
+  REPOSITORIES (4):
+    ProjectCommitmentRepository, ProjectCommitmentLineRepository,
+    ProjectActualCostRepository (query-shaped, read-only),
+    ProjectProfitabilityRepository
+
+  UI (2):
+    ProjectCommitmentsPage — commitment list; create/edit/submit/approve
+    ProjectCommitmentDialog — create/edit commitment with line grid
+
+  DTOs/Commands (8):
+    ProjectCommitmentListItemDTO, ProjectCommitmentDetailDTO,
+    ProjectCommitmentLineDTO, ActualCostSummaryDTO,
+    ProjectProfitabilityDTO + command classes
+
+
+================================================================================
+  15. BUDGETING MODULE
+================================================================================
+
+  Package: modules/budgeting/
+
+  SCOPE:
+    Project budget versions (original, revision, working, forecast). Budget
+    lines by cost code with quantities and amounts. Version approval workflow
+    (draft → submitted → approved). Budget control modes: none, warn,
+    hard_stop, defer. Variance monitoring against actuals and commitments.
+
+  MODELS (2):
+    ProjectBudgetVersion (project_budget_versions): company_id, project_id,
+      version_type_code (original|revision|working|forecast),
+      version_number, status_code, total_amount, description,
+      submitted/approved dates and actors
+      Status: draft|submitted|approved|cancelled
+
+    ProjectBudgetLine (project_budget_lines): budget_version_id,
+      line_number, project_cost_code_id, description, quantity,
+      unit_cost, line_amount
+
+  SERVICES (3):
+    ProjectBudgetService:
+      - list / get / create / update budget versions (5 methods)
+      - CRUD for budget lines within a version
+
+    BudgetApprovalService:
+      - submit / approve / cancel budget versions (3 methods)
+      - Validates version state transitions
+
+    BudgetControlService:
+      - check_budget_availability(company_id, project_id, cost_code_id, amount)
+      - Enforces control modes (none|warn|hard_stop|defer)
+      - Called by posting services before creating GL entries
+
+  REPOSITORIES (2):
+    ProjectBudgetVersionRepository, ProjectBudgetLineRepository
+
+  UI (2):
+    ProjectBudgetsPage — budget version list per project; create/edit/submit/approve
+    ProjectBudgetDialog — create/edit budget version with line grid
+
+  DTOs/Commands (6):
+    ProjectBudgetVersionListItemDTO, ProjectBudgetVersionDetailDTO,
+    ProjectBudgetLineDTO, BudgetAvailabilityResultDTO + command classes
+
+
+================================================================================
+  16. REPORTING MODULE
+================================================================================
+
+  Package: modules/reporting/
+
+  SCOPE:
+    Financial reporting workspace with multiple report types. Trial Balance
+    (by period or date range). General Ledger detail (by account with line-
+    level drill-down). OHADA income statements (Nature and Function formats).
+    IAS/IFRS income statements with configurable templates and account
+    mappings. Balance sheet templates. Drilldown from statement lines to
+    GL detail.
+
+  MODELS (4):
+    IasIncomeStatementTemplate (ias_income_statement_templates):
+      company_id, template_code, template_name, layout_type,
+      is_active
+      UC: (company_id, template_code)
+
+    IasIncomeStatementPreference (ias_income_statement_preferences):
+      company_id, active_template_id
+      PK: company_id (one-to-one)
+
+    IasIncomeStatementMapping (ias_income_statement_mappings):
+      template_id, section_id, account_id
+      UC: (template_id, account_id)
+
+    IasIncomeStatementSection (ias_income_statement_sections):
+      template_id, section_code, section_name, display_order,
+      parent_section_id (self-FK), is_total_line, sign_convention
+
+  SERVICES (11):
+    TrialBalanceReportService:
+      - generate_trial_balance(company_id, fiscal_period_id)
+      - Reads posted JE data, aggregates debit/credit by account
+
+    GeneralLedgerReportService:
+      - generate_general_ledger(company_id, account_id, start/end dates)
+      - Returns line-level detail with running balance
+
+    OhadaIncomeStatementService:
+      - generate_nature_format(company_id, fiscal_year_id)
+      - generate_function_format(company_id, fiscal_year_id)
+      - Predefined OHADA SysCohada sections
+
+    IasIncomeStatementService:
+      - generate_statement(company_id, fiscal_year_id, template_id)
+      - Section hierarchies with configurable mappings
+
+    IasTemplateMappingService:
+      - list/get/manage section-to-account mappings
+
+    IasTemplateService:
+      - CRUD for IAS templates and sections
+
+    IasPreferenceService:
+      - get/set active template preference
+
+    IasWorkspaceCoordinationService:
+      - Orchestrates template + mapping + generation
+
+    (Supporting: BalanceSheetTemplateService, FinancialStatementSpecService)
+
+  REPOSITORIES (8):
+    TrialBalanceRepository, GeneralLedgerRepository,
+    OhadaIncomeStatementRepository, IasIncomeStatementTemplateRepository,
+    IasIncomeStatementSectionRepository, IasIncomeStatementMappingRepository,
+    IasIncomeStatementPreferenceRepository, BalanceSheetRepository
+
+  UI (16+):
+    ReportsWorkspace — multi-tab workspace:
+      - Trial Balance tab (period selection, generate, display, print)
+      - General Ledger tab (account selection, date range, detail view)
+      - OHADA Income Statement tab (nature/function format toggle)
+      - IAS/IFRS Income Statement tab (template management + generation)
+      - Balance Sheet tab (template-based)
+
+    Dialogs:
+      - GLDrilldownDialog — line-level detail for selected account
+      - IasTemplateDialog — create/edit IAS template
+      - IasSectionDialog — manage statement sections
+      - IasMappingDialog — assign accounts to sections
+      - PrintPreviewDialog — formatted report preview
+      - Various filter/option dialogs
+
+  DTOs (20+):
+    TrialBalanceLineDTO, TrialBalanceSummaryDTO,
+    GeneralLedgerLineDTO, GeneralLedgerReportDTO,
+    OhadaIncomeStatementDTO, OhadaStatementLineDTO,
+    IasStatementDTO, IasStatementSectionDTO,
+    IasTemplateDTO, IasSectionDTO, IasMappingDTO, etc.
+
+
+================================================================================
+  17. MANAGEMENT REPORTING MODULE
+================================================================================
+
+  Package: modules/management_reporting/
+
+  SCOPE:
+    Read-only dashboards for project/contract management. Contract summary
+    with revenue/cost/margin rollups. Budget variance analysis with trend
+    charts. Draws from posted GL data, commitments, and budget versions.
+
+  MODELS: None (reads from other modules' data)
+
+  SERVICES (2):
+    ContractReportingService:
+      - get_contract_summary(company_id, contract_id)
+      - Rolls up: revenue, costs, margin across all projects
+
+    BudgetReportingService:
+      - get_variance_analysis(company_id, project_id, budget_version_id)
+      - Breaks down: budget vs actual vs committed by cost code
+
+  REPOSITORIES (2):
+    ContractReportingRepository, BudgetReportingRepository (query-shaped, read-only)
+
+  UI (3):
+    ContractSummaryPage — contract overview with charts
+    ProjectVarianceAnalysisPage — variance breakdown with charts
+    (Each is a standalone sidebar page)
+
+  DTOs (4):
+    ContractSummaryDTO, ContractProjectSummaryDTO,
+    VarianceAnalysisDTO, VarianceCostCodeLineDTO
+
+
+================================================================================
+  18. ADMINISTRATION MODULE
+================================================================================
+
+  Package: modules/administration/
+
+  SCOPE:
+    User, role, and permission management. Role-based access control model.
+    User-to-company access mapping. Currently desktop single-user mode
+    (no authentication flow; permissions granted at bootstrap).
+
+  MODELS (6):
+    User (users): username, display_name, email, is_active
+    Role (roles): code, name, description
+    Permission (permissions): code, name, module_code
+    UserRole (user_roles): user_id, role_id
+    UserCompanyAccess (user_company_accesses): user_id, company_id
+    RolePermission (role_permissions): role_id, permission_id
+
+  SERVICES (1):
+    PermissionService:
+      - has_permission(permission_code) → bool
+      - Checks AppContext.permission_snapshot
+
+  REPOSITORIES: None (bootstrap handles user/role setup)
+
+  UI: None (no admin UI implemented; future slice)
+
+  DTOs: None
+
+  NOTE: The data model is complete and supports multi-user RBAC.
+    The service layer exists but UI for user/role management is deferred.
+
+
+================================================================================
+  19. AUDIT MODULE
+================================================================================
+
+  Package: modules/audit/
+
+  SCOPE:
+    Append-only audit event trail. Records create/update/delete/post/approve
+    events with actor context, entity references, and metadata. Immutable
+    log — no UPDATE or DELETE workflows.
+
+  MODELS (1):
+    AuditEvent (audit_events): company_id, event_type_code, module_code,
+      entity_type, entity_id, actor_user_id, event_description,
+      metadata_json, created_at
+    Indexed: (company_id, event_type_code), (company_id, module_code),
+             (company_id, created_at)
+
+  SERVICES (1):
+    AuditService:
+      - record_event(company_id, event_type, module, entity_type,
+          entity_id, actor_user_id, description, metadata)
+      - list_events(company_id, filters) → list[AuditEventDTO]
+      - Guards listing with permission check
+
+  REPOSITORIES (1):
+    AuditEventRepository: add, list_by_company (with filtering)
+
+  UI: Audit tab within PayrollOperationsWorkspace (uses AuditService)
+
+  DTOs (2):
+    AuditEventDTO, AuditEventFilterDTO
+
+
+================================================================================
+  20. PARTIES MODULE
+================================================================================
+
+  Package: modules/parties/
+
+  SCOPE:
+    Lightweight foundation service. Validates that AR/AP control accounts
+    are properly configured via account role mappings. Used by sales and
+    purchases posting services before creating journal entries.
+
+  MODELS: None
+
+  SERVICES (1):
+    ControlAccountFoundationService:
+      - validate_ar_control(company_id) → checks AR role mapping
+      - validate_ap_control(company_id) → checks AP role mapping
+      - Validates: role mapping exists, account is active, is_control_account flag
+
+  REPOSITORIES: None
+
+  UI: None
+
+  DTOs (1):
+    ControlAccountStatusDTO
+
+
+================================================================================
+  21. SIDEBAR NAVIGATION MAP
+================================================================================
+
+  38 navigation IDs organized by sidebar sections:
+
+  OVERVIEW
+    ├── dashboard
+
+  COMPANY
+    ├── companies
+
+  PARTIES
+    ├── customers
+    ├── suppliers
+
+  REFERENCE DATA
+    ├── payment_terms
+    ├── tax_codes
+    ├── document_sequences
+
+  ACCOUNTING
+    ├── chart_of_accounts
+    ├── fiscal_periods
+    ├── journals
+
+  SALES & RECEIVABLES
+    ├── sales_invoices
+    ├── customer_receipts
+
+  PURCHASES & PAYABLES
+    ├── purchase_bills
+    ├── supplier_payments
+
+  TREASURY
+    ├── financial_accounts
+    ├── treasury_transactions
+    ├── treasury_transfers
+    ├── statement_lines
+    ├── bank_reconciliation
+
+  INVENTORY
+    ├── units_of_measure
+    ├── item_categories
+    ├── inventory_locations
+    ├── items
+    ├── inventory_documents
+    ├── stock_position
+
+  FIXED ASSETS
+    ├── asset_categories
+    ├── assets
+    ├── depreciation_runs
+
+  CONTRACTS & PROJECTS
+    ├── contracts
+    ├── projects
+
+  PAYROLL
+    ├── payroll_setup
+    ├── payroll_calculation
+    ├── payroll_accounting
+    ├── payroll_operations
+
+  REPORTS
+    ├── reports
+
+  MANAGEMENT
+    ├── project_variance_analysis
+    ├── contract_summary
+
+  ADMIN
+    ├── administration
+
+
+================================================================================
+  22. DATABASE MIGRATIONS
+================================================================================
+
+  27 Alembic migrations (chronological):
+
+  1.  revision_a — admin, company, global refs (users, roles, permissions,
+      companies, countries, currencies, account_classes, account_types)
+  2.  revision_b — reference foundation (tax_codes, payment_terms,
+      document_sequences, account_role_mappings)
+  3.  revision_c — chart of accounts and mappings
+  4.  revision_d — fiscal periods and journals
+  5.  revision_e — customers and suppliers foundation
+  6.  revision_f — sales and receivables
+  7.  revision_g — purchases and payables
+  8.  revision_h — cash and bank reconciliation (treasury)
+  9.  revision_i — inventory accounting
+  10. revision_i2 — inventory reference tables (UOM, categories, locations)
+  11. revision_j — fixed assets
+  12. revision_k — depreciation engine expansion (pools, usage, depletion, MACRS)
+  13. revision_l — payroll foundation
+  14. revision_m — payroll calculation (runs, lines, input batches)
+  15. slice_13c — payroll accounting (remittances, payments)
+  16. slice_13d — payroll operations (settings extensions)
+  17. slice_14_1 — project control setup
+  18. slice_14_2 — contracts and projects
+  19. slice_14_3 — contract change orders
+  20. slice_14d — IAS/IFRS income statement
+  21. slice_14d_pt2 — IAS template preferences
+  22. slice_15_3 — project commitments (job costing)
+  23. slice_15_4 — sales/purchase project dimensions
+  24. slice_15_5 — treasury/inventory/journal project dimensions
+  25. slice_15_6 — payroll project allocations
+  26. project_budgets — project budget versions and lines
+  27. project_jobs_and_cost_codes — project jobs and cost codes
+
+
+================================================================================
+  23. SUMMARY STATISTICS
+================================================================================
+
+  ┌────────────────────────┬───────┐
+  │ Metric                 │ Count │
+  ├────────────────────────┼───────┤
+  │ Feature modules        │ 18    │
+  │ Database tables        │ 82+   │
+  │ SQLAlchemy models      │ 82+   │
+  │ Service classes        │ 96+   │
+  │ Repository classes     │ 74+   │
+  │ DTO/Command classes    │ 200+  │
+  │ UI classes (pages)     │ 30+   │
+  │ UI classes (dialogs)   │ 50+   │
+  │ UI classes (widgets)   │ 20+   │
+  │ Alembic migrations     │ 27    │
+  │ Navigation pages       │ 38    │
+  │ Posting services       │ 11    │
+  │ Document type codes    │ 11    │
+  │ Payroll engines        │ 8     │
+  │ Depreciation methods   │ 14    │
+  │ Platform exceptions    │ 8     │
+  │ Payroll permissions    │ 16    │
+  └────────────────────────┴───────┘
+
+  POSTING SERVICES AND DOCUMENT TYPES:
+    1.  SALES_INVOICE         — SalesInvoicePostingService
+    2.  CUSTOMER_RECEIPT       — CustomerReceiptPostingService
+    3.  PURCHASE_BILL          — PurchaseBillPostingService
+    4.  SUPPLIER_PAYMENT       — SupplierPaymentPostingService
+    5.  TREASURY_TRANSFER      — TreasuryTransferPostingService
+    6.  TREASURY_TRANSACTION   — TreasuryTransactionPostingService
+    7.  INVENTORY_DOCUMENT     — InventoryPostingService
+    8.  JOURNAL_ENTRY          — JournalPostingService
+    9.  DEPRECIATION_RUN       — DepreciationPostingService
+    10. PAYROLL_RUN            — PayrollPostingService
+    11. PAYROLL_REMITTANCE     — (via PayrollRemittanceService)
+
+  CROSS-MODULE INTEGRATION POINTS:
+    - Journal entries: all posting services create entries in the journals sub-module
+    - Project dimensions: sales, purchases, treasury, inventory, payroll lines
+      can link to contracts/projects/jobs/cost_codes
+    - Account role mappings: used by sales (A/R), purchases (A/P), payroll,
+      treasury posting services
+    - Document sequences: used by all 11 posting services for number generation
+    - Fiscal period validation: used by all posting services
+    - Budget control: checked by posting services when project dimensions present
+    - Audit events: recordable from any module via AuditService
+
+================================================================================
+  END OF DOCUMENT
+================================================================================

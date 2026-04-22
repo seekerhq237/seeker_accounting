@@ -1,0 +1,427 @@
+
+=== PAGE 1 ===
+Advanced Taxation for Masters by Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+THE UNIVERSITY OF BAMENDA 
+FACULTY OF ECONOMICS AND MANAGEMENT SCIENCES  
+DEPARTMENT OF ACCOUNTANCY 
+ 
+     TUTORIAL No. 1 
+     
+The file of OUMAROU TRADE COMPANY is composed by the following appendices:  
+Appendix 1: BALANCE SHEET OF OUMAROU TRADE COMPANY AS AT DECEMBER 31, 2019 
+                    BEFORE THE APPROPRIATION OF PROFIT 
+ASSETS GROSS 
+AMOUNT 
+DEP. & 
+PROV. 
+NET AMOUNT 
+(in FCFA) LIABILITIES AMOUNT 
+(in FCFA) 
+Intangible Fixed Assets - - 1,280,000 Capital (Shares of 10,000 FCFA) 21,000,000 
+Fixed Assets 15,520,000 5,480,000 10,040,000 Legal Reserve 2,050,000 
+Other Fixed assets 7,540,000 2,540,000 5,000,000 Optional Reserve 6,833,000 
+Stock of Goods - - 10,500,000 Brought Forward 47,000 
+Customers - - 5,000,000 Suppliers 3,000,000 
+Suspense Account, Assets - - 124,000 Suspense Account, Liabilities 288,000 
+Bills Receivable - - 1,940,000 Bills Payable 1,566,000 
+Bank - - 3,700,000 Profit before Taxation 3,900,000 
+Head Office Cash Till - - 1,100,000 - - 
+TOTAL 38,684,000 TOTAL 38,684,000 
+ 
+       Appendix 2: ACCOUNTING,   JUDICIAL   AND   FISCAL   INFORMATION   AS   AT  
+                           DECEMBER 31,  2019  
+ The mother company based in Italy has carried out an accounting auditing in the course of the financial year; Fees paid on 
+this occasion: 2,000,000 FCFA. 
+ Mr. ZEBAZE who is a shareholder and Financial Manager has put his money amounting to 15,000,000 FCFA at the 
+company’s disposal on July 1, 2019; the interests are calculated at the rate of 14% per annum (Central Bank rate is 10.5%). 
+ An Industrial equipment acquired on October 2, 2019 at 4,000,000 FCFA, has an estimated life span of 10 years.  The 
+company has calculated and recorded the depreciation using the reducing balance method on this equipment. 
+ 
+ On occasion of the World Leprosy Day, the company has donated 1,000,000 FCFA to the Yaounde Leprosy Centre. 
+ In order to renew the Car Park, the Provision of 3,000,000 FCFA was created. 
+ The company has set 10% of Provisions on its debts: 1,500,000FCFA. 
+ Back from a mission abroad, Mr. ZEBAZE has been paid back the bills of 500,000 FCFA; he earns 100,000 FCFA monthly 
+as fixed mission allowances. 
+ Provision written back for 2018 paid leave: 2,500,000 FCFA. 
+ The annual turnover before tax is 50,000,000 FCFA. 
+ The short term securities on Ets. DJOKO have yielded a net income of 1,670,000 FCFA. 
+ The 2018 financial year ended with a fiscal loss of 3,000,000 FCFA. 
+ 
+Work Required 
+1) Determine the Fiscal Profit as at December 31, 2019.  Fill Table CF1. 
+2) Calculate the Income Tax to be paid on or before March 31, 2020.  Fill Table CF1-BIS 
+3) Calculate the Net Profit Awaiting Appropriation. 
+4) Show the journal entries relating to the ascertainment of tax liability, the imputation of the income tax against the Net 
+profit, and the payme nt of the outstanding balance of Company Tax by bank cheque taking into consideration the 
+Advances paid. 
+ 
+
+=== PAGE 2 ===
+Advanced Taxation  Masters by Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+1 
+ 
+THE UNIVERSITY OF BAMENDA 
+FACULTY OF ECONOMICS AND MANAGEMENT SCIENCES  
+DEPARTMENT OF ACCOUNTANCY 
+         
+TUTORIAL No. 2 
+ 
+You are given the following information concerning a certain company: 
+ 
+ The Accounting Profit before Taxation is 79,855,000 FCFA for the Fiscal year 2019. 
+ 
+ The Share Capital was 600,000,000 FCFA. 
+ 
+ The Turnover of the year 2019 stood at 74,000,000 FCFA. 
+ 
+ You are reminded that in the account 69 – Provisions and Impairment Losses , 
+there are: 
+a) Under the title “Provisions for Doubtful Customers”, 
+ 500,000 FCFA the debts of customers in course of bankruptcy  on 
+31/12/2019. 
+ 1,000,000 FCFA for State debts. 
+ 750,000 FCFA representing the fixed amount relating to Litigious debts. 
+b) Under the title “Provision for expenses and Losses”, 
+ 200,000 FCFA of Provision for fire risk. 
+ 
+ Depreciations: 
+ The depreciation of Equipment and Tools:  Tools acquired on 01/ 01/2019 for 
+an amount 1,500,000 FCFA have been depreciated at a linear rate of 15%, 
+whereas the General Tax code foresees a rate of m10%. 
+ The deprec iation of Office Furniture and Equipment:  The Office Furniture 
+and Equipment acquired at 250,000 FCFA have been depreciated true to the 
+provisions of the General Tax code. 
+ The depreciation of Transport Equipment is 750,000 FCFA meanwhile in that 
+account there is a Mercedes Car which is not necessarily used for the activity 
+of the company. The depreciation relating to this car is 225,000 FCFA. 
+ 
+ Insurance Premiums contracted with CCAR are as follows: 
+ Infirmity insurance for the engineer of the company:  500,000 FCFA. 
+ Car insurance: 1,750,000 FCFA of which 600,000 FCFA is for the Mercedes. 
+ Fire insurance for the Industrial Building belonging to the company: 450,000 
+FCFA. 
+ 
+ The representatives have received a fixed allowance for travelling and representation 
+of 1,000,000 FCFA while Accounting books show supplementary expenses of 
+2,750,000 FCFA. 
+ 
+ The shareholders, non -managers, have advanced to the company, the sum of 
+50,000,000 FCFA remunerated at an interest rate of 15 % per annum since 
+01/07/2019.  The Central Bank rate is 10.5%. 
+
+=== PAGE 3 ===
+Advanced Taxation  Masters by Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+2 
+ 
+ 
+ 
+ 
+ Accounting Losses:   2018   =  25,500,000 FCFA 
+                                2017   =  12,000,000 FCFA 
+ 
+ The company has invited a Foreign Audit Office for technical and financial 
+assistance.  The fees paid, amounted to 14,500,000 FCFA. 
+ 
+ At the fiscal adjustment realised during the year, the company has been liable to 
+delay penalty and fiscal fines for a total amount of 10,525,000 FCFA recorded 
+during the financial year. 
+ 
+ The company has received 835,000 FCFA of Net Dividend for shares. 
+ 
+Work Required 
+1) Determine the Fiscal Profit as at December 31, 2019.  Fill Table CF1. 
+2) Calculate the Income Tax to be paid on or before March 31, 2020. Fill Table CF1-BIS 
+3) Calculate the Net Profit Awaiting Appropriation. 
+4) Show the journal entries relating to the ascertainment of tax liability, the 
+imputation of the income tax against the Net profit, and the payment of the 
+outstanding balance of Company Tax by bank cheque taking into consideration 
+the Advances paid. 
+
+=== PAGE 4 ===
+Advanced Taxation for Masters by Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+THE UNIVERSITY OF BAMENDA 
+FACULTY OF ECONOMICS AND MANAGEMENT SCIENCES  
+DEPARTMENT OF ACCOUNTANCY 
+        
+TUTORIAL No. 3 
+On December 31, 2019, the Balance Sheet of  BEBICAM had a Net Result before  
+taxation of 205,000,000 FCFA.  The Turnover completely real ised in Cameroon amounted 
+to 3,950,000,000 FCFA for the financial year 2019. 
+ADDITIONAL INFORMATION  
+ A Lorry bought on October 1, 2018 at 80,000,000 FCFA was depreciated according to 
+the reducing balance method (duration: 5 years). 
+ 
+ 58,000,000 FCFA  was pai d within the year to a French company of services for 
+computerization of the company. 
+ 
+ The company paid a fine of 800,000 FCFA on October 16, 2019 for non -respect of 
+Labour Legislation.  This fine has normally been recorded by the company as an 
+expense. 
+ 
+ The monthly remuneration of the general manager, who is at the same time the 
+greatest shareholder of the company is 5,500,000 FCFA.  He is also given a monthly 
+fixed indemnity for representation of 250,000 FCFA. 
+ 
+ On December 31, 2019, a provision of 60,000,000 FCFA for renewal of the number of 
+a car was written back.  This provision was constituted on December 31, 2018 and 
+was definitely exonerated. 
+ 
+ An amount of 30,000,000 FCFA was given to the Football Club “ DIAMANT” of 
+Yaounde.  
+ 
+ The company has earned wi thin 2019 financial year, a Net Dividend of 9,352,000 
+FCFA from its shares on Cameroon companies. 
+ 
+ The invoices reimbursed by the company to its general  manager as representation 
+expenses are of an amount of 1,520,000 FCFA. 
+ 
+Work Required 
+    1) Determine the Fiscal Profit as at December 31, 2019.  Fill Table CF1. 
+    2) Calculate the Income Tax to be paid on or before March 31, 2020. Fill Table CF1-BIS 
+    3) Calculate the Net Profit Awaiting Appropriation. 
+    4) Show the  journal entries  relating to  the ascertainment of tax liability, the imputation 
+        of the income  tax against  the Net profit,  and the payment of the outstanding balance  
+        of Company Tax by bank cheque taking into consideration the Advances paid. 
+ 
+  
+
+=== PAGE 5 ===
+Advanced Taxation for Masters by Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+ 
+ 
+ 
+THE UNIVERSITY OF BAMENDA 
+FACULTY OF ECONOMICS AND MANAGEMENT SCIENCES  
+DEPARTMENT OF ACCOUNTANCY 
+        
+TUTORIAL No. 4 
+ 
+<<KWOLEH S.A>>  is Joint Stock company with an Authorised  Capital of 
+30,000,000 FCFA completely paid up.  At the end of the trading period 2019, the 
+Accounting Profit stood at 48,000,000 FCFA. 
+You have just been recruited and the General Manager of the company has asked 
+you to verify the exactitude of accounting entries of expenses and to determine the Fiscal 
+Result of the period 2019.   A careful examination of the various accounts has permitted 
+to sort out the following: 
+ The Statistic and Tax Return of the period 2018 showed a deficit of 4,750,000 FCFA. 
+ The General Manager has been reimbursed displacement fees of 318,000 FCFA.  
+His Pay Slip shows a monthly fixed allowance of 100,000 FCFA for displacement. 
+ Paid Leave due on December 31, 2019 has been provisioned for 3,600,000 FCFA 
+in the account “Expenses to be pa id”. In that same account, the sum of 3,200,000 
+FCFA was recorded on December 31, 2018. 
+ A Penalty for the late payment of the Value Added Tax was paid to the Public 
+Treasury: 80,000 FCFA. 
+ Some shareholders current accounts have experienced the following movements: 
+ Mr.ANDONG; General Manager: Balance on 01/01/2019        ….  5,000,000 
+                                                  Deposit on 01/12/2019       ….10,000,000 
+                                                  Withdrawal on 31/10/2019 ….  3,000,000 
+ Mr. NTAM; Deputy General Manager: 
+                                                  Deposit on 01/04/2019     ….. 15,000,000 
+                                                  Withdrawal on 31/07/2019….   2,500,000 
+                                                  Deposit on 01/10/2019      …..  7,500,000 
+ 
+ Mr. NDUNG;  Balance on 01/01/2019          ……………………… 10,000,000 
+                     Withdrawal on 30/06/2019     ………………………   5,000,000 
+  The funds in the current accounts were remunerated at 16%.  The BEAC rate is 11.5%. 
+ 
+ The company has paid fees of Technical Assistance amounting to the sum of 
+8,000,000 FCFA. 
+ 
+ One shareholder; Mr. NTAM (DGM) holds 10% of the capital of the company and 
+his wife MEH holds 5% .  The household of Mr. NTAM receives a monthly sum of 
+60,000 FCFA as rent on a Micro Computer. 
+ 
+ The annual Turnover before tax was 60,000,000 FCFA. 
+Work Required 
+1) Clearly show the fiscal treatment of every expense. 
+2) Determine the Taxable Profit using Table CF1. 
+3) Determine the amount of the Income Tax to be paid by <<KWOLEH S.A>>. Fill 
+Table CF1-BIS. 
+                                      
+
+=== PAGE 6 ===
+Advanced Taxation for Masters by Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+ 
+ 
+ 
+ 
+
+=== PAGE 7 ===
+Advanced Taxation   for  MBA Students at YIBS  by  Dr. NGOH Christopher SAM 
+ 
+ 
+ 
+ 
+        
+TUTORIAL No. 5 
+ 
+Question 1 
+  Mr. ETONG works on full-time basis at SOCAPALMS Ltd.  In 2021, he earned a Salary of 
+8,400,000 FCFA and a Bonus of 200,000 FCFA.   During the year, he received interest amounting to 
+41,916 FCFA and dividends of 59,880 FCFA. 
+ Mr. ETONG  owns an Apartment in Douala, which he gave  out on rent during the year.  He 
+received rental income of 900,000 FCFA.  He incurred deductible costs as follows: Professional 
+deductions of 50,000 FCFA, Professional expenses on Salary and bonus 30%, NSIF 4.2%, and Rental 
+costs 30% of rental income.  
+Work Required 
+1.1 – Calculate Mr. ETONG’s Gross Income.                                                                                                             
+1.2 -  Calculate Mr. ETONG’s Allowable Deductions.                                                                                                   
+1.3 -  Calculate Mr. ETONG’s Taxable Income for the year 2021.   Rents and Dividends received are 
+         Net of WHT.  
+                                                                                        
+Question 2 
+  Mrs. FONCHINGONG  is an employee of Union Bank of Cameroon PLC, Yaounde.  Her 
+annual Salary is 20,700,000 FCFA.   She had the following: Annual Fixed Allowances of 500,000FCFA, 
+NSIF 4.2% of 9,000,000 FCFA and Professional Allowances  of 30% of Gross Taxable Salary.  In 
+addition, he enjoys the following benefits in kind: a free house 15%, a vehicle 10%, water and 
+electricity 4%. 
+Work Required 
+1.1 – Determine Mrs. FONCHINGONG’s Gross Taxable Salary.                                                                                 
+1.5 - Determine Mrs. FONCHINGONG’s Net Taxable Salary.                                                                                      
+1.6 - Determine Mrs. FONCHINGONG’s Personal Income Tax for the year.                                                                
+1.7 - Determine Mrs. FONCHINGONG’s Total Tax Payable for the year.                                                                     
+1.8 - Determine Mrs. FONCHINGONG’s Net Annual Salary.                                                                                        
+
+=== PAGE 8 ===
+Advanced Taxation  Masters by  Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+ 
+ 
+ 
+     TUTORIAL No. 6 
+ 
+Question 1 
+  In March 2023, an employee; Mr. NGONG in the company MKM Co. Ltd, who is in category 6, 
+echelon F, worked as follows: 
+  1st Week:  4 hours and 2 hours on Sunday 
+  2nd Week:  50 hours 
+  3rd Week:  40 hours and 3 hours at night 
+  4th Week:  60 hours 
+ His Basic Salary is 123,885 FCFA 
+Required 
+1.1 – Calculate the hourly rate given that the monthly legal duration of work is 173.33 hours.                                                                                                             
+1.2 -  Present the table of Overtime Hours.                                                                                                   
+1.3 -  Calculate the total Overtime Remuneration paid to Mr. NGONG.  
+                                                                                        
+Question 2 
+  LOFOST Enterprise is a small independent Delivery Service enterprise.  It collects goods sold 
+from one of Douala’s busy centres and distributes to the neighbourhood.  John Akem is the sole driver 
+of the Delivery Van and earns an hourly rate of 1,500 FCFA. 
+ During the month of January 2023, John Akem worked as follows:  
+   Week  1:  49 hours 
+   Week  2:  52 hours 
+   Week  3:  47 hours 
+   Week  4:  45 hours 
+ Required 
+2.1 – Present the table of Overtime Hours.                                                                                  
+2.2 – Calculate the Overtime Earnings paid to John Akem in January 2023.   
+ Considering that in the month of February 2023, John Akem’s Payslip had the following:  Basic 
+Salary; 200,000 FCFA, Overtime; 31,780 FCFA, and Seniority Bonus; 10,000 FCFA.                                                                                  
+2.3 – Distinguish between Gross Taxable Salary and Net Taxable Salary.                                                                
+2.4 – From the data of February 2023, calculate John Akem’s 
+ (i)  Gross Taxable Salary 
+ (ii) Net Taxable Salary                                                                     
+
+=== PAGE 9 ===
+Advanced Taxation  Masters by  Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+ 
+ 
+ 
+     TUTORIAL No. 7 
+ 
+ 
+  Two Employees of SIH-NDONG Ltd are remunerated in the following manner: 
+ Mr. KELUH is paid an hourly rate of 500 FCFA 
+ Mr. KENDAH has a Basic Salary 155,997 FCFA per month 
+During the month of September 2020, the Time Cards of the two Employees were extracted 
+as follows:  
+Mr. KELUH’s Time Card 
+    Week Hours Worked 
+        1 50 + 2 hours of night work 
+        2 57 hours 
+        3 30 hours + 6 hours on Sunday 
+        4 43 hours 
+ 
+Mr. KENDAH’s Time Card 
+    Week    Monday   Tuesday Wednesday  Thursday    Friday   Saturday   Sunday 
+      1         8       10        10         9        9        9         - 
+      2         7         5        10       10        -        -         6 
+      3         8       10        10       10       10        4         - 
+      4       10       10        10       10       10        -         5 
+ 
+NB: The Wednesday of the 3rd Week was a Public Holiday 
+ 
+Required 
+(i) Calculate the Normal and Supplementary hours of  Mr. KELUH using the following table 
+format:   
+ Weeks Total Hours Normal Hours                                 O V E R T I M E 
+  120%     130%      140%      150% 
+       
+  
+(ii) Calculate the Normal and Supplementary hours of Mr. KENDAH using the following table 
+format:  
+   Weeks Total Hours Normal Hours                                 O V E R T I M E 
+  120%     130%      140%      150% 
+       
+ 
+(iii) Determine the Gross Salaries of Mr. KELUH and Mr. KENDAH.                                                                                      
+                                                                                      .  
+                                                                                                                                     
+
+=== PAGE 10 ===
+Advanced Taxation  Masters by  Dr. NGOH Christopher SAM, FEMS - UBa 
+ 
+ 
+ 
+ 
+     TUTORIAL No. 8 
+ 
+ The Time Card of workers in KWALEGHE Enterprise  during the 1 st Week of 
+January 2023 (2nd to 7th)  indicated the following: 
+Workers’ Names Hourly 
+Rate Post Time worked in Hours daily 
+2nd 3rd 4th 5th 6th 7th 
+FULL 2,400 Electrician 8 8 8 8 8 8 
+NDENG 3,600 Electrician 9 8 - 10 12 10 
+NGUNG 3,000 Electrician 7 8 11 8 7 9 
+TOLEU 3,200 Builder 9 9 8 9 10 10 
+NDUNG 4,100 Foreman 10 6 8 7 7 10 
+ 
+You are further informed that:  
+ A normal working week is 40 hours; 
+ Overtime is paid an hourly rate increased by 20% from the 41 st to the 48 th hour each 
+and an hourly rate increased by 30% from the 49th hour. 
+Required: 
+(i) Calculate  the  Overtime  remuneration  earned  by  each  worker  for  the week using the 
+       following table format: 
+Workers’ 
+Names 
+Hours 
+due 
+Hours 
+done 
+Hourly 
+Rate 
+OVERTIME TOTAL 
+Amount 20% 30% 
+Hours Rate Amount Hours Rate Amount 
+           
+ 
+ 
+(ii) Determine the Basic Wages earned by each worker for work using following table  
+      format: 
+Workers’ Names Hours Due Hours Rate Basic Wages 
+    
+ 
+ 
+ 
+(iii) Determine  the  Gross  Wages  paid  to  each  Worker  knowing  that  all  workers  earn a  
+       Transport Allowance  of 3,000 FCFA per week and that the Foreman in addition, earns a  
+       Seniority Bonus of 4,000 FCFA each week. 
