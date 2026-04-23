@@ -40,8 +40,14 @@ _ACCOUNT_ROLE_LABELS: dict[str, str] = {
     "cash_on_hand": "Cash On Hand",
     "petty_cash": "Petty Cash",
     "bank_main": "Main Bank",
+    "bank_clearing": "Bank Clearing",
     "sales_revenue_default": "Sales Revenue",
     "purchases_expense_default": "Purchases Expense",
+    "vat_input": "VAT Input",
+    "vat_output": "VAT Output",
+    "retained_earnings": "Retained Earnings",
+    "rounding_gain": "Rounding Gain",
+    "rounding_loss": "Rounding Loss",
 }
 
 

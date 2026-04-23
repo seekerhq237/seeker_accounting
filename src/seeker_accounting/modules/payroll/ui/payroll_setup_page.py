@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.payroll.ui.dialogs.company_payroll_settings_dialog import (
     CompanyPayrollSettingsDialog,
@@ -41,6 +43,19 @@ from seeker_accounting.modules.payroll.ui.dialogs.payroll_rule_set_form_dialog i
     PayrollRuleSetFormDialog,
 )
 from seeker_accounting.modules.payroll.ui.dialogs.position_dialog import PositionManagementDialog
+from seeker_accounting.modules.payroll.ui.employee_hub_window import EmployeeHubWindow
+from seeker_accounting.modules.payroll.ui.wizards.compensation_change_wizard import (
+    CompensationChangeWizardDialog,
+)
+from seeker_accounting.modules.payroll.ui.wizards.employee_hire_wizard import (
+    EmployeeHireWizardDialog,
+)
+from seeker_accounting.modules.payroll.ui.wizards.employee_payroll_setup_wizard import (
+    EmployeePayrollSetupWizardDialog,
+)
+from seeker_accounting.modules.payroll.ui.wizards.payroll_activation_wizard import (
+    PayrollActivationWizardDialog,
+)
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
@@ -82,14 +97,14 @@ _RULE_TYPE_LABELS = {
 }
 
 
-class PayrollSetupPage(QWidget):
+class PayrollSetupPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._sr = service_registry
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_toolbar())
         root_layout.addWidget(self._build_tabs(), 1)
@@ -131,6 +146,7 @@ class PayrollSetupPage(QWidget):
     def _build_tabs(self) -> QWidget:
         self._tabs = QTabWidget(self)
         self._tabs.setDocumentMode(True)
+        self._tabs.currentChanged.connect(lambda *_: self._notify_ribbon_context_changed())
 
         self._tabs.addTab(self._build_settings_tab(), "Company Settings")
         self._tabs.addTab(self._build_employees_tab(), "Employees")
@@ -211,8 +227,10 @@ class PayrollSetupPage(QWidget):
         title.setObjectName("EmptyStateTitle")
         layout.addWidget(title)
         msg = QLabel(
-            "Click Configure Settings to set up the company payroll foundation "
-            "including pay frequency, currency, and statutory pack.", card
+            "Run the guided activation wizard to set up payroll for this company "
+            "in one pass — settings, statutory pack, departments, and positions. "
+            "Prefer the hands-on route? Use Configure Settings for the standalone "
+            "settings form.", card
         )
         msg.setObjectName("PageSummary")
         msg.setWordWrap(True)
@@ -220,8 +238,13 @@ class PayrollSetupPage(QWidget):
         act = QWidget(card)
         al = QHBoxLayout(act)
         al.setContentsMargins(0, 6, 0, 0)
+        al.setSpacing(8)
+        wizard_btn = QPushButton("Run Activation Wizard", act)
+        wizard_btn.setProperty("variant", "primary")
+        wizard_btn.clicked.connect(self._on_activation_wizard)
+        al.addWidget(wizard_btn, 0, Qt.AlignmentFlag.AlignLeft)
         btn = QPushButton("Configure Settings", act)
-        btn.setProperty("variant", "primary")
+        btn.setProperty("variant", "secondary")
         btn.clicked.connect(self._on_configure_settings)
         al.addWidget(btn, 0, Qt.AlignmentFlag.AlignLeft)
         al.addStretch(1)
@@ -294,7 +317,10 @@ class PayrollSetupPage(QWidget):
         configure_compact_table(self._emp_table)
         self._emp_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._emp_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._emp_table.doubleClicked.connect(lambda _: self._on_edit_employee())
+        self._emp_table.doubleClicked.connect(lambda _: self._on_open_employee_hub())
+        self._emp_table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
         layout.addWidget(self._emp_table)
         return card
 
@@ -356,6 +382,9 @@ class PayrollSetupPage(QWidget):
         self._comp_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._comp_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._comp_table.doubleClicked.connect(lambda _: self._on_edit_component())
+        self._comp_table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
         layout.addWidget(self._comp_table)
         return card
 
@@ -420,6 +449,9 @@ class PayrollSetupPage(QWidget):
         self._rule_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._rule_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._rule_table.doubleClicked.connect(lambda _: self._on_edit_brackets())
+        self._rule_table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
         layout.addWidget(self._rule_table)
         return card
 
@@ -465,6 +497,7 @@ class PayrollSetupPage(QWidget):
         self._reload_employees()
         self._reload_components()
         self._reload_rules()
+        self._notify_ribbon_context_changed()
 
     def _reload_settings(self, company: ActiveCompanyDTO | None) -> None:
         if company is None:
@@ -638,6 +671,97 @@ class PayrollSetupPage(QWidget):
 
     # ── Actions — Settings ────────────────────────────────────────────────────
 
+    def _on_activation_wizard(self) -> None:
+        company = self._active_company()
+        if company is None:
+            show_error(self, "Payroll Setup", "Select an active company first.")
+            return
+        result = PayrollActivationWizardDialog.run(
+            self._sr, company.company_id, company.company_name, parent=self
+        )
+        if result is not None:
+            self._reload_settings(company)
+            self._tabs.setCurrentIndex(0)
+            self._notify_ribbon_context_changed()
+            show_info(self, "Payroll Activation", result.summary)
+
+    def _on_hire_employee_wizard(self) -> None:
+        company = self._active_company()
+        if company is None:
+            show_error(self, "Payroll Setup", "Select an active company first.")
+            return
+        result = EmployeeHireWizardDialog.run(
+            self._sr, company.company_id, company.company_name, parent=self
+        )
+        if result is not None:
+            self._reload_employees()
+            self._tabs.setCurrentIndex(1)
+            self._notify_ribbon_context_changed()
+            show_info(self, "Hire Employee", result.summary)
+
+    def _on_open_employee_hub(self) -> None:
+        company = self._active_company()
+        if company is None:
+            show_error(self, "Payroll Setup", "Select an active company first.")
+            return
+        employee_id = self._selected_id(self._emp_table)
+        if employee_id is None:
+            show_error(self, "Employee Hub", "Select an employee first.")
+            return
+        manager = getattr(self._sr, "child_window_manager", None)
+        cid = company.company_id
+
+        def factory() -> EmployeeHubWindow:
+            return EmployeeHubWindow(
+                self._sr, company_id=cid, employee_id=employee_id,
+            )
+        if manager is not None:
+            manager.open_document(EmployeeHubWindow.DOC_TYPE, employee_id, factory)
+        else:
+            win = factory()
+            win.show()
+
+    def _on_employee_payroll_setup_wizard(self) -> None:
+        company = self._active_company()
+        if company is None:
+            show_error(self, "Payroll Setup", "Select an active company first.")
+            return
+        employee_id = self._selected_id(self._emp_table)
+        if employee_id is None:
+            show_error(self, "Payroll Setup", "Select an employee first.")
+            return
+        result = EmployeePayrollSetupWizardDialog.run(
+            self._sr, company.company_id, company.company_name,
+            employee_id=employee_id, parent=self,
+        )
+        if result is not None:
+            self._reload_employees()
+            self._tabs.setCurrentIndex(1)
+            self._notify_ribbon_context_changed()
+            show_info(self, "Payroll Setup", result.summary)
+
+    def _on_compensation_change_wizard(self) -> None:
+        company = self._active_company()
+        if company is None:
+            show_error(self, "Payroll Setup", "Select an active company first.")
+            return
+        employee_id = self._selected_id(self._emp_table)
+        if employee_id is None:
+            show_error(
+                self, "Compensation Change",
+                "Select an employee first.",
+            )
+            return
+        result = CompensationChangeWizardDialog.run(
+            self._sr, company.company_id, company.company_name,
+            employee_id=employee_id, parent=self,
+        )
+        if result is not None:
+            self._reload_employees()
+            self._tabs.setCurrentIndex(1)
+            self._notify_ribbon_context_changed()
+            show_info(self, "Compensation Change", result.summary)
+
     def _on_configure_settings(self) -> None:
         company = self._active_company()
         if company is None:
@@ -649,6 +773,7 @@ class PayrollSetupPage(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._reload_settings(company)
             self._tabs.setCurrentIndex(0)
+            self._notify_ribbon_context_changed()
 
     def _on_seed_cameroon(self) -> None:
         company = self._active_company()
@@ -685,6 +810,7 @@ class PayrollSetupPage(QWidget):
             self._sr, company.company_id, company.company_name, parent=self
         )
         dialog.exec()
+        self._notify_ribbon_state_changed()
 
     def _on_manage_positions(self) -> None:
         company = self._active_company()
@@ -695,6 +821,7 @@ class PayrollSetupPage(QWidget):
             self._sr, company.company_id, company.company_name, parent=self
         )
         dialog.exec()
+        self._notify_ribbon_state_changed()
 
     # ── Actions — Employees ───────────────────────────────────────────────────
 
@@ -913,8 +1040,139 @@ class PayrollSetupPage(QWidget):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
+    def current_ribbon_surface_key(self) -> str | None:
+        tab_key = self._current_tab_key()
+        if tab_key == "settings":
+            return "payroll_setup.settings"
+        if tab_key == "employees":
+            if not self._has_employee_selected():
+                return "payroll_setup.employees.none"
+            if self._selected_employee_is_active():
+                return "payroll_setup.employees.active"
+            return "payroll_setup.employees.inactive"
+        if tab_key == "components":
+            if self._has_component_selected():
+                return "payroll_setup.components.selected"
+            return "payroll_setup.components.none"
+        if tab_key == "rules":
+            if self._has_rule_selected():
+                return "payroll_setup.rules.selected"
+            return "payroll_setup.rules.none"
+        return "payroll_setup.settings"
+
+    def _ribbon_commands(self):
+        return {
+            "payroll_setup.activation_wizard": self._on_activation_wizard,
+            "payroll_setup.hire_employee_wizard": self._on_hire_employee_wizard,
+            "payroll_setup.open_employee_hub": self._on_open_employee_hub,
+            "payroll_setup.employee_payroll_setup_wizard": self._on_employee_payroll_setup_wizard,
+            "payroll_setup.compensation_change_wizard": self._on_compensation_change_wizard,
+            "payroll_setup.configure_settings": self._on_configure_settings,
+            "payroll_setup.apply_pack": self._on_seed_cameroon,
+            "payroll_setup.open_validation": self._open_validation_workspace,
+            "payroll_setup.open_calculation": self._open_calculation_workspace,
+            "payroll_setup.new_employee": self._on_new_employee,
+            "payroll_setup.edit_employee": self._on_edit_employee,
+            "payroll_setup.deactivate_employee": self._on_deactivate_employee,
+            "payroll_setup.manage_departments": self._on_manage_departments,
+            "payroll_setup.manage_positions": self._on_manage_positions,
+            "payroll_setup.new_component": self._on_new_component,
+            "payroll_setup.edit_component": self._on_edit_component,
+            "payroll_setup.deactivate_component": self._on_deactivate_component,
+            "payroll_setup.new_rule_set": self._on_new_rule_set,
+            "payroll_setup.edit_rule_set": self._on_edit_rule_set,
+            "payroll_setup.edit_brackets": self._on_edit_brackets,
+            "payroll_setup.deactivate_rule_set": self._on_deactivate_rule_set,
+            "payroll_setup.refresh": self.reload,
+        }
+
+    def ribbon_state(self):
+        has_company = self._active_company() is not None
+        has_employee = self._has_employee_selected()
+        employee_active = self._selected_employee_is_active()
+        has_component = self._has_component_selected()
+        component_active = self._selected_component_is_active()
+        has_rule = self._has_rule_selected()
+        rule_active = self._selected_rule_is_active()
+        return {
+            "payroll_setup.activation_wizard": has_company,
+            "payroll_setup.hire_employee_wizard": has_company,
+            "payroll_setup.open_employee_hub": has_company and has_employee,
+            "payroll_setup.employee_payroll_setup_wizard": has_company and has_employee and employee_active,
+            "payroll_setup.compensation_change_wizard": has_company and has_employee and employee_active,
+            "payroll_setup.configure_settings": has_company,
+            "payroll_setup.apply_pack": has_company,
+            "payroll_setup.open_validation": has_company,
+            "payroll_setup.open_calculation": has_company,
+            "payroll_setup.new_employee": has_company,
+            "payroll_setup.edit_employee": has_company and has_employee,
+            "payroll_setup.deactivate_employee": has_company and has_employee and employee_active,
+            "payroll_setup.manage_departments": has_company,
+            "payroll_setup.manage_positions": has_company,
+            "payroll_setup.new_component": has_company,
+            "payroll_setup.edit_component": has_company and has_component,
+            "payroll_setup.deactivate_component": has_company and has_component and component_active,
+            "payroll_setup.new_rule_set": has_company,
+            "payroll_setup.edit_rule_set": has_company and has_rule,
+            "payroll_setup.edit_brackets": has_company and has_rule,
+            "payroll_setup.deactivate_rule_set": has_company and has_rule and rule_active,
+            "payroll_setup.refresh": True,
+        }
+
     def _active_company(self) -> ActiveCompanyDTO | None:
         return self._sr.company_context_service.get_active_company()
+
+    def _current_tab_key(self) -> str:
+        index = self._tabs.currentIndex()
+        if index == 1:
+            return "employees"
+        if index == 2:
+            return "components"
+        if index == 3:
+            return "rules"
+        return "settings"
+
+    def _has_employee_selected(self) -> bool:
+        return self._selected_id(self._emp_table) is not None
+
+    def _selected_employee_is_active(self) -> bool:
+        row = self._emp_table.currentRow()
+        if row < 0:
+            return False
+        item = self._emp_table.item(row, 6)
+        return (item.text().strip().lower() if item is not None else "") == "active"
+
+    def _has_component_selected(self) -> bool:
+        return self._selected_id(self._comp_table) is not None
+
+    def _selected_component_is_active(self) -> bool:
+        row = self._comp_table.currentRow()
+        if row < 0:
+            return False
+        item = self._comp_table.item(row, 7)
+        return (item.text().strip().lower() if item is not None else "") == "active"
+
+    def _has_rule_selected(self) -> bool:
+        return self._selected_id(self._rule_table) is not None
+
+    def _selected_rule_is_active(self) -> bool:
+        row = self._rule_table.currentRow()
+        if row < 0:
+            return False
+        item = self._rule_table.item(row, 6)
+        return (item.text().strip().lower() if item is not None else "") == "active"
+
+    def _open_validation_workspace(self) -> None:
+        self._sr.navigation_service.navigate(
+            nav_ids.PAYROLL_OPERATIONS,
+            context={"payroll_tab": "validation"},
+        )
+
+    def _open_calculation_workspace(self) -> None:
+        self._sr.navigation_service.navigate(
+            nav_ids.PAYROLL_CALCULATION,
+            context={"payroll_tab": "profiles"},
+        )
 
     def _selected_id(self, table: QTableWidget) -> int | None:
         row = table.currentRow()

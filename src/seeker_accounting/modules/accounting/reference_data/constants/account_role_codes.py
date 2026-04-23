@@ -17,6 +17,7 @@ ACCOUNT_ROLE_DEFINITIONS: tuple[AccountRoleDefinition, ...] = (
     AccountRoleDefinition("cash_on_hand", "Cash On Hand", "Primary cash-on-hand account."),
     AccountRoleDefinition("petty_cash", "Petty Cash", "Primary petty cash account."),
     AccountRoleDefinition("bank_main", "Main Bank", "Primary bank settlement account."),
+    AccountRoleDefinition("bank_clearing", "Bank Clearing", "Transit or suspense account for bank-clearing flows."),
     AccountRoleDefinition(
         "sales_revenue_default",
         "Sales Revenue",
@@ -31,6 +32,31 @@ ACCOUNT_ROLE_DEFINITIONS: tuple[AccountRoleDefinition, ...] = (
         "payroll_payable",
         "Payroll Payable",
         "Default payroll liability account.",
+    ),
+    AccountRoleDefinition(
+        "vat_input",
+        "VAT Input",
+        "Recoverable input VAT account used on purchases.",
+    ),
+    AccountRoleDefinition(
+        "vat_output",
+        "VAT Output",
+        "Collected output VAT account used on sales.",
+    ),
+    AccountRoleDefinition(
+        "retained_earnings",
+        "Retained Earnings",
+        "Year-end retained earnings or brought-forward equity account.",
+    ),
+    AccountRoleDefinition(
+        "rounding_gain",
+        "Rounding Gain",
+        "Income account for document or settlement rounding gains.",
+    ),
+    AccountRoleDefinition(
+        "rounding_loss",
+        "Rounding Loss",
+        "Expense account for document or settlement rounding losses.",
     ),
     AccountRoleDefinition(
         "contract_revenue_default",
@@ -73,4 +99,3 @@ ACCOUNT_ROLE_DEFINITION_BY_CODE = {
     definition.role_code: definition
     for definition in ACCOUNT_ROLE_DEFINITIONS
 }
-

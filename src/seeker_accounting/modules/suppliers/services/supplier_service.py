@@ -172,6 +172,58 @@ class SupplierService:
             }
             return [self._to_supplier_list_item_dto(row, groups_by_id, payment_terms_by_id) for row in suppliers]
 
+    def list_suppliers_page(
+        self,
+        company_id: int,
+        active_only: bool = False,
+        query: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> "PaginatedResult[SupplierListItemDTO]":
+        """Paginated + searchable supplier listing. See CustomerService.list_customers_page."""
+        from seeker_accounting.shared.dto.paginated_result import (
+            PaginatedResult,
+            normalize_page,
+            normalize_page_size,
+        )
+
+        self._permission_service.require_permission("suppliers.view")
+        safe_page = normalize_page(page)
+        safe_size = normalize_page_size(page_size)
+        offset = (safe_page - 1) * safe_size
+
+        with self._unit_of_work_factory() as uow:
+            self._require_company_exists(uow.session, company_id)
+            supplier_repository = self._require_supplier_repository(uow.session)
+            group_repository = self._require_supplier_group_repository(uow.session)
+            payment_term_repository = self._require_payment_term_repository(uow.session)
+
+            total = supplier_repository.count_filtered(
+                company_id, query=query, active_only=active_only
+            )
+            suppliers = supplier_repository.list_filtered_page(
+                company_id,
+                query=query,
+                active_only=active_only,
+                limit=safe_size,
+                offset=offset,
+            )
+            groups_by_id = {row.id: row for row in group_repository.list_by_company(company_id, active_only=False)}
+            payment_terms_by_id = {
+                row.id: row for row in payment_term_repository.list_by_company(company_id, active_only=False)
+            }
+            items = [
+                self._to_supplier_list_item_dto(row, groups_by_id, payment_terms_by_id)
+                for row in suppliers
+            ]
+
+        return PaginatedResult(
+            items=tuple(items),
+            total_count=total,
+            page=safe_page,
+            page_size=safe_size,
+        )
+
     def get_supplier(self, company_id: int, supplier_id: int) -> SupplierDetailDTO:
         self._permission_service.require_permission("suppliers.view")
         with self._unit_of_work_factory() as uow:

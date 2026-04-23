@@ -18,6 +18,7 @@ from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.reporting.dto.reporting_filter_dto import ReportingFilterDTO
 from seeker_accounting.modules.reporting.dto.trial_balance_report_dto import TrialBalanceReportDTO
 from seeker_accounting.platform.exceptions import ValidationError
+from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.message_boxes import show_error
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
@@ -180,7 +181,12 @@ class TrialBalanceTab(QWidget):
             return
 
         try:
-            report = self._report_service.get_trial_balance(filter_dto)
+            result = run_with_progress(
+                parent=self,
+                title="Trial Balance",
+                message="Aggregating posted journal lines…",
+                worker=lambda: self._report_service.get_trial_balance(filter_dto),
+            )
         except ValidationError as exc:
             show_error(self, "Trial Balance", str(exc))
             self._stack.setCurrentIndex(3)
@@ -189,6 +195,19 @@ class TrialBalanceTab(QWidget):
             show_error(self, "Trial Balance", str(exc))
             self._stack.setCurrentIndex(3)
             return
+
+        if result.cancelled:
+            return
+        if result.error is not None:
+            if isinstance(result.error, ValidationError):
+                show_error(self, "Trial Balance", str(result.error))
+            else:
+                show_error(self, "Trial Balance", str(result.error))
+            self._stack.setCurrentIndex(3)
+            return
+
+        report = result.value
+        assert report is not None
 
         if not report.rows:
             self._table.setRowCount(0)

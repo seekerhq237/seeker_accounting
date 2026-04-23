@@ -20,6 +20,7 @@ from seeker_accounting.modules.reporting.dto.general_ledger_report_dto import Ge
 from seeker_accounting.modules.reporting.dto.reporting_filter_dto import ReportingFilterDTO
 from seeker_accounting.modules.reporting.ui.dialogs.journal_source_detail_dialog import JournalSourceDetailDialog
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.message_boxes import show_error
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
@@ -207,7 +208,12 @@ class GeneralLedgerTab(QWidget):
             return
 
         try:
-            report = self._report_service.get_account_ledger(filter_dto, account_id)
+            task_result = run_with_progress(
+                parent=self,
+                title="General Ledger",
+                message="Loading posted lines and running balance…",
+                worker=lambda: self._report_service.get_account_ledger(filter_dto, account_id),
+            )
         except (ValidationError, NotFoundError) as exc:
             show_error(self, "General Ledger", str(exc))
             self._stack.setCurrentIndex(4)
@@ -216,6 +222,16 @@ class GeneralLedgerTab(QWidget):
             show_error(self, "General Ledger", str(exc))
             self._stack.setCurrentIndex(4)
             return
+
+        if task_result.cancelled:
+            return
+        if task_result.error is not None:
+            show_error(self, "General Ledger", str(task_result.error))
+            self._stack.setCurrentIndex(4)
+            return
+
+        report = task_result.value
+        assert report is not None
 
         if not report.accounts:
             self._table.setRowCount(0)
@@ -256,27 +272,32 @@ class GeneralLedgerTab(QWidget):
         header_text = f"{account.account_code} · {account.account_name}"
         self._account_header.setText(header_text)
 
-        self._table.setRowCount(len(account.lines))
+        # Bulk populate: suspend paint + sorting for large ledgers.
+        self._table.setUpdatesEnabled(False)
+        self._table.setSortingEnabled(False)
+        try:
+            self._table.setRowCount(len(account.lines))
+            for row_idx, line in enumerate(account.lines):
+                self._set_text_item(row_idx, 0, line.entry_date.strftime("%Y-%m-%d"))
+                self._set_text_item(row_idx, 1, line.entry_number or "—")
+                self._set_text_item(row_idx, 2, line.reference_text or "—")
+                self._set_text_item(row_idx, 3, line.journal_description or "—")
+                self._set_text_item(row_idx, 4, line.line_description or "—")
+                self._set_amount_item(row_idx, 5, line.debit_amount)
+                self._set_amount_item(row_idx, 6, line.credit_amount)
+                self._set_amount_item(row_idx, 7, line.running_balance)
 
-        for row_idx, line in enumerate(account.lines):
-            self._set_text_item(row_idx, 0, line.entry_date.strftime("%Y-%m-%d"))
-            self._set_text_item(row_idx, 1, line.entry_number or "—")
-            self._set_text_item(row_idx, 2, line.reference_text or "—")
-            self._set_text_item(row_idx, 3, line.journal_description or "—")
-            self._set_text_item(row_idx, 4, line.line_description or "—")
-            self._set_amount_item(row_idx, 5, line.debit_amount)
-            self._set_amount_item(row_idx, 6, line.credit_amount)
-            self._set_amount_item(row_idx, 7, line.running_balance)
-
-            source_parts = []
-            if line.source_module_code:
-                source_parts.append(line.source_module_code)
-            if line.source_document_type:
-                source_parts.append(line.source_document_type)
-            source = " / ".join(source_parts) if source_parts else "—"
-            item = QTableWidgetItem(source)
-            item.setData(Qt.ItemDataRole.UserRole, line.journal_entry_id)
-            self._table.setItem(row_idx, 8, item)
+                source_parts = []
+                if line.source_module_code:
+                    source_parts.append(line.source_module_code)
+                if line.source_document_type:
+                    source_parts.append(line.source_document_type)
+                source = " / ".join(source_parts) if source_parts else "—"
+                item = QTableWidgetItem(source)
+                item.setData(Qt.ItemDataRole.UserRole, line.journal_entry_id)
+                self._table.setItem(row_idx, 8, item)
+        finally:
+            self._table.setUpdatesEnabled(True)
 
         self._update_totals(account)
 

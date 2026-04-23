@@ -14,6 +14,15 @@ class JournalEntry(TimestampMixin, Base):
         UniqueConstraint("company_id", "entry_number"),
         Index("ix_journal_entries_company_id_entry_date", "company_id", "entry_date"),
         Index("ix_journal_entries_company_id_status_code", "company_id", "status_code"),
+        # Source-document reverse lookup: jump from an operational document
+        # (invoice, transfer, payroll run, etc.) back to its posted journal
+        # entry without scanning the whole journal table.
+        Index(
+            "ix_journal_entries_source_document",
+            "source_module_code",
+            "source_document_type",
+            "source_document_id",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -133,54 +133,34 @@ class ShellTopBar(QFrame):
         self._notification_center = NotificationCenter(service_registry)
         service_registry.theme_manager.theme_changed.connect(self._refresh_icons)
 
-        self.setObjectName("CommandBand")
+        self.setObjectName("ShellMenuCorner")
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 2, 8, 2)
-        layout.setSpacing(6)
+        layout.setContentsMargins(4, 0, 6, 0)
+        layout.setSpacing(4)
 
-        # ── Left: "+ New" only (sidebar has navigation; status rail has company)
-        left_container = QFrame(self)
-        left_container.setObjectName("CommandBandGroup")
-        left_layout = QHBoxLayout(left_container)
-        left_layout.setContentsMargins(0, 0, 8, 0)
-        left_layout.setSpacing(6)
-
-        self._new_button = self._build_new_button()
-        left_layout.addWidget(self._new_button, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        layout.addWidget(left_container, 0)
-
-        # ── Centre: real search field ─────────────────────────────────
+        # ── Compact search: fixed narrow width, no centre strip ──────
         self._search_frame = self._build_inline_search()
-        layout.addWidget(self._search_frame, 1, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self._search_frame, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        # ── Right: theme toggle + bell + fiscal + license + profile ───
-        right_container = QFrame(self)
-        right_container.setObjectName("CommandBandGroup")
-        right_container.setProperty("groupEdge", "end")
-        right_layout = QHBoxLayout(right_container)
-        right_layout.setContentsMargins(10, 0, 0, 0)
-        right_layout.setSpacing(6)
-
+        # ── Right cluster: theme + bell + fiscal + license + profile ──
         self._theme_toggle_btn = self._build_theme_toggle_button()
-        right_layout.addWidget(self._theme_toggle_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self._theme_toggle_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._bell_btn = self._build_bell_button()
-        right_layout.addWidget(self._bell_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self._bell_btn, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        right_layout.addWidget(self._build_divider(), 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self._build_divider(), 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._fiscal_chip = self._build_fiscal_chip()
-        right_layout.addWidget(self._fiscal_chip, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self._fiscal_chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self._license_chip = LicenseStatusChip(right_container)
-        right_layout.addWidget(self._license_chip, 0, Qt.AlignmentFlag.AlignVCenter)
+        self._license_chip = LicenseStatusChip(self)
+        layout.addWidget(self._license_chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._profile_chip = self._build_profile_chip()
-        right_layout.addWidget(self._profile_chip, 0, Qt.AlignmentFlag.AlignVCenter)
-
-        layout.addWidget(right_container, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self._profile_chip, 0, Qt.AlignmentFlag.AlignVCenter)
 
         # ── Connections ───────────────────────────────────────────────
         self._profile_chip.clicked.connect(self._show_profile_menu)
@@ -221,7 +201,7 @@ class ShellTopBar(QFrame):
         divider = QFrame(self)
         divider.setObjectName("TopBarDivider")
         divider.setFixedWidth(1)
-        divider.setFixedHeight(18)
+        divider.setFixedHeight(14)
         return divider
 
     def _build_company_switcher(self) -> ClickableFrame:
@@ -315,20 +295,19 @@ class ShellTopBar(QFrame):
         """Real search input that forwards typed text to the command palette."""
         frame = QFrame(self)
         frame.setObjectName("TopBarSearchTrigger")
-        frame.setFixedHeight(DEFAULT_TOKENS.sizes.topbar_control_height)
-        frame.setMinimumWidth(260)
-        frame.setMaximumWidth(DEFAULT_TOKENS.sizes.topbar_search_width)
-        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        frame.setFixedHeight(20)
+        frame.setFixedWidth(180)
+        frame.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(10, 0, 10, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(6, 0, 6, 0)
+        layout.setSpacing(4)
 
         self._search_icon_label = QLabel(frame)
         self._search_icon_label.setObjectName("TopBarSearchIcon")
-        self._search_icon_label.setFixedSize(16, 16)
+        self._search_icon_label.setFixedSize(13, 13)
         self._search_icon_label.setPixmap(
-            self._icon_provider.icon("search", size=16).pixmap(16, 16)
+            self._icon_provider.icon("search", size=13).pixmap(13, 13)
         )
         layout.addWidget(self._search_icon_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -356,7 +335,7 @@ class ShellTopBar(QFrame):
         """Sun/moon icon button that toggles the app theme."""
         btn = QPushButton(self)
         btn.setObjectName("TopBarThemeToggle")
-        btn.setFixedSize(DEFAULT_TOKENS.sizes.topbar_control_height, DEFAULT_TOKENS.sizes.topbar_control_height)
+        btn.setFixedSize(20, 20)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setToolTip("Toggle light/dark theme")
         btn.clicked.connect(self._handle_toggle_theme)
@@ -367,11 +346,11 @@ class ShellTopBar(QFrame):
         """Notification bell button."""
         btn = QPushButton(self)
         btn.setObjectName("TopBarBellButton")
-        btn.setFixedSize(DEFAULT_TOKENS.sizes.topbar_control_height, DEFAULT_TOKENS.sizes.topbar_control_height)
+        btn.setFixedSize(20, 20)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setToolTip("Notifications")
-        btn.setIcon(self._icon_provider.icon("bell", size=17))
-        btn.setIconSize(QSize(17, 17))
+        btn.setIcon(self._icon_provider.icon("bell", size=14))
+        btn.setIconSize(QSize(14, 14))
         btn.clicked.connect(self._show_bell_panel)
         return btn
 
@@ -380,20 +359,20 @@ class ShellTopBar(QFrame):
         chip.setObjectName("TopBarChip")
         chip.setProperty("chipKind", "fiscal")
         chip.setProperty("fiscalTone", "neutral")
-        chip.setFixedHeight(DEFAULT_TOKENS.sizes.topbar_control_height)
-        chip.setMinimumWidth(152)
-        chip.setMaximumWidth(DEFAULT_TOKENS.sizes.topbar_fiscal_width)
+        chip.setFixedHeight(20)
+        chip.setMinimumWidth(70)
+        chip.setMaximumWidth(110)
         chip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         chip.setToolTip("Current fiscal period — click to manage periods")
 
         layout = QHBoxLayout(chip)
-        layout.setContentsMargins(10, 0, 10, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(6, 0, 6, 0)
+        layout.setSpacing(4)
 
         self._fiscal_status_dot = QLabel(chip)
         self._fiscal_status_dot.setObjectName("TopBarStatusDot")
         self._fiscal_status_dot.setProperty("statusTone", "neutral")
-        self._fiscal_status_dot.setFixedSize(8, 8)
+        self._fiscal_status_dot.setFixedSize(6, 6)
         layout.addWidget(self._fiscal_status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._fiscal_value_label = ElidedLabel("No company", chip)
@@ -406,19 +385,19 @@ class ShellTopBar(QFrame):
     def _build_profile_chip(self) -> ClickableFrame:
         chip = ClickableFrame(self)
         chip.setObjectName("TopBarProfileChip")
-        chip.setFixedHeight(DEFAULT_TOKENS.sizes.topbar_control_height)
-        chip.setMinimumWidth(86)
-        chip.setMaximumWidth(DEFAULT_TOKENS.sizes.topbar_user_width)
+        chip.setFixedHeight(20)
+        chip.setMinimumWidth(70)
+        chip.setMaximumWidth(120)
         chip.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(chip)
-        layout.setContentsMargins(4, 2, 8, 2)
-        layout.setSpacing(8)
+        layout.setContentsMargins(4, 0, 6, 0)
+        layout.setSpacing(4)
 
         self._avatar_label = QLabel("?", chip)
         self._avatar_label.setObjectName("TopBarAvatar")
         self._avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._avatar_label.setFixedSize(30, 30)
+        self._avatar_label.setFixedSize(16, 16)
         layout.addWidget(self._avatar_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._user_name_label = ElidedLabel("", chip)
@@ -428,9 +407,9 @@ class ShellTopBar(QFrame):
         self._profile_chevron_label = QLabel(chip)
         self._profile_chevron_label.setObjectName("TopBarProfileChevron")
         self._profile_chevron_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._profile_chevron_label.setFixedSize(14, 14)
+        self._profile_chevron_label.setFixedSize(10, 10)
         self._profile_chevron_label.setPixmap(
-            self._icon_provider.icon("chevron_down", size=14).pixmap(14, 14)
+            self._icon_provider.icon("chevron_down", size=10).pixmap(10, 10)
         )
         layout.addWidget(self._profile_chevron_label, 0, Qt.AlignmentFlag.AlignVCenter)
         return chip
@@ -485,11 +464,11 @@ class ShellTopBar(QFrame):
         """Re-apply Lucide icons after a theme change so colors re-tint."""
         if hasattr(self, "_search_icon_label"):
             self._search_icon_label.setPixmap(
-                self._icon_provider.icon("search", size=16).pixmap(16, 16)
+                self._icon_provider.icon("search", size=13).pixmap(13, 13)
             )
         if hasattr(self, "_profile_chevron_label"):
             self._profile_chevron_label.setPixmap(
-                self._icon_provider.icon("chevron_down", size=14).pixmap(14, 14)
+                self._icon_provider.icon("chevron_down", size=10).pixmap(10, 10)
             )
         if hasattr(self, "_company_chevron_label"):
             self._company_chevron_label.setPixmap(
@@ -498,15 +477,16 @@ class ShellTopBar(QFrame):
         if hasattr(self, "_new_button"):
             self._new_button.setIcon(self._icon_provider.icon("plus", state="on_accent", size=15))
         if hasattr(self, "_bell_btn"):
-            self._bell_btn.setIcon(self._icon_provider.icon("bell", size=17))
+            self._bell_btn.setIcon(self._icon_provider.icon("bell", size=14))
+            self._bell_btn.setIconSize(QSize(14, 14))
         if hasattr(self, "_theme_toggle_btn"):
             self._update_theme_toggle_icon(self._theme_toggle_btn)
 
     def _update_theme_toggle_icon(self, btn: QPushButton) -> None:
         current = self._service_registry.theme_manager.current_theme
         icon_name = "moon" if current == "light" else "sun"
-        btn.setIcon(self._icon_provider.icon(icon_name, size=17))
-        btn.setIconSize(QSize(17, 17))
+        btn.setIcon(self._icon_provider.icon(icon_name, size=14))
+        btn.setIconSize(QSize(14, 14))
 
     # ── Search ────────────────────────────────────────────────────────
 
@@ -666,7 +646,7 @@ class ShellTopBar(QFrame):
         display_name = coalesce_text(self._app_context.current_user_display_name, "Guest user")
         chip_name = self._chip_name_for_display_name(display_name)
         role_text = self._resolve_role_text()
-        avatar_size = 30
+        avatar_size = 16
         avatar_path = None
 
         user_id = self._app_context.current_user_id

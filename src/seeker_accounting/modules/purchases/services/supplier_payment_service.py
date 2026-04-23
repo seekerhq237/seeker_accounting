@@ -93,6 +93,51 @@ class SupplierPaymentService:
             payments = payment_repo.list_by_company(company_id, status_code=normalized_status)
             return [self._to_list_item_dto(payment) for payment in payments]
 
+    def list_supplier_payments_page(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        query: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> "PaginatedResult[SupplierPaymentListItemDTO]":
+        """Paginated + searchable supplier-payment listing."""
+        from seeker_accounting.shared.dto.paginated_result import (
+            PaginatedResult,
+            normalize_page,
+            normalize_page_size,
+        )
+
+        self._permission_service.require_permission("purchases.payments.view")
+        normalized_status = self._normalize_optional_choice(status_code, _ALLOWED_STATUS_CODES, "Status code")
+        safe_page = normalize_page(page)
+        safe_size = normalize_page_size(page_size)
+        offset = (safe_page - 1) * safe_size
+
+        with self._unit_of_work_factory() as uow:
+            self._require_company_exists(uow.session, company_id)
+            payment_repo = self._require_payment_repository(uow.session)
+            total = payment_repo.count_filtered(
+                company_id,
+                status_code=normalized_status,
+                query=query,
+            )
+            payments = payment_repo.list_filtered_page(
+                company_id,
+                status_code=normalized_status,
+                query=query,
+                limit=safe_size,
+                offset=offset,
+            )
+            items = tuple(self._to_list_item_dto(p) for p in payments)
+
+        return PaginatedResult(
+            items=items,
+            total_count=total,
+            page=safe_page,
+            page_size=safe_size,
+        )
+
     def get_supplier_payment(self, company_id: int, payment_id: int) -> SupplierPaymentDetailDTO:
         self._permission_service.require_permission("purchases.payments.view")
         with self._unit_of_work_factory() as uow:

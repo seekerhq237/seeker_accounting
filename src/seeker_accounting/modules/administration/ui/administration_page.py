@@ -49,7 +49,7 @@ class AdministrationPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_action_bar())
         root_layout.addWidget(self._build_content_stack(), 1)
@@ -117,8 +117,12 @@ class AdministrationPage(QWidget):
         bar = QFrame(self)
         bar.setObjectName("PageToolbar")
         bar_layout = QHBoxLayout(bar)
-        bar_layout.setContentsMargins(14, 10, 14, 10)
-        bar_layout.setSpacing(10)
+        bar_layout.setContentsMargins(8, 2, 8, 2)
+        bar_layout.setSpacing(6)
+
+        title = QLabel("Users", bar)
+        title.setObjectName("ToolbarTitle")
+        bar_layout.addWidget(title)
 
         self._record_count_label = QLabel("", bar)
         self._record_count_label.setObjectName("ToolbarMeta")

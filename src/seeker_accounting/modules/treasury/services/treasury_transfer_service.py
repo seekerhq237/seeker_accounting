@@ -58,6 +58,50 @@ class TreasuryTransferService:
             rows = repo.list_by_company(company_id, status_code=status_code)
             return [self._to_list_item_dto(r) for r in rows]
 
+    def list_treasury_transfers_page(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        query: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> "PaginatedResult[TreasuryTransferListItemDTO]":
+        """Paginated + searchable treasury transfer listing.
+
+        Filtering (status, text) and pagination are executed in SQL so
+        register UIs stay responsive even for large companies.
+        """
+        from seeker_accounting.shared.dto.paginated_result import (
+            PaginatedResult,
+            normalize_page,
+            normalize_page_size,
+        )
+
+        self._permission_service.require_permission("treasury.transfers.view")
+        safe_page = normalize_page(page)
+        safe_size = normalize_page_size(page_size)
+        offset = (safe_page - 1) * safe_size
+
+        with self._unit_of_work_factory() as uow:
+            self._require_company_exists(uow.session, company_id)
+            repo = self._treasury_transfer_repository_factory(uow.session)
+            total = repo.count_filtered(company_id, status_code=status_code, query=query)
+            rows = repo.list_filtered_page(
+                company_id,
+                status_code=status_code,
+                query=query,
+                limit=safe_size,
+                offset=offset,
+            )
+            items = tuple(self._to_list_item_dto(r) for r in rows)
+
+        return PaginatedResult(
+            items=items,
+            total_count=total,
+            page=safe_page,
+            page_size=safe_size,
+        )
+
     def get_treasury_transfer(self, company_id: int, transfer_id: int) -> TreasuryTransferDetailDTO:
         self._permission_service.require_permission("treasury.transfers.view")
         with self._unit_of_work_factory() as uow:

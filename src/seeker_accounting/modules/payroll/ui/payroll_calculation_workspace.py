@@ -31,6 +31,8 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.payroll.ui.dialogs.compensation_profile_dialog import (
     CompensationProfileDialog,
 )
@@ -47,6 +49,12 @@ from seeker_accounting.modules.payroll.ui.dialogs.payroll_project_allocations_di
 )
 from seeker_accounting.modules.payroll.ui.dialogs.payroll_run_employee_detail_dialog import (
     PayrollRunEmployeeDetailDialog,
+)
+from seeker_accounting.modules.payroll.ui.payroll_input_batch_window import (
+    PayrollInputBatchWindow,
+)
+from seeker_accounting.modules.payroll.ui.payroll_run_employee_window import (
+    PayrollRunEmployeeWindow,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
@@ -71,7 +79,7 @@ _MONTHS = {
 }
 
 
-class PayrollCalculationWorkspace(QWidget):
+class PayrollCalculationWorkspace(RibbonHostMixin, QWidget):
     def __init__(
         self,
         service_registry: ServiceRegistry,
@@ -107,6 +115,25 @@ class PayrollCalculationWorkspace(QWidget):
             self._on_active_company_changed
         )
 
+        # Notify the shell whenever the selection inside a tab changes, so
+        # the ribbon surface can flip between ``.none`` / ``.selected`` /
+        # ``.run_selected`` / ``.employee_selected`` variants.
+        self._profiles_tab._table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._assignments_tab._table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._inputs_tab._table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._runs_tab._runs_table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._runs_tab._emp_table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+
         # Auto-select company from context
         ctx = self._registry.active_company_context
         if ctx.company_id:
@@ -132,6 +159,9 @@ class PayrollCalculationWorkspace(QWidget):
         self._clear_company()
 
     def _on_tab_changed(self, index: int) -> None:
+        # Swap the ribbon surface first so the refresh below sees the
+        # right context, then refresh the tab's data.
+        self._notify_ribbon_context_changed()
         if self._company_id is None:
             return
         tab = self._tabs.widget(index)
@@ -139,6 +169,132 @@ class PayrollCalculationWorkspace(QWidget):
             tab.set_company(self._company_id)
         elif hasattr(tab, "refresh"):
             tab.refresh()
+
+    # ── Ribbon host integration ───────────────────────────────────────────────
+
+    _TAB_PROFILES = 0
+    _TAB_ASSIGNMENTS = 1
+    _TAB_INPUTS = 2
+    _TAB_RUNS = 3
+
+    def current_ribbon_surface_key(self) -> str | None:
+        index = self._tabs.currentIndex()
+        if index == self._TAB_PROFILES:
+            selected = self._profiles_tab._selected_profile() is not None
+            return "payroll_calculation.profiles.selected" if selected else "payroll_calculation.profiles.none"
+        if index == self._TAB_ASSIGNMENTS:
+            selected = self._assignments_tab._selected_assignment() is not None
+            return "payroll_calculation.assignments.selected" if selected else "payroll_calculation.assignments.none"
+        if index == self._TAB_INPUTS:
+            selected = self._inputs_tab._selected_batch_id() is not None
+            return "payroll_calculation.inputs.selected" if selected else "payroll_calculation.inputs.none"
+        if index == self._TAB_RUNS:
+            if self._runs_tab._selected_run_employee_id() is not None:
+                return "payroll_calculation.runs.employee_selected"
+            if self._runs_tab._selected_run() is not None:
+                return "payroll_calculation.runs.run_selected"
+            return "payroll_calculation.runs.none"
+        return "payroll_calculation"
+
+    def _open_setup_workspace(self) -> None:
+        self._registry.navigation_service.navigate(nav_ids.PAYROLL_SETUP)
+
+    def _on_payroll_run_wizard(self) -> None:
+        if self._company_id is None:
+            show_error(self, "Payroll Run", "Select a company first.")
+            return
+        # Lazy import: avoid cost for sessions that never open the wizard.
+        from seeker_accounting.modules.payroll.ui.wizards.payroll_run_wizard import (
+            PayrollRunWizardDialog,
+        )
+        company_name = ""
+        try:
+            company = self._registry.company_service.get_company(self._company_id)
+            company_name = company.display_name
+        except Exception:  # noqa: BLE001
+            company_name = f"Company {self._company_id}"
+        result = PayrollRunWizardDialog.run(
+            self._registry, self._company_id, company_name, parent=self
+        )
+        if result is None:
+            return
+        # Switch to the Runs tab and refresh so the new run is visible.
+        self._tabs.setCurrentWidget(self._runs_tab)
+        if hasattr(self._runs_tab, "refresh"):
+            self._runs_tab.refresh()
+        self._notify_ribbon_context_changed()
+        show_info(
+            self,
+            result.summary or f"Payroll run {result.run_reference} ready.",
+        )
+
+    def _ribbon_commands(self):
+        return {
+            # Compensation profiles tab
+            "payroll_calculation.new_profile":       self._profiles_tab._on_new,
+            "payroll_calculation.edit_profile":      self._profiles_tab._on_edit,
+            "payroll_calculation.toggle_profile":    self._profiles_tab._on_toggle,
+            # Component assignments tab
+            "payroll_calculation.new_assignment":    self._assignments_tab._on_new,
+            "payroll_calculation.edit_assignment":   self._assignments_tab._on_edit,
+            "payroll_calculation.toggle_assignment": self._assignments_tab._on_toggle,
+            # Variable input batches tab
+            "payroll_calculation.new_batch":         self._inputs_tab._on_new,
+            "payroll_calculation.open_batch":        self._inputs_tab._on_open,
+            # Payroll runs tab
+            "payroll_calculation.payroll_run_wizard":  self._on_payroll_run_wizard,
+            "payroll_calculation.new_run":             self._runs_tab._on_new,
+            "payroll_calculation.calculate_run":       self._runs_tab._on_calculate,
+            "payroll_calculation.approve_run":         self._runs_tab._on_approve,
+            "payroll_calculation.void_run":            self._runs_tab._on_void,
+            "payroll_calculation.employee_detail":     self._runs_tab._on_detail,
+            "payroll_calculation.project_allocations": self._runs_tab._on_allocations,
+            # Cross-tab
+            "payroll_calculation.refresh":           self._refresh_active_tab,
+            "payroll_calculation.open_setup":        self._open_setup_workspace,
+        }
+
+    def _refresh_active_tab(self) -> None:
+        tab = self._tabs.currentWidget()
+        if tab is not None and hasattr(tab, "refresh"):
+            tab.refresh()
+
+    def ribbon_state(self):
+        has_company = self._company_id is not None
+        profile_selected = has_company and self._profiles_tab._selected_profile() is not None
+        assignment_selected = has_company and self._assignments_tab._selected_assignment() is not None
+        batch_selected = has_company and self._inputs_tab._selected_batch_id() is not None
+        selected_run = self._runs_tab._selected_run() if has_company else None
+        run_selected = selected_run is not None
+        run_status = getattr(selected_run, "status_code", None) if selected_run else None
+        can_calculate = run_selected and run_status in ("draft", "calculated")
+        can_approve = run_selected and run_status == "calculated"
+        can_void = run_selected and run_status != "voided"
+        emp_selected = has_company and self._runs_tab._selected_run_employee_id() is not None
+        return {
+            # Profiles
+            "payroll_calculation.new_profile":       has_company,
+            "payroll_calculation.edit_profile":      profile_selected,
+            "payroll_calculation.toggle_profile":    profile_selected,
+            # Assignments
+            "payroll_calculation.new_assignment":    has_company,
+            "payroll_calculation.edit_assignment":   assignment_selected,
+            "payroll_calculation.toggle_assignment": assignment_selected,
+            # Inputs
+            "payroll_calculation.new_batch":         has_company,
+            "payroll_calculation.open_batch":        batch_selected,
+            # Runs
+            "payroll_calculation.payroll_run_wizard":  has_company,
+            "payroll_calculation.new_run":             has_company,
+            "payroll_calculation.calculate_run":       bool(can_calculate),
+            "payroll_calculation.approve_run":         bool(can_approve),
+            "payroll_calculation.void_run":            bool(can_void),
+            "payroll_calculation.employee_detail":     emp_selected,
+            "payroll_calculation.project_allocations": emp_selected,
+            # Cross-tab
+            "payroll_calculation.refresh":           True,
+            "payroll_calculation.open_setup":        True,
+        }
 
 
 # ── Tab: Compensation Profiles ─────────────────────────────────────────────────
@@ -510,20 +666,42 @@ class _VariableInputsTab(QWidget):
         dlg = NewPayrollInputBatchDialog(self._registry, self._company_id, self)
         if dlg.exec() == QDialog.DialogCode.Accepted and dlg.created_batch_id:
             self.refresh()
-            # Auto-open the new batch
-            mgmt = PayrollInputBatchDialog(
-                self._registry, self._company_id, dlg.created_batch_id, self
-            )
-            mgmt.exec()
-            self.refresh()
+            # Auto-open the new batch in a child window.
+            self._open_batch_window(dlg.created_batch_id)
 
     def _on_open(self) -> None:
         batch_id = self._selected_batch_id()
         if batch_id is None:
             return
-        dlg = PayrollInputBatchDialog(self._registry, self._company_id, batch_id, self)
-        dlg.exec()
-        self.refresh()
+        self._open_batch_window(batch_id)
+
+    def _open_batch_window(self, batch_id: int) -> None:
+        """Open the batch in a ribbon-hosted child window (P2).
+
+        Falls back to the modal dialog if the child window manager is
+        not wired on the service registry.
+        """
+        manager = getattr(self._registry, "child_window_manager", None)
+        if manager is None:
+            dlg = PayrollInputBatchDialog(
+                self._registry, self._company_id, batch_id, self
+            )
+            dlg.exec()
+            self.refresh()
+            return
+
+        def _factory() -> PayrollInputBatchWindow:
+            return PayrollInputBatchWindow(
+                self._registry,
+                company_id=self._company_id,
+                batch_id=batch_id,
+            )
+
+        manager.open_document(
+            PayrollInputBatchWindow.DOC_TYPE,
+            batch_id,
+            _factory,
+        )
 
 
 # ── Tab: Payroll Runs ──────────────────────────────────────────────────────────
@@ -737,10 +915,26 @@ class _PayrollRunsTab(QWidget):
         run_emp_id = self._selected_run_employee_id()
         if run_emp_id is None:
             return
-        dlg = PayrollRunEmployeeDetailDialog(
-            self._registry, self._company_id, run_emp_id, self
+        manager = getattr(self._registry, "child_window_manager", None)
+        if manager is None:
+            dlg = PayrollRunEmployeeDetailDialog(
+                self._registry, self._company_id, run_emp_id, self
+            )
+            dlg.exec()
+            return
+
+        def _factory() -> PayrollRunEmployeeWindow:
+            return PayrollRunEmployeeWindow(
+                self._registry,
+                company_id=self._company_id,
+                run_employee_id=run_emp_id,
+            )
+
+        manager.open_document(
+            PayrollRunEmployeeWindow.DOC_TYPE,
+            run_emp_id,
+            _factory,
         )
-        dlg.exec()
 
     def _on_allocations(self) -> None:
         run_emp_id = self._selected_run_employee_id()

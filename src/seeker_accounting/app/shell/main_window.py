@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
 
@@ -14,12 +14,18 @@ from seeker_accounting.app.shell.command_palette_providers import (
 )
 from seeker_accounting.app.shell.menu_bar import ShellMenuBar
 from seeker_accounting.app.shell.readonly_banner import ReadOnlyBanner
+from seeker_accounting.app.shell.ribbon import (
+    RibbonActionDispatcher,
+    RibbonBar,
+    RibbonRegistry,
+)
 from seeker_accounting.app.shell.shell_models import PLACEHOLDER_PAGES
 from seeker_accounting.app.shell.sidebar import ShellSidebar
 from seeker_accounting.app.shell.status_bar import ShellStatusBar
 from seeker_accounting.app.shell.topbar import ShellTopBar
 from seeker_accounting.app.shell.workspace_host import WorkspaceHost
 from seeker_accounting.config.constants import WINDOW_MIN_HEIGHT, WINDOW_MIN_WIDTH
+from seeker_accounting.shared.ui.icon_provider import IconProvider
 
 
 class MainWindow(QMainWindow):
@@ -69,18 +75,32 @@ class MainWindow(QMainWindow):
             service_registry=service_registry,
             toggle_sidebar=sidebar.toggle_collapsed,
             show_command_palette=self._show_command_palette,
-            parent=content_container,
+            parent=self._menu_bar,
         )
         self._topbar = topbar
         sidebar.collapsed_changed.connect(topbar.set_sidebar_collapsed)
         topbar.set_sidebar_collapsed(sidebar.is_collapsed())
         topbar.logout_requested.connect(self.logout_requested.emit)
-        content_layout.addWidget(topbar)
+        self._menu_bar.setCornerWidget(topbar, Qt.Corner.TopRightCorner)
 
         self._readonly_banner = ReadOnlyBanner(content_container)
         self._readonly_banner.activate_requested.connect(self._show_license_dialog)
         content_layout.addWidget(self._readonly_banner)
         self._refresh_license_banner()
+
+        # ── Sage-style context-aware ribbon ─────────────────────────
+        self._ribbon_registry: RibbonRegistry = (
+            service_registry.ribbon_registry or RibbonRegistry()
+        )
+        self._ribbon_dispatcher = RibbonActionDispatcher()
+        self._ribbon_icon_provider = IconProvider(service_registry.theme_manager)
+        self._ribbon_bar = RibbonBar(
+            self._ribbon_registry,
+            self._ribbon_icon_provider,
+            self._ribbon_dispatcher,
+            parent=content_container,
+        )
+        content_layout.addWidget(self._ribbon_bar)
 
         workspace_host = WorkspaceHost(
             service_registry=service_registry,
@@ -97,6 +117,19 @@ class MainWindow(QMainWindow):
 
         service_registry.navigation_service.navigation_changed.connect(self._update_window_title)
         self._update_window_title(service_registry.navigation_service.current_nav_id)
+
+        # Ribbon must re-target after every nav change. Use a queued hop so the
+        # workspace host has time to materialize/swap the current page widget
+        # before we ask it for the active IRibbonHost.
+        service_registry.navigation_service.navigation_changed.connect(
+            self._on_navigation_changed_for_ribbon
+        )
+        QTimer.singleShot(
+            0,
+            lambda: self._on_navigation_changed_for_ribbon(
+                service_registry.navigation_service.current_nav_id
+            ),
+        )
 
         # ── Command palette (in-window overlay, child of shell_root) ──
         self._command_palette = CommandPalette(parent=shell_root)
@@ -123,6 +156,80 @@ class MainWindow(QMainWindow):
         page = PLACEHOLDER_PAGES.get(nav_id)
         page_title = page.title if page else nav_id.replace("_", " ").title()
         self.setWindowTitle(f"{self._service_registry.settings.window_title} | {page_title}")
+
+    def _on_navigation_changed_for_ribbon(self, nav_id: str) -> None:
+        """Swap the ribbon surface to match the newly-active navigation page.
+
+        The currently-visible page acts as the :class:`IRibbonHost`. If the
+        page does not implement the host protocol (i.e. no ribbon_state /
+        handle_ribbon_command methods yet), the surface is still shown but
+        with default enablement and click-handlers are no-ops via the
+        dispatcher's defensive guards.
+        """
+
+        self.refresh_current_ribbon_context(nav_id=nav_id)
+
+    def refresh_current_ribbon_context(self, nav_id: str | None = None) -> None:
+        """Recompute the active ribbon host and surface for the current page."""
+        active_nav_id = nav_id or self._service_registry.navigation_service.current_nav_id
+        if not active_nav_id:
+            self._ribbon_bar.set_context(None)
+            return
+
+        page = self._workspace_host.current_page()
+        host = self._resolve_ribbon_host(page)
+        surface_key = self._resolve_ribbon_surface_key(active_nav_id, page, host)
+
+        if surface_key and self._ribbon_registry.has(surface_key):
+            self._ribbon_bar.set_context(surface_key, host)
+            return
+        if self._ribbon_registry.has(active_nav_id):
+            self._ribbon_bar.set_context(active_nav_id, host)
+            return
+        self._ribbon_bar.set_context(None)
+
+    @staticmethod
+    def _is_ribbon_host(widget: object | None) -> bool:
+        return (
+            widget is not None
+            and callable(getattr(widget, "handle_ribbon_command", None))
+            and callable(getattr(widget, "ribbon_state", None))
+        )
+
+    def _resolve_ribbon_host(self, page: object | None) -> object | None:
+        if page is None:
+            return None
+        current_host = getattr(page, "current_ribbon_host", None)
+        if callable(current_host):
+            try:
+                resolved = current_host()
+            except Exception:
+                resolved = None
+            if self._is_ribbon_host(resolved):
+                return resolved
+        if self._is_ribbon_host(page):
+            return page
+        return None
+
+    @staticmethod
+    def _resolve_ribbon_surface_key(
+        nav_id: str,
+        page: object | None,
+        host: object | None,
+    ) -> str:
+        for candidate in (host, page):
+            if candidate is None:
+                continue
+            getter = getattr(candidate, "current_ribbon_surface_key", None)
+            if not callable(getter):
+                continue
+            try:
+                surface_key = getter()
+            except Exception:
+                surface_key = None
+            if surface_key:
+                return str(surface_key)
+        return nav_id
 
     def refresh_shell_context(self) -> None:
         self._sidebar.refresh_navigation_modules()

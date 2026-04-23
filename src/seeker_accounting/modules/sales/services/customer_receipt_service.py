@@ -95,6 +95,51 @@ class CustomerReceiptService:
             receipts = receipt_repo.list_by_company(company_id, status_code=normalized_status)
             return [self._to_list_item_dto(receipt) for receipt in receipts]
 
+    def list_customer_receipts_page(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        query: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> "PaginatedResult[CustomerReceiptListItemDTO]":
+        """Paginated + searchable customer-receipt listing."""
+        from seeker_accounting.shared.dto.paginated_result import (
+            PaginatedResult,
+            normalize_page,
+            normalize_page_size,
+        )
+
+        self._permission_service.require_permission("sales.receipts.view")
+        normalized_status = self._normalize_optional_choice(status_code, _ALLOWED_STATUS_CODES, "Status code")
+        safe_page = normalize_page(page)
+        safe_size = normalize_page_size(page_size)
+        offset = (safe_page - 1) * safe_size
+
+        with self._unit_of_work_factory() as uow:
+            self._require_company_exists(uow.session, company_id)
+            receipt_repo = self._require_receipt_repository(uow.session)
+            total = receipt_repo.count_filtered(
+                company_id,
+                status_code=normalized_status,
+                query=query,
+            )
+            receipts = receipt_repo.list_filtered_page(
+                company_id,
+                status_code=normalized_status,
+                query=query,
+                limit=safe_size,
+                offset=offset,
+            )
+            items = tuple(self._to_list_item_dto(r) for r in receipts)
+
+        return PaginatedResult(
+            items=items,
+            total_count=total,
+            page=safe_page,
+            page_size=safe_size,
+        )
+
     def get_customer_receipt(self, company_id: int, receipt_id: int) -> CustomerReceiptDetailDTO:
         self._permission_service.require_permission("sales.receipts.view")
         with self._unit_of_work_factory() as uow:

@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
 from seeker_accounting.modules.budgeting.dto.project_budget_commands import (
     AddProjectBudgetLineCommand,
+    BudgetLineDraftDTO,
     CreateProjectBudgetVersionCommand,
+    CreateProjectBudgetVersionWithLinesCommand,
     UpdateProjectBudgetLineCommand,
     UpdateProjectBudgetVersionCommand,
 )
@@ -187,6 +189,192 @@ class ProjectBudgetService:
             version_repo = self._version_repository_factory(uow.session)
             versions = version_repo.list_by_project(project_id)
             return [self._to_version_list_item_dto(v) for v in versions]
+
+    # ── Atomic create with lines ─────────────────────────────────────
+
+    def create_version_with_lines(
+        self, command: CreateProjectBudgetVersionWithLinesCommand
+    ) -> ProjectBudgetVersionDetailDTO:
+        """Create a budget version and all its lines atomically in one UoW.
+
+        Lines may be empty (a draft with no lines is allowed). Submit remains
+        gated separately by ``BudgetApprovalService.submit_version``.
+        """
+        if not command.version_name or not command.version_name.strip():
+            raise ValidationError("Version name is required.")
+        if command.version_type_code not in _VALID_VERSION_TYPE_CODES:
+            raise ValidationError(
+                f"Invalid version type code '{command.version_type_code}'. "
+                f"Must be one of: {', '.join(sorted(_VALID_VERSION_TYPE_CODES))}."
+            )
+        if command.version_number < 1:
+            raise ValidationError("Version number must be at least 1.")
+
+        self._validate_line_drafts(command.lines)
+
+        with self._unit_of_work_factory() as uow:
+            project_repo = self._project_repository_factory(uow.session)
+            project = project_repo.get_by_id(command.project_id)
+            if project is None:
+                raise NotFoundError(f"Project {command.project_id} not found.")
+            if project.company_id != command.company_id:
+                raise ValidationError("Project does not belong to the specified company.")
+
+            version_repo = self._version_repository_factory(uow.session)
+            if version_repo.get_by_project_and_version_number(
+                command.project_id, command.version_number
+            ) is not None:
+                raise ConflictError(
+                    f"Version number {command.version_number} already exists for this project."
+                )
+
+            if command.base_version_id is not None:
+                base = version_repo.get_by_id(command.base_version_id)
+                if base is None:
+                    raise NotFoundError(f"Base version {command.base_version_id} not found.")
+                if base.project_id != command.project_id:
+                    raise ValidationError("Base version does not belong to the same project.")
+
+            version = ProjectBudgetVersion(
+                company_id=command.company_id,
+                project_id=command.project_id,
+                version_number=command.version_number,
+                version_name=command.version_name.strip(),
+                version_type_code=command.version_type_code,
+                status_code="draft",
+                base_version_id=command.base_version_id,
+                budget_date=command.budget_date,
+                revision_reason=command.revision_reason,
+                total_budget_amount=Decimal("0"),
+            )
+            version_repo.add(version)
+            uow.session.flush()  # get version.id for line FK
+
+            line_repo = self._line_repository_factory(uow.session)
+            total = Decimal("0")
+            for draft in command.lines:
+                self._validate_line_references(
+                    uow.session, version, draft.project_job_id, draft.project_cost_code_id
+                )
+                line = ProjectBudgetLine(
+                    project_budget_version_id=version.id,
+                    line_number=draft.line_number,
+                    project_job_id=draft.project_job_id,
+                    project_cost_code_id=draft.project_cost_code_id,
+                    description=draft.description,
+                    quantity=draft.quantity,
+                    unit_rate=draft.unit_rate,
+                    line_amount=draft.line_amount,
+                    start_date=draft.start_date,
+                    end_date=draft.end_date,
+                    notes=draft.notes,
+                )
+                line_repo.add(line)
+                total += draft.line_amount
+
+            version.total_budget_amount = total
+
+            try:
+                uow.commit()
+            except IntegrityError as exc:
+                raise ValidationError("Budget version could not be created.") from exc
+
+            from seeker_accounting.modules.audit.event_type_catalog import BUDGET_VERSION_CREATED
+            self._record_audit(
+                command.company_id,
+                BUDGET_VERSION_CREATED,
+                "ProjectBudgetVersion",
+                version.id,
+                f"Created budget version with {len(command.lines)} line(s)",
+            )
+            return self._to_version_detail_dto(version)
+
+    def replace_version_lines(
+        self, version_id: int, lines: tuple[BudgetLineDraftDTO, ...] | list[BudgetLineDraftDTO]
+    ) -> ProjectBudgetVersionDetailDTO:
+        """Replace all lines on an editable version atomically.
+
+        Used by the unified editor's edit-draft flow: user reshapes the line set
+        entirely and saves. Deletes existing lines, inserts the provided set,
+        recomputes the total — all in one UoW.
+        """
+        line_tuple = tuple(lines)
+        self._validate_line_drafts(line_tuple)
+
+        with self._unit_of_work_factory() as uow:
+            version_repo = self._version_repository_factory(uow.session)
+            version = version_repo.get_by_id(version_id)
+            if version is None:
+                raise NotFoundError(f"Budget version {version_id} not found.")
+            if version.status_code not in _EDITABLE_STATUSES:
+                raise ValidationError(
+                    "Lines can only be replaced on draft or submitted budget versions."
+                )
+
+            line_repo = self._line_repository_factory(uow.session)
+            for existing in line_repo.list_by_version(version.id):
+                line_repo.delete(existing)
+            uow.session.flush()
+
+            total = Decimal("0")
+            for draft in line_tuple:
+                self._validate_line_references(
+                    uow.session, version, draft.project_job_id, draft.project_cost_code_id
+                )
+                line = ProjectBudgetLine(
+                    project_budget_version_id=version.id,
+                    line_number=draft.line_number,
+                    project_job_id=draft.project_job_id,
+                    project_cost_code_id=draft.project_cost_code_id,
+                    description=draft.description,
+                    quantity=draft.quantity,
+                    unit_rate=draft.unit_rate,
+                    line_amount=draft.line_amount,
+                    start_date=draft.start_date,
+                    end_date=draft.end_date,
+                    notes=draft.notes,
+                )
+                line_repo.add(line)
+                total += draft.line_amount
+
+            version.total_budget_amount = total
+
+            try:
+                uow.commit()
+            except IntegrityError as exc:
+                raise ValidationError("Budget lines could not be saved.") from exc
+
+            from seeker_accounting.modules.audit.event_type_catalog import BUDGET_VERSION_UPDATED
+            self._record_audit(
+                version.company_id,
+                BUDGET_VERSION_UPDATED,
+                "ProjectBudgetVersion",
+                version.id,
+                f"Replaced budget lines ({len(line_tuple)} line(s))",
+            )
+            return self._to_version_detail_dto(version)
+
+    def _validate_line_drafts(
+        self, lines: tuple[BudgetLineDraftDTO, ...] | list[BudgetLineDraftDTO]
+    ) -> None:
+        seen_numbers: set[int] = set()
+        for idx, draft in enumerate(lines, start=1):
+            ctx = f"Line {draft.line_number}" if draft.line_number else f"Row {idx}"
+            if draft.line_number < 1:
+                raise ValidationError(f"{ctx}: line number must be at least 1.")
+            if draft.line_number in seen_numbers:
+                raise ConflictError(
+                    f"Duplicate line number {draft.line_number} in submitted lines."
+                )
+            seen_numbers.add(draft.line_number)
+            if draft.line_amount < 0:
+                raise ValidationError(f"{ctx}: amount cannot be negative.")
+            if draft.quantity is not None and draft.quantity < 0:
+                raise ValidationError(f"{ctx}: quantity cannot be negative.")
+            if draft.unit_rate is not None and draft.unit_rate < 0:
+                raise ValidationError(f"{ctx}: unit rate cannot be negative.")
+            if draft.start_date and draft.end_date and draft.start_date > draft.end_date:
+                raise ValidationError(f"{ctx}: start date cannot be after end date.")
 
     # ── Line CRUD ────────────────────────────────────────────────────
 

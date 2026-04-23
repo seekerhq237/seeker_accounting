@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
 from seeker_accounting.modules.budgeting.dto.project_budget_commands import (
     ApproveProjectBudgetVersionCommand,
+    BudgetLineDraftDTO,
     CancelProjectBudgetVersionCommand,
     CloneProjectBudgetVersionCommand,
     SubmitProjectBudgetVersionCommand,
@@ -119,7 +120,13 @@ class BudgetApprovalService:
                 raise ValidationError("Budget version could not be approved.") from exc
 
             from seeker_accounting.modules.audit.event_type_catalog import BUDGET_VERSION_APPROVED
-            self._record_audit(company_id, BUDGET_VERSION_APPROVED, "ProjectBudgetVersion", version.id, "Approved budget version")
+            self._record_audit(
+                command.company_id,
+                BUDGET_VERSION_APPROVED,
+                "ProjectBudgetVersion",
+                version.id,
+                "Approved budget version",
+            )
             return self._to_detail_dto(version)
 
     # ── Cancel ────────────────────────────────────────────────────────
@@ -227,6 +234,48 @@ class BudgetApprovalService:
                 budget_date=version.budget_date,
                 approved_at=version.approved_at,
             )
+
+    # ── Revision seed (no persistence) ────────────────────────────────
+
+    def prepare_revision_draft(
+        self, project_id: int
+    ) -> tuple[int, str, int | None, tuple[BudgetLineDraftDTO, ...]] | None:
+        """Return a seed for a new revision draft based on the current approved version.
+
+        Returns a tuple ``(next_version_number, default_name, base_version_id, line_drafts)``
+        that the UI can pass to ``ProjectBudgetService.create_version_with_lines``.
+        Returns ``None`` if no approved version exists (nothing to revise from).
+
+        The returned drafts carry fresh line numbers (sequential from 1) and
+        reference the same jobs/cost codes/amounts as the approved version.
+        """
+        with self._unit_of_work_factory() as uow:
+            version_repo = self._version_repository_factory(uow.session)
+            approved = version_repo.get_current_approved(project_id)
+            if approved is None:
+                return None
+
+            next_number = version_repo.get_max_version_number(project_id) + 1
+            default_name = f"Revision {next_number}"
+
+            line_repo = self._line_repository_factory(uow.session)
+            source_lines = line_repo.list_by_version(approved.id)
+            drafts = tuple(
+                BudgetLineDraftDTO(
+                    line_number=idx,
+                    project_cost_code_id=src.project_cost_code_id,
+                    line_amount=src.line_amount,
+                    project_job_id=src.project_job_id,
+                    description=src.description,
+                    quantity=src.quantity,
+                    unit_rate=src.unit_rate,
+                    start_date=src.start_date,
+                    end_date=src.end_date,
+                    notes=src.notes,
+                )
+                for idx, src in enumerate(source_lines, start=1)
+            )
+            return (next_number, default_name, approved.id, drafts)
 
     # ── Internal helpers ──────────────────────────────────────────────
 

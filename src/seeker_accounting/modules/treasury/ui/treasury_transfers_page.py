@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.treasury.dto.treasury_transfer_dto import TreasuryTransferListItemDTO
 from seeker_accounting.modules.treasury.ui.treasury_transfer_dialog import TreasuryTransferDialog
@@ -29,6 +30,7 @@ from seeker_accounting.app.navigation.workflow_resume_service import ResumeToken
 from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.register import RegisterPage
 from seeker_accounting.shared.ui.table_helpers import configure_dense_table
 from seeker_accounting.shared.workflow.document_sequence_preflight import (
@@ -38,12 +40,17 @@ from seeker_accounting.shared.workflow.document_sequence_preflight import (
 )
 
 
-class TreasuryTransfersPage(QWidget):
+class TreasuryTransfersPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
         self._transfers: list[TreasuryTransferListItemDTO] = []
+        self._total_count: int = 0
         self._pending_resume_payload: ResumeTokenPayload | None = None
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(lambda: self.reload_transfers(reset_page=True))
 
         self.setObjectName("TreasuryTransfersPage")
 
@@ -54,6 +61,7 @@ class TreasuryTransfersPage(QWidget):
         self._register = RegisterPage(self)
         self._populate_toolbar_strip(self._register)
         self._populate_action_band(self._register)
+        self._register.action_band.hide()
         self._register.set_table_widget(self._build_content_stack())
         root_layout.addWidget(self._register)
 
@@ -66,33 +74,50 @@ class TreasuryTransfersPage(QWidget):
     # Reload
     # ------------------------------------------------------------------
 
-    def reload_transfers(self, selected_transfer_id: int | None = None) -> None:
+    def reload_transfers(
+        self,
+        selected_transfer_id: int | None = None,
+        reset_page: bool = False,
+    ) -> None:
         active_company = self._active_company()
 
         if active_company is None:
             self._transfers = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Select a company")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
             return
 
+        if reset_page:
+            self._pager.reset()
+
+        search_text = self._search_input.text().strip() or None
         try:
-            self._transfers = self._service_registry.treasury_transfer_service.list_treasury_transfers(
+            page_result = self._service_registry.treasury_transfer_service.list_treasury_transfers_page(
                 active_company.company_id,
                 status_code=self._status_filter_value(),
+                query=search_text,
+                page=self._pager.page,
+                page_size=self._pager.page_size,
             )
         except Exception as exc:
             self._transfers = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Unable to load")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
             show_error(self, "Treasury Transfers", f"Transfer data could not be loaded.\n\n{exc}")
             return
 
+        self._transfers = list(page_result.items)
+        self._total_count = page_result.total_count
+        self._pager.apply_result(page_result)
         self._populate_table()
-        self._apply_search_filter()
         self._sync_surface_state(active_company)
         self._restore_selection(selected_transfer_id)
         self._update_action_state()
@@ -107,7 +132,7 @@ class TreasuryTransfersPage(QWidget):
         self._search_input = QLineEdit(register.toolbar_strip)
         self._search_input.setPlaceholderText("Search transfers…")
         self._search_input.setFixedWidth(200)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
+        self._search_input.textChanged.connect(self._handle_search_text_changed)
         strip_layout.addWidget(self._search_input)
 
         self._status_filter_combo = QComboBox(register.toolbar_strip)
@@ -115,7 +140,7 @@ class TreasuryTransfersPage(QWidget):
         self._status_filter_combo.addItem("Draft", "draft")
         self._status_filter_combo.addItem("Posted", "posted")
         self._status_filter_combo.addItem("Cancelled", "cancelled")
-        self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_transfers())
+        self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_transfers(reset_page=True))
         strip_layout.addWidget(self._status_filter_combo)
 
         strip_layout.addStretch(1)
@@ -168,7 +193,7 @@ class TreasuryTransfersPage(QWidget):
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(4)
 
         self._table = QTableWidget(container)
         self._table.setObjectName("TreasuryTransfersTable")
@@ -187,7 +212,12 @@ class TreasuryTransfersPage(QWidget):
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.itemSelectionChanged.connect(self._update_action_state)
         self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        layout.addWidget(self._table)
+        layout.addWidget(self._table, 1)
+
+        self._pager = Pager(container, default_page_size=100)
+        self._pager.page_changed.connect(lambda _p: self.reload_transfers())
+        self._pager.page_size_changed.connect(lambda _s: self.reload_transfers(reset_page=True))
+        layout.addWidget(self._pager)
         return container
 
     def _build_empty_state(self) -> QWidget:
@@ -282,60 +312,62 @@ class TreasuryTransfersPage(QWidget):
         self._stack.setCurrentWidget(self._empty_state)
 
     def _populate_table(self) -> None:
+        self._table.setUpdatesEnabled(False)
         self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        try:
+            self._table.setRowCount(len(self._transfers))
+            for row_index, transfer in enumerate(self._transfers):
+                values = (
+                    transfer.transfer_number,
+                    self._format_date(transfer.transfer_date),
+                    transfer.from_account_name,
+                    transfer.to_account_name,
+                    transfer.currency_code,
+                    self._format_amount(transfer.amount),
+                    transfer.status_code.title(),
+                    self._format_datetime(transfer.posted_at),
+                )
+                for col, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if col == 0:
+                        item.setData(Qt.ItemDataRole.UserRole, transfer.id)
+                    if col in {1, 4, 6, 7}:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    if col == 5:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    self._table.setItem(row_index, col, item)
 
-        for transfer in self._transfers:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                transfer.transfer_number,
-                self._format_date(transfer.transfer_date),
-                transfer.from_account_name,
-                transfer.to_account_name,
-                transfer.currency_code,
-                self._format_amount(transfer.amount),
-                transfer.status_code.title(),
-                self._format_datetime(transfer.posted_at),
+            self._table.resizeColumnsToContents()
+            header = self._table.horizontalHeader()
+            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(2, header.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, header.ResizeMode.Stretch)
+            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
+        finally:
+            self._table.setSortingEnabled(True)
+            self._table.setUpdatesEnabled(True)
+
+        search_text = self._search_input.text().strip()
+        total = self._total_count
+        shown = len(self._transfers)
+        if search_text:
+            self._record_count_label.setText(f"{shown} shown of {total} matches")
+        else:
+            self._record_count_label.setText(
+                f"{total} transfer" if total == 1 else f"{total} transfers"
             )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, transfer.id)
-                if col in {1, 4, 5, 6, 7}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if col == 5:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self._table.setItem(row_index, col, item)
 
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
-
-        count = len(self._transfers)
-        self._record_count_label.setText(f"{count} transfer" if count == 1 else f"{count} transfers")
+    def _handle_search_text_changed(self, _text: str) -> None:
+        self._search_debounce.start()
 
     def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                item = self._table.item(row, col)
-                if item is not None and query in item.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
+        # Search is now handled server-side via reload_transfers. Kept as a
+        # no-op for backward compatibility with any external callers.
+        return
 
     def _restore_selection(self, selected_transfer_id: int | None) -> None:
         if self._table.rowCount() == 0:
@@ -373,6 +405,29 @@ class TreasuryTransfersPage(QWidget):
         self._edit_button.setEnabled(is_draft)
         self._cancel_button.setEnabled(is_draft)
         self._post_button.setEnabled(is_draft)
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ───────────────────────────────────────────────────
+
+    def _ribbon_commands(self):
+        return {
+            "treasury_transfers.new": self._open_create_dialog,
+            "treasury_transfers.edit": self._open_edit_dialog,
+            "treasury_transfers.cancel": self._cancel_selected_draft,
+            "treasury_transfers.post": self._post_selected_transfer,
+            "treasury_transfers.refresh": self.reload_transfers,
+        }
+
+    def ribbon_state(self):
+        return {
+            "treasury_transfers.new": self._new_button.isEnabled(),
+            "treasury_transfers.edit": self._edit_button.isEnabled(),
+            "treasury_transfers.cancel": self._cancel_button.isEnabled(),
+            "treasury_transfers.post": self._post_button.isEnabled(),
+            "treasury_transfers.refresh": True,
+            "treasury_transfers.print": False,
+            "treasury_transfers.export_list": False,
+        }
 
     # ------------------------------------------------------------------
     # Actions

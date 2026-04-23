@@ -86,3 +86,5 @@ class UpdateEmployeeCommand:
     phone: str | None = field(default=None)
     email: str | None = field(default=None)
     tax_identifier: str | None = field(default=None)
+    cnps_number: str | None = field(default=None)
+    default_payment_account_id: int | None = field(default=None)

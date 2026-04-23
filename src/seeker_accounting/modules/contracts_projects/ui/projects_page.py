@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.contracts_projects.dto.project_dto import ProjectListItemDTO
 from seeker_accounting.modules.contracts_projects.ui.project_cost_code_dialog import ProjectCostCodesDialog
@@ -30,7 +31,7 @@ from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
-class ProjectsPage(QWidget):
+class ProjectsPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
@@ -40,7 +41,7 @@ class ProjectsPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_action_bar())
         root_layout.addWidget(self._build_content_stack(), 1)
@@ -92,57 +93,99 @@ class ProjectsPage(QWidget):
         card.setProperty("card", True)
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
 
-        self._new_button = QPushButton("New Project", card)
-        self._new_button.setProperty("variant", "primary")
-        self._new_button.clicked.connect(self._open_create_dialog)
-        layout.addWidget(self._new_button)
+        title = QLabel("Project Directory", card)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
 
-        self._edit_button = QPushButton("Edit Project", card)
-        self._edit_button.setProperty("variant", "secondary")
-        self._edit_button.clicked.connect(self._open_edit_dialog)
-        layout.addWidget(self._edit_button)
+        self._record_count_label = QLabel(card)
+        self._record_count_label.setObjectName("ToolbarMeta")
+        layout.addWidget(self._record_count_label)
 
-        self._activate_button = QPushButton("Activate", card)
-        self._activate_button.setProperty("variant", "secondary")
-        self._activate_button.clicked.connect(self._activate_selected_project)
-        layout.addWidget(self._activate_button)
-
-        self._cancel_button = QPushButton("Cancel", card)
-        self._cancel_button.setProperty("variant", "secondary")
-        self._cancel_button.clicked.connect(self._cancel_selected_project)
-        layout.addWidget(self._cancel_button)
-
-        layout.addSpacing(8)
-
-        self._jobs_button = QPushButton("Jobs", card)
-        self._jobs_button.setProperty("variant", "secondary")
-        self._jobs_button.clicked.connect(self._open_jobs)
-        layout.addWidget(self._jobs_button)
-
-        self._cost_codes_button = QPushButton("Cost Codes", card)
-        self._cost_codes_button.setProperty("variant", "secondary")
-        self._cost_codes_button.clicked.connect(self._open_cost_codes)
-        layout.addWidget(self._cost_codes_button)
-
-        self._budgets_button = QPushButton("Budgets", card)
-        self._budgets_button.setProperty("variant", "secondary")
-        self._budgets_button.clicked.connect(self._open_budgets)
-        layout.addWidget(self._budgets_button)
-
-        self._commitments_button = QPushButton("Commitments", card)
-        self._commitments_button.setProperty("variant", "secondary")
-        self._commitments_button.clicked.connect(self._open_commitments)
-        layout.addWidget(self._commitments_button)
+        self._search_edit = QLineEdit(card)
+        self._search_edit.setPlaceholderText("Search project code or name")
+        self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.setFixedWidth(220)
+        layout.addWidget(self._search_edit)
 
         layout.addStretch(1)
 
+        self._new_button = QPushButton("New Project", card)
+        self._new_button.hide()
+        self._new_button.setProperty("variant", "primary")
+        self._new_button.clicked.connect(self._open_create_dialog)
+
+        self._edit_button = QPushButton("Edit Project", card)
+        self._edit_button.hide()
+        self._edit_button.setProperty("variant", "secondary")
+        self._edit_button.clicked.connect(self._open_edit_dialog)
+
+        self._activate_button = QPushButton("Activate", card)
+        self._activate_button.hide()
+        self._activate_button.setProperty("variant", "secondary")
+        self._activate_button.clicked.connect(self._activate_selected_project)
+
+        self._hold_button = QPushButton("Put On Hold", card)
+        self._hold_button.hide()
+        self._hold_button.setProperty("variant", "secondary")
+        self._hold_button.clicked.connect(self._hold_selected_project)
+
+        self._complete_button = QPushButton("Complete", card)
+        self._complete_button.hide()
+        self._complete_button.setProperty("variant", "secondary")
+        self._complete_button.clicked.connect(self._complete_selected_project)
+
+        self._close_button = QPushButton("Close Project", card)
+        self._close_button.hide()
+        self._close_button.setProperty("variant", "secondary")
+        self._close_button.clicked.connect(self._close_selected_project)
+
+        self._cancel_button = QPushButton("Cancel", card)
+        self._cancel_button.hide()
+        self._cancel_button.setProperty("variant", "secondary")
+        self._cancel_button.clicked.connect(self._cancel_selected_project)
+
+        self._jobs_button = QPushButton("Jobs", card)
+        self._jobs_button.hide()
+        self._jobs_button.setProperty("variant", "secondary")
+        self._jobs_button.clicked.connect(self._open_jobs)
+
+        self._cost_codes_button = QPushButton("Cost Codes", card)
+        self._cost_codes_button.hide()
+        self._cost_codes_button.setProperty("variant", "secondary")
+        self._cost_codes_button.clicked.connect(self._open_cost_codes)
+
+        self._budgets_button = QPushButton("Budgets", card)
+        self._budgets_button.hide()
+        self._budgets_button.setProperty("variant", "secondary")
+        self._budgets_button.clicked.connect(self._open_budgets)
+
+        self._commitments_button = QPushButton("Commitments", card)
+        self._commitments_button.hide()
+        self._commitments_button.setProperty("variant", "secondary")
+        self._commitments_button.clicked.connect(self._open_commitments)
+
+        self._open_workspace_button = QPushButton("Open Workspace", card)
+        self._open_workspace_button.hide()
+        self._open_workspace_button.setProperty("variant", "secondary")
+        self._open_workspace_button.clicked.connect(self._open_workspace)
+
+        self._variance_button = QPushButton("Variance", card)
+        self._variance_button.hide()
+        self._variance_button.setProperty("variant", "secondary")
+        self._variance_button.clicked.connect(self._open_variance_analysis)
+
+        self._contract_summary_button = QPushButton("Contract Summary", card)
+        self._contract_summary_button.hide()
+        self._contract_summary_button.setProperty("variant", "secondary")
+        self._contract_summary_button.clicked.connect(self._open_project_contract_summary)
+
         self._refresh_button = QPushButton("Refresh", card)
+        self._refresh_button.hide()
         self._refresh_button.setProperty("variant", "ghost")
         self._refresh_button.clicked.connect(lambda: self.reload_projects())
-        layout.addWidget(self._refresh_button)
         return card
 
     # ------------------------------------------------------------------
@@ -164,31 +207,8 @@ class ProjectsPage(QWidget):
         card.setObjectName("PageCard")
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(12)
-
-        top_row = QWidget(card)
-        top_row_layout = QHBoxLayout(top_row)
-        top_row_layout.setContentsMargins(0, 0, 0, 0)
-        top_row_layout.setSpacing(12)
-
-        title = QLabel("Project Directory", top_row)
-        title.setObjectName("CardTitle")
-        top_row_layout.addWidget(title)
-
-        top_row_layout.addStretch(1)
-
-        self._search_edit = QLineEdit(top_row)
-        self._search_edit.setPlaceholderText("Search project code or name")
-        self._search_edit.setClearButtonEnabled(True)
-        self._search_edit.setFixedWidth(260)
-        top_row_layout.addWidget(self._search_edit)
-
-        self._record_count_label = QLabel(top_row)
-        self._record_count_label.setObjectName("ToolbarMeta")
-        top_row_layout.addWidget(self._record_count_label)
-
-        layout.addWidget(top_row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         self._table = QTableWidget(card)
         self._table.setObjectName("ProjectsTable")
@@ -403,6 +423,63 @@ class ProjectsPage(QWidget):
         self._cost_codes_button.setEnabled(has_active_company)
         self._budgets_button.setEnabled(selected is not None and has_active_company)
         self._commitments_button.setEnabled(selected is not None and has_active_company)
+        self._hold_button.setEnabled(
+            selected is not None and has_active_company and selected.status_code == "active"
+        )
+        self._complete_button.setEnabled(
+            selected is not None
+            and has_active_company
+            and selected.status_code in {"active", "on_hold"}
+        )
+        self._close_button.setEnabled(
+            selected is not None and has_active_company and selected.status_code == "completed"
+        )
+        self._open_workspace_button.setEnabled(selected is not None and has_active_company)
+        self._variance_button.setEnabled(selected is not None and has_active_company)
+        self._contract_summary_button.setEnabled(selected is not None and has_active_company)
+        self._notify_ribbon_state_changed()
+
+    # ------------------------------------------------------------------
+    # Ribbon host
+    # ------------------------------------------------------------------
+
+    def _ribbon_commands(self) -> dict[str, object]:
+        return {
+            "projects.new": self._open_create_dialog,
+            "projects.open_workspace": self._open_workspace,
+            "projects.edit": self._open_edit_dialog,
+            "projects.activate": self._activate_selected_project,
+            "projects.hold": self._hold_selected_project,
+            "projects.complete": self._complete_selected_project,
+            "projects.close_record": self._close_selected_project,
+            "projects.cancel": self._cancel_selected_project,
+            "projects.jobs": self._open_jobs,
+            "projects.budgets": self._open_budgets,
+            "projects.commitments": self._open_commitments,
+            "projects.cost_code_library": self._open_cost_codes,
+            "projects.variance": self._open_variance_analysis,
+            "projects.contract_summary": self._open_project_contract_summary,
+            "projects.refresh": lambda: self.reload_projects(),
+        }
+
+    def ribbon_state(self) -> dict[str, bool]:
+        return {
+            "projects.new": self._new_button.isEnabled(),
+            "projects.open_workspace": self._open_workspace_button.isEnabled(),
+            "projects.edit": self._edit_button.isEnabled(),
+            "projects.activate": self._activate_button.isEnabled(),
+            "projects.hold": self._hold_button.isEnabled(),
+            "projects.complete": self._complete_button.isEnabled(),
+            "projects.close_record": self._close_button.isEnabled(),
+            "projects.cancel": self._cancel_button.isEnabled(),
+            "projects.jobs": self._jobs_button.isEnabled(),
+            "projects.budgets": self._budgets_button.isEnabled(),
+            "projects.commitments": self._commitments_button.isEnabled(),
+            "projects.cost_code_library": self._cost_codes_button.isEnabled(),
+            "projects.variance": self._variance_button.isEnabled(),
+            "projects.contract_summary": self._contract_summary_button.isEnabled(),
+            "projects.refresh": True,
+        }
 
     # ------------------------------------------------------------------
     # Actions
@@ -441,35 +518,53 @@ class ProjectsPage(QWidget):
         self.reload_projects(selected_project_id=updated.id)
 
     def _activate_selected_project(self) -> None:
-        selected = self._selected_project()
-        if selected is None:
-            return
-        choice = QMessageBox.question(
-            self,
-            "Activate Project",
-            f"Activate project '{selected.project_code}'?",
+        self._change_selected_status(
+            title="Activate Project",
+            prompt="Activate project '{code}'?",
+            service_call=self._service_registry.project_service.activate_project,
         )
-        if choice != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self._service_registry.project_service.activate_project(selected.id)
-        except (NotFoundError, ValidationError) as exc:
-            show_error(self, "Projects", str(exc))
-        self.reload_projects(selected_project_id=selected.id)
+
+    def _hold_selected_project(self) -> None:
+        self._change_selected_status(
+            title="Put Project On Hold",
+            prompt="Put project '{code}' on hold?",
+            service_call=self._service_registry.project_service.put_project_on_hold,
+        )
+
+    def _complete_selected_project(self) -> None:
+        self._change_selected_status(
+            title="Complete Project",
+            prompt="Mark project '{code}' as completed?",
+            service_call=self._service_registry.project_service.complete_project,
+        )
+
+    def _close_selected_project(self) -> None:
+        self._change_selected_status(
+            title="Close Project",
+            prompt="Close project '{code}'?",
+            service_call=self._service_registry.project_service.close_project,
+        )
 
     def _cancel_selected_project(self) -> None:
+        self._change_selected_status(
+            title="Cancel Project",
+            prompt="Cancel project '{code}'? This cannot be undone.",
+            service_call=self._service_registry.project_service.cancel_project,
+        )
+
+    def _change_selected_status(self, *, title: str, prompt: str, service_call) -> None:
         selected = self._selected_project()
         if selected is None:
             return
         choice = QMessageBox.question(
             self,
-            "Cancel Project",
-            f"Cancel project '{selected.project_code}'? This cannot be undone.",
+            title,
+            prompt.format(code=selected.project_code),
         )
         if choice != QMessageBox.StandardButton.Yes:
             return
         try:
-            self._service_registry.project_service.cancel_project(selected.id)
+            service_call(selected.id)
         except (NotFoundError, ValidationError) as exc:
             show_error(self, "Projects", str(exc))
         self.reload_projects(selected_project_id=selected.id)
@@ -478,7 +573,7 @@ class ProjectsPage(QWidget):
         self._service_registry.navigation_service.navigate(nav_ids.COMPANIES)
 
     def _handle_item_double_clicked(self, *_args: object) -> None:
-        self._open_edit_dialog()
+        self._open_workspace()
 
     def _open_jobs(self) -> None:
         active_company = self._active_company()
@@ -532,6 +627,61 @@ class ProjectsPage(QWidget):
             project_id=selected.id,
             project_code=selected.project_code,
             parent=self,
+        )
+
+    def _open_workspace(self) -> None:
+        active_company = self._active_company()
+        selected = self._selected_project()
+        if active_company is None or selected is None:
+            show_info(self, "Projects", "Select a project to open its workspace.")
+            return
+
+        manager = getattr(self._service_registry, "child_window_manager", None)
+        if manager is None:
+            self._open_edit_dialog()
+            return
+
+        from seeker_accounting.modules.contracts_projects.ui.project_workspace_window import (
+            ProjectWorkspaceWindow,
+        )
+
+        manager.open_document(
+            ProjectWorkspaceWindow.DOC_TYPE,
+            selected.id,
+            lambda: ProjectWorkspaceWindow(
+                self._service_registry,
+                company_id=active_company.company_id,
+                company_name=active_company.company_name,
+                project_id=selected.id,
+            ),
+        )
+
+    def _open_variance_analysis(self) -> None:
+        selected = self._selected_project()
+        if selected is None:
+            show_info(self, "Projects", "Select a project first.")
+            return
+        self._service_registry.navigation_service.navigate(
+            nav_ids.PROJECT_VARIANCE_ANALYSIS,
+            context={"project_id": selected.id},
+        )
+
+    def _open_project_contract_summary(self) -> None:
+        selected = self._selected_project()
+        if selected is None:
+            show_info(self, "Projects", "Select a project first.")
+            return
+        try:
+            detail = self._service_registry.project_service.get_project_detail(selected.id)
+        except NotFoundError as exc:
+            show_error(self, "Projects", str(exc))
+            return
+        if detail.contract_id is None:
+            show_info(self, "Projects", "The selected project is not linked to a contract.")
+            return
+        self._service_registry.navigation_service.navigate(
+            nav_ids.CONTRACT_SUMMARY,
+            context={"contract_id": detail.contract_id},
         )
 
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:

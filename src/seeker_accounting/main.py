@@ -36,11 +36,39 @@ def main() -> int:
     from seeker_accounting.app.bootstrap.preloader import BackgroundPreloader
 
     preloader = BackgroundPreloader(settings)
-    _preload_result = [None]  # mutable container for closure
     _preload_error = [None]   # mutable container for closure
+    _bootstrap_result = [None]  # mutable container for closure
 
     def _on_preload_done(result: object) -> None:
-        _preload_result[0] = result
+        # ── Build the shell IMMEDIATELY on the main thread. ───────────
+        # This must happen before the splash reports "ready" so that by
+        # the time the landing buttons become interactive, the full
+        # MainWindow shell is already constructed and clicks work
+        # without a frozen-UI delay. Shell construction blocks the main
+        # thread briefly (it can only run here), but it overlaps with
+        # the tail of the splash animation rather than happening after
+        # the buttons appear enabled — which is the UX we want.
+        try:
+            from seeker_accounting.app.bootstrap.application import bootstrap_application
+            from seeker_accounting import __version__
+
+            splash.set_version_text(f"Version {__version__}")
+
+            _bootstrap_result[0] = bootstrap_application(
+                qt_app=qt_app,
+                settings=result.settings,
+                app_context=result.app_context,
+                session_context=result.session_context,
+                initial_landing=splash,
+                defer_post_startup=True,
+            )
+        except Exception as exc:
+            splash.close()
+            logging.getLogger("seeker_accounting").exception("Application startup failed.")
+            QMessageBox.critical(None, APP_NAME, f"Application startup failed.\n\n{exc}")
+            qt_app.quit()
+            return
+
         splash.mark_preload_done()
 
     def _on_preload_failed(error_msg: str) -> None:
@@ -51,7 +79,7 @@ def main() -> int:
     preloader.finished_ok.connect(_on_preload_done)
     preloader.failed.connect(_on_preload_failed)
 
-    # ── When splash animation + preload both complete, bootstrap ─────
+    # ── When splash animation settles, run deferred post-startup tasks ──
     def _on_splash_ready() -> None:
         if _preload_error[0] is not None:
             splash.close()
@@ -65,32 +93,18 @@ def main() -> int:
             qt_app.quit()
             return
 
-        result = _preload_result[0]
-        if result is None:
-            splash.close()
-            QMessageBox.critical(None, APP_NAME, "Application startup failed.\n\nNo preload result.")
-            qt_app.quit()
+        bootstrap_result = _bootstrap_result[0]
+        if bootstrap_result is None:
+            # Error already surfaced in _on_preload_done; nothing to do.
             return
 
-        try:
-            from seeker_accounting.app.bootstrap.application import bootstrap_application
-            from seeker_accounting import __version__
-
-            splash.set_version_text(f"Version {__version__}")
-
-            bootstrap_application(
-                qt_app=qt_app,
-                settings=result.settings,
-                app_context=result.app_context,
-                session_context=result.session_context,
-                initial_landing=splash,
-            )
-        except Exception as exc:
-            splash.close()
-            logging.getLogger("seeker_accounting").exception("Application startup failed.")
-            QMessageBox.critical(None, APP_NAME, f"Application startup failed.\n\n{exc}")
-            qt_app.quit()
-            return
+        if bootstrap_result.run_post_startup_tasks is not None:
+            try:
+                bootstrap_result.run_post_startup_tasks()
+            except Exception:
+                logging.getLogger("seeker_accounting").exception(
+                    "Post-startup task scheduling failed."
+                )
 
     splash.ready_to_close.connect(_on_splash_ready)
 

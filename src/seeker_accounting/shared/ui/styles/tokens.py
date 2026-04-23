@@ -51,8 +51,8 @@ class SizeTokens:
     sidebar_child_height: int = 22
     sidebar_icon_size: int = 14
     sidebar_animation_ms: int = 120
-    topbar_height: int = 36
-    topbar_control_height: int = 26
+    topbar_height: int = 28
+    topbar_control_height: int = 22
     control_height: int = 22
     button_height: int = 22
     row_height: int = 22
@@ -75,6 +75,11 @@ class SizeTokens:
     status_rail_height: int = 22
     row_height_dense: int = 20
     totals_dock_width: int = 200
+    # Ribbon (Sage-style single context-aware band, no tabs).
+    ribbon_height: int = 64
+    ribbon_button_width: int = 60
+    ribbon_button_icon_size: int = 26
+    ribbon_divider_height: int = 40
 
 
 @dataclass(frozen=True, slots=True)

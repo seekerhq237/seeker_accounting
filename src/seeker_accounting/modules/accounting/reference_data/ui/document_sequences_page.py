@@ -27,10 +27,11 @@ from seeker_accounting.modules.accounting.reference_data.ui.document_sequence_di
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
-class DocumentSequencesPage(QWidget):
+class DocumentSequencesPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
@@ -43,7 +44,9 @@ class DocumentSequencesPage(QWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_action_bar())
+        self._action_bar = self._build_action_bar()
+        root_layout.addWidget(self._action_bar)
+        self._action_bar.hide()
         self._resume_banner = self._build_resume_banner()
         root_layout.addWidget(self._resume_banner)
         root_layout.addWidget(self._build_content_stack(), 1)
@@ -342,6 +345,31 @@ class DocumentSequencesPage(QWidget):
             and selected_sequence.is_active
             and permission_service.has_permission("reference.document_sequences.deactivate")
         )
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ────────────────────────────────────────────────────
+
+    def _ribbon_commands(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_handlers
+        return {
+            "document_sequences.new": self._open_create_dialog,
+            "document_sequences.edit": self._open_edit_dialog,
+            "document_sequences.preview": self._preview_selected_sequence,
+            "document_sequences.deactivate": self._deactivate_selected_sequence,
+            "document_sequences.refresh": self.reload_document_sequences,
+            **related_goto_handlers(self._service_registry, "document_sequences"),
+        }
+
+    def ribbon_state(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_state
+        return {
+            "document_sequences.new": self._new_button.isEnabled(),
+            "document_sequences.edit": self._edit_button.isEnabled(),
+            "document_sequences.preview": self._preview_button.isEnabled(),
+            "document_sequences.deactivate": self._deactivate_button.isEnabled(),
+            "document_sequences.refresh": True,
+            **related_goto_state("document_sequences"),
+        }
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("reference.document_sequences.create"):

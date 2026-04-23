@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
@@ -31,6 +31,7 @@ VALID_THEMES = {"light", "dark"}
 class BootstrapResult:
     settings: AppSettings
     landing_window: LandingWindow
+    run_post_startup_tasks: Callable[[], None] | None = None
 
 
 
@@ -41,6 +42,7 @@ def bootstrap_application(
     app_context: AppContext,
     session_context: SessionContext,
     initial_landing: AnimatedSplashScreen | None = None,
+    defer_post_startup: bool = False,
 ) -> BootstrapResult:
     """Build the landing window and fully-initialized shell.
 
@@ -134,14 +136,22 @@ def bootstrap_application(
                 lambda: _handle_get_started(settings, initial_landing)
             )
 
-        # ── Run startup purge after landing is visible ─────────────────
+        # ── Post-startup tasks: purge check + Get Started guide ────────
+        # These can pop modal dialogs, so they must only run once the
+        # splash/landing surface is actually interactive. When
+        # ``defer_post_startup`` is True the caller is responsible for
+        # invoking ``result.run_post_startup_tasks`` at the appropriate
+        # moment (after the splash signals ``ready_to_close``).
         from PySide6.QtCore import QTimer
         purge_parent: QWidget = initial_landing if initial_landing is not None else landing_window
-        QTimer.singleShot(100, lambda: _run_startup_purge_lightweight(session_context, purge_parent))
-
-        # ── Show Get Started guide on first launch ─────────────────────
         guide_parent: QWidget = initial_landing if initial_landing is not None else landing_window
-        QTimer.singleShot(400, lambda: _auto_show_get_started(settings, guide_parent))
+
+        def _run_post_startup() -> None:
+            QTimer.singleShot(100, lambda: _run_startup_purge_lightweight(session_context, purge_parent))
+            QTimer.singleShot(400, lambda: _auto_show_get_started(settings, guide_parent))
+
+        if not defer_post_startup:
+            _run_post_startup()
 
     except Exception as exc:  # pragma: no cover - handled at process boundary
         logging.getLogger("seeker_accounting.bootstrap").exception("Bootstrap failed.")
@@ -151,6 +161,7 @@ def bootstrap_application(
     return BootstrapResult(
         settings=settings,
         landing_window=landing_window,
+        run_post_startup_tasks=_run_post_startup if defer_post_startup else None,
     )
 
 

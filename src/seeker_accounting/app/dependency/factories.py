@@ -3414,6 +3414,14 @@ def create_service_registry(
     from seeker_accounting.platform.licensing.license_service import LicenseService
     license_service = LicenseService(settings=settings)
 
+    # Shell subsystems for the context-aware ribbon + top-level child windows.
+    from seeker_accounting.app.shell.child_windows.child_window_manager import (
+        ChildWindowManager,
+    )
+    from seeker_accounting.app.shell.ribbon.ribbon_registry import RibbonRegistry
+    ribbon_registry = RibbonRegistry()
+    child_window_manager = ChildWindowManager()
+
     return ServiceRegistry(
         settings=settings,
         app_context=app_context,
@@ -3580,4 +3588,6 @@ def create_service_registry(
         backup_analysis_service=backup_analysis_service,
         backup_merge_service=backup_merge_service,
         license_service=license_service,
+        ribbon_registry=ribbon_registry,
+        child_window_manager=child_window_manager,
     )

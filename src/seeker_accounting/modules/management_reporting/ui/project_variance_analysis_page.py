@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.management_reporting.dto.budget_variance_report_dto import (
     ProjectTrendSeriesDTO,
@@ -105,13 +106,16 @@ class ProjectVarianceAnalysisPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_toolbar())
         root_layout.addWidget(self._build_content_stack(), 1)
 
         self._service_registry.active_company_context.active_company_changed.connect(
             self._on_company_changed
+        )
+        self._service_registry.navigation_service.navigation_context_changed.connect(
+            self._on_navigation_context_changed
         )
 
         self._load_projects()
@@ -126,9 +130,8 @@ class ProjectVarianceAnalysisPage(QWidget):
         card.setProperty("card", True)
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
-
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
         # Project selector
         proj_block = QWidget(card)
         proj_layout = QVBoxLayout(proj_block)
@@ -444,6 +447,7 @@ class ProjectVarianceAnalysisPage(QWidget):
             )
 
         self._project_combo.blockSignals(False)
+        self._apply_navigation_context()
         self._on_project_changed()
 
     def _reload_analysis(self) -> None:
@@ -451,6 +455,22 @@ class ProjectVarianceAnalysisPage(QWidget):
 
     def _on_company_changed(self) -> None:
         self._load_projects()
+
+    def _on_navigation_context_changed(self, nav_id: str, context: object) -> None:
+        _ = context
+        if nav_id != nav_ids.PROJECT_VARIANCE_ANALYSIS:
+            return
+        self._apply_navigation_context()
+
+    def _apply_navigation_context(self) -> None:
+        context = self._service_registry.navigation_service.current_navigation_context
+        project_id = context.get("project_id")
+        if not isinstance(project_id, int):
+            return
+        for index in range(self._project_combo.count()):
+            if self._project_combo.itemData(index) == project_id:
+                self._project_combo.setCurrentIndex(index)
+                return
 
     def _on_project_changed(self) -> None:
         project_id = self._project_combo.currentData()

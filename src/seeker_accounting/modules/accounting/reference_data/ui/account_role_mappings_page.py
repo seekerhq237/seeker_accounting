@@ -23,6 +23,7 @@ from seeker_accounting.modules.accounting.reference_data.dto.account_role_mappin
 )
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.searchable_combo_box import SearchableComboBox
@@ -42,7 +43,7 @@ _RETURN_NAV_BY_WORKFLOW: dict[str, str] = {
 }
 
 
-class AccountRoleMappingsPage(QWidget):
+class AccountRoleMappingsPage(RibbonHostMixin, QWidget):
     """Standalone workspace page for Account Role Mappings with guided-flow destination support."""
 
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
@@ -340,6 +341,23 @@ class AccountRoleMappingsPage(QWidget):
         self._account_combo.set_current_value(mapping.account_id)
         self._save_button.setEnabled(self._can_manage)
         self._clear_button.setEnabled(mapping.account_id is not None and self._can_manage)
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ────────────────────────────────────────────────────
+
+    def _ribbon_commands(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_handlers
+        return {
+            "account_role_mappings.refresh": self.reload_mappings,
+            **related_goto_handlers(self._service_registry, "account_role_mappings"),
+        }
+
+    def ribbon_state(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_state
+        return {
+            "account_role_mappings.refresh": True,
+            **related_goto_state("account_role_mappings"),
+        }
 
     # ------------------------------------------------------------------
     # Save / Clear

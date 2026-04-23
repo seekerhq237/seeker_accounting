@@ -71,6 +71,10 @@ class PayrollRunEmployee(TimestampMixin, Base):
 
     status_code: Mapped[str] = mapped_column(String(20), nullable=False, default="included")
     calculation_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    # Operator-supplied reason when status_code == "excluded" (set via
+    # PayrollRunService.set_run_employee_inclusion). Not used for the "error"
+    # status — errors go into calculation_notes.
+    exclusion_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Payment settlement tracking (maintained by PayrollPaymentTrackingService)
     # unpaid / partial / paid — derived from payroll_payment_records aggregation

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -29,6 +29,7 @@ from seeker_accounting.app.navigation.workflow_resume_service import ResumeToken
 from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 from seeker_accounting.shared.workflow.document_sequence_preflight import (
@@ -43,13 +44,18 @@ class SupplierPaymentsPage(QWidget):
         super().__init__(parent)
         self._service_registry = service_registry
         self._payments: list[SupplierPaymentListItemDTO] = []
+        self._total_count: int = 0
         self._pending_resume_payload: ResumeTokenPayload | None = None
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(lambda: self.reload_payments(reset_page=True))
 
         self.setObjectName("SupplierPaymentsPage")
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_action_bar())
         root_layout.addWidget(self._build_content_stack(), 1)
@@ -63,36 +69,56 @@ class SupplierPaymentsPage(QWidget):
     # Reload
     # ------------------------------------------------------------------
 
-    def reload_payments(self, selected_payment_id: int | None = None) -> None:
+    def reload_payments(
+        self,
+        selected_payment_id: int | None = None,
+        reset_page: bool = False,
+    ) -> None:
         active_company = self._active_company()
 
         if active_company is None:
             self._payments = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Select a company")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
             return
 
+        if reset_page:
+            self._pager.reset()
+
+        search_text = self._search_input.text().strip() or None
         try:
-            self._payments = self._service_registry.supplier_payment_service.list_supplier_payments(
+            page_result = self._service_registry.supplier_payment_service.list_supplier_payments_page(
                 active_company.company_id,
                 status_code=self._status_filter_value(),
+                query=search_text,
+                page=self._pager.page,
+                page_size=self._pager.page_size,
             )
         except Exception as exc:
             self._payments = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Unable to load")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
             show_error(self, "Supplier Payments", f"Payment data could not be loaded.\n\n{exc}")
             return
 
+        self._payments = list(page_result.items)
+        self._total_count = page_result.total_count
+        self._pager.apply_result(page_result)
         self._populate_table()
-        self._apply_search_filter()
         self._sync_surface_state(active_company)
         self._restore_selection(selected_payment_id)
         self._update_action_state()
+
+    def _handle_search_text_changed(self, _text: str) -> None:
+        self._search_debounce.start()
 
     # ------------------------------------------------------------------
     # UI building
@@ -104,13 +130,22 @@ class SupplierPaymentsPage(QWidget):
         card.setProperty("card", True)
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
 
+        title = QLabel('Payment Register', card)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
+
+        self._record_count_label = QLabel(card)
+        self._record_count_label.setObjectName("ToolbarMeta")
+        layout.addWidget(self._record_count_label)
+
+        layout.addStretch(1)
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search payments...")
         self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
+        self._search_input.textChanged.connect(self._handle_search_text_changed)
         layout.addWidget(self._search_input)
 
         self._status_filter_combo = QComboBox(card)
@@ -118,7 +153,7 @@ class SupplierPaymentsPage(QWidget):
         self._status_filter_combo.addItem("Draft", "draft")
         self._status_filter_combo.addItem("Posted", "posted")
         self._status_filter_combo.addItem("Cancelled", "cancelled")
-        self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_payments())
+        self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_payments(reset_page=True))
         layout.addWidget(self._status_filter_combo)
 
         self._new_button = QPushButton("New Payment", card)
@@ -172,25 +207,8 @@ class SupplierPaymentsPage(QWidget):
         card.setObjectName("PageCard")
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(12)
-
-        top_row = QWidget(card)
-        top_row_layout = QHBoxLayout(top_row)
-        top_row_layout.setContentsMargins(0, 0, 0, 0)
-        top_row_layout.setSpacing(12)
-
-        title = QLabel("Payment Register", top_row)
-        title.setObjectName("CardTitle")
-        top_row_layout.addWidget(title)
-        top_row_layout.addStretch(1)
-
-        self._record_count_label = QLabel(top_row)
-        self._record_count_label.setObjectName("ToolbarMeta")
-        top_row_layout.addWidget(self._record_count_label)
-
-        layout.addWidget(top_row)
-
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         self._table = QTableWidget(card)
         self._table.setObjectName("SupplierPaymentsTable")
         self._table.setColumnCount(8)
@@ -209,6 +227,11 @@ class SupplierPaymentsPage(QWidget):
         self._table.itemSelectionChanged.connect(self._update_action_state)
         self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
         layout.addWidget(self._table)
+
+        self._pager = Pager(card, default_page_size=100)
+        self._pager.page_changed.connect(lambda _p: self.reload_payments())
+        self._pager.page_size_changed.connect(lambda _s: self.reload_payments(reset_page=True))
+        layout.addWidget(self._pager)
         return card
 
     def _build_empty_state(self) -> QWidget:
@@ -302,58 +325,58 @@ class SupplierPaymentsPage(QWidget):
         self._stack.setCurrentWidget(self._empty_state)
 
     def _populate_table(self) -> None:
+        self._table.setUpdatesEnabled(False)
         self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        try:
+            self._table.setRowCount(len(self._payments))
+            for row_index, p in enumerate(self._payments):
+                values = (
+                    p.payment_number,
+                    self._format_date(p.payment_date),
+                    p.supplier_name,
+                    p.financial_account_name,
+                    p.currency_code,
+                    self._format_amount(p.amount_paid),
+                    p.status_code.title(),
+                    self._format_datetime(p.posted_at),
+                )
+                for col, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if col == 0:
+                        item.setData(Qt.ItemDataRole.UserRole, p.id)
+                    if col in {1, 4, 6, 7}:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    if col == 5:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                    self._table.setItem(row_index, col, item)
 
-        for p in self._payments:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                p.payment_number,
-                self._format_date(p.payment_date),
-                p.supplier_name,
-                p.financial_account_name,
-                p.currency_code,
-                self._format_amount(p.amount_paid),
-                p.status_code.title(),
-                self._format_datetime(p.posted_at),
+            self._table.resizeColumnsToContents()
+            header = self._table.horizontalHeader()
+            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(2, header.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
+        finally:
+            self._table.setSortingEnabled(True)
+            self._table.setUpdatesEnabled(True)
+
+        search_text = self._search_input.text().strip()
+        total = self._total_count
+        shown = len(self._payments)
+        if search_text:
+            self._record_count_label.setText(f"{shown} shown of {total} matches")
+        else:
+            self._record_count_label.setText(
+                f"{total} payment" if total == 1 else f"{total} payments"
             )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, p.id)
-                if col in {1, 4, 5, 6, 7}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, col, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
-
-        count = len(self._payments)
-        self._record_count_label.setText(f"{count} payment" if count == 1 else f"{count} payments")
 
     def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                item = self._table.item(row, col)
-                if item is not None and query in item.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
+        # Search is server-side now via reload_payments. No-op kept for compatibility.
+        return
 
     def _restore_selection(self, selected_payment_id: int | None) -> None:
         if self._table.rowCount() == 0:

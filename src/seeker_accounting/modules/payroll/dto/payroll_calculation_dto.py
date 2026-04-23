@@ -233,6 +233,7 @@ class PayrollRunEmployeeListItemDTO:
     net_payable: Decimal
     employer_cost_base: Decimal
     status_code: str
+    exclusion_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +275,7 @@ class PayrollRunEmployeeDetailDTO:
 
     status_code: str
     calculation_notes: str | None
+    exclusion_reason: str | None
     lines: list[PayrollRunLineDTO]
 
 

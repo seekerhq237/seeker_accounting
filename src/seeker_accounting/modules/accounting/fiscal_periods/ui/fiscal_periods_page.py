@@ -24,16 +24,20 @@ from seeker_accounting.modules.accounting.fiscal_periods.dto.fiscal_calendar_dto
     FiscalYearListItemDTO,
 )
 from seeker_accounting.modules.accounting.fiscal_periods.ui.fiscal_year_dialog import FiscalYearDialog
+from seeker_accounting.modules.accounting.fiscal_periods.ui.fiscal_year_setup_wizard_dialog import (
+    FiscalYearSetupWizardDialog,
+)
 from seeker_accounting.modules.accounting.fiscal_periods.ui.generate_periods_dialog import (
     GeneratePeriodsDialog,
 )
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
-class FiscalPeriodsPage(QWidget):
+class FiscalPeriodsPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
@@ -49,7 +53,9 @@ class FiscalPeriodsPage(QWidget):
 
         self._resume_banner = self._build_resume_banner()
         root_layout.addWidget(self._resume_banner)
-        root_layout.addWidget(self._build_action_bar())
+        self._action_bar = self._build_action_bar()
+        root_layout.addWidget(self._action_bar)
+        self._action_bar.hide()
         root_layout.addWidget(self._build_content_stack(), 1)
 
         self._service_registry.active_company_context.active_company_changed.connect(
@@ -493,6 +499,65 @@ class FiscalPeriodsPage(QWidget):
             and period.status_code == "CLOSED"
             and permission_service.has_permission("fiscal.periods.lock")
         )
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ────────────────────────────────────────────────────
+
+    def _ribbon_commands(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_handlers
+        return {
+            "fiscal_periods.wizard": self._open_fiscal_year_wizard,
+            "fiscal_periods.new_year": self._open_create_year_dialog,
+            "fiscal_periods.generate_periods": self._open_generate_periods_dialog,
+            "fiscal_periods.open_period": self._open_selected_period,
+            "fiscal_periods.close_period": self._close_selected_period,
+            "fiscal_periods.reopen_period": self._reopen_selected_period,
+            "fiscal_periods.lock_period": self._lock_selected_period,
+            "fiscal_periods.refresh": self.reload_calendar,
+            **related_goto_handlers(self._service_registry, "fiscal_periods"),
+        }
+
+    def ribbon_state(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_state
+        return {
+            "fiscal_periods.wizard": self._new_year_button.isEnabled(),
+            "fiscal_periods.new_year": self._new_year_button.isEnabled(),
+            "fiscal_periods.generate_periods": self._generate_periods_button.isEnabled(),
+            "fiscal_periods.open_period": self._open_button.isEnabled(),
+            "fiscal_periods.close_period": self._close_button.isEnabled(),
+            "fiscal_periods.reopen_period": self._reopen_button.isEnabled(),
+            "fiscal_periods.lock_period": self._lock_button.isEnabled(),
+            "fiscal_periods.refresh": True,
+            **related_goto_state("fiscal_periods"),
+        }
+
+    def _open_fiscal_year_wizard(self) -> None:
+        permission_service = self._service_registry.permission_service
+        if not permission_service.has_permission("fiscal.years.create"):
+            self._show_permission_denied("fiscal.years.create")
+            return
+        if not permission_service.has_permission("fiscal.periods.generate"):
+            self._show_permission_denied("fiscal.periods.generate")
+            return
+        active_company = self._active_company()
+        if active_company is None:
+            show_info(
+                self,
+                "Fiscal Periods",
+                "Select an active company before launching the fiscal year wizard.",
+            )
+            return
+
+        result = FiscalYearSetupWizardDialog.run(
+            self._service_registry,
+            company_id=active_company.company_id,
+            company_name=active_company.company_name,
+            parent=self,
+        )
+        if result is None:
+            return
+        show_info(self, "Fiscal Periods", result.summary)
+        self.reload_calendar(selected_fiscal_year_id=result.fiscal_year.id)
 
     def _open_create_year_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("fiscal.years.create"):

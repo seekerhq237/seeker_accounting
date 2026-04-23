@@ -6,12 +6,16 @@ from seeker_accounting.modules.accounting.chart_of_accounts.ui.account_form_dial
 from seeker_accounting.modules.accounting.chart_of_accounts.ui.chart_import_dialog import (
     ChartImportDialog,
 )
+from seeker_accounting.modules.accounting.chart_of_accounts.ui.chart_customization_wizard_dialog import (
+    ChartCustomizationWizardDialog,
+)
 from seeker_accounting.modules.accounting.chart_of_accounts.ui.chart_of_accounts_page import (
     ChartOfAccountsPage,
 )
 
 __all__ = [
     "AccountFormDialog",
+    "ChartCustomizationWizardDialog",
     "ChartImportDialog",
     "ChartOfAccountsPage",
 ]

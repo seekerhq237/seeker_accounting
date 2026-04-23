@@ -199,6 +199,15 @@ class WorkspaceHost(QFrame):
             if callable(open_create_dialog):
                 QTimer.singleShot(0, open_create_dialog)
 
+    def current_page(self) -> QWidget | None:
+        """Return the currently-visible page widget, or ``None`` if blank.
+
+        Used by the :class:`RibbonBar` to resolve the active IRibbonHost.
+        """
+
+        widget = self._stack.currentWidget()
+        return widget
+
     def get_last_navigation_context(self, nav_id: str | None = None) -> dict[str, Any] | None:
         target_nav_id = nav_id or self._navigation_service.current_nav_id
         context = self._last_navigation_context_by_nav_id.get(target_nav_id)

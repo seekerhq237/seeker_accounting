@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from seeker_accounting.modules.customers.models.customer import Customer
 from seeker_accounting.modules.sales.models.sales_invoice import SalesInvoice
 from seeker_accounting.modules.sales.models.sales_invoice_line import SalesInvoiceLine
 from seeker_accounting.modules.sales.models.customer_receipt_allocation import CustomerReceiptAllocation
@@ -30,6 +31,72 @@ class SalesInvoiceRepository:
             SalesInvoice.id.desc(),
         )
         return list(self._session.scalars(statement))
+
+    # ------------------------------------------------------------------
+    # Paginated + searchable listing (server-side)
+    # ------------------------------------------------------------------
+
+    def _build_filter_conditions(
+        self,
+        company_id: int,
+        status_code: str | None,
+        payment_status_code: str | None,
+        query: str | None,
+    ) -> list:
+        conditions: list = [SalesInvoice.company_id == company_id]
+        if status_code is not None:
+            conditions.append(SalesInvoice.status_code == status_code)
+        if payment_status_code is not None:
+            conditions.append(SalesInvoice.payment_status_code == payment_status_code)
+        if query:
+            like = f"%{query.strip().lower()}%"
+            conditions.append(
+                or_(
+                    func.lower(SalesInvoice.invoice_number).like(like),
+                    func.lower(SalesInvoice.reference_number).like(like),
+                    func.lower(Customer.display_name).like(like),
+                    func.lower(Customer.customer_code).like(like),
+                )
+            )
+        return conditions
+
+    def count_filtered(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        payment_status_code: str | None = None,
+        query: str | None = None,
+    ) -> int:
+        stmt = (
+            select(func.count(SalesInvoice.id))
+            .join(Customer, Customer.id == SalesInvoice.customer_id)
+            .where(*self._build_filter_conditions(company_id, status_code, payment_status_code, query))
+        )
+        return int(self._session.scalar(stmt) or 0)
+
+    def list_filtered_page(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        payment_status_code: str | None = None,
+        query: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[SalesInvoice]:
+        stmt = (
+            select(SalesInvoice)
+            .join(Customer, Customer.id == SalesInvoice.customer_id)
+            .where(*self._build_filter_conditions(company_id, status_code, payment_status_code, query))
+            .options(selectinload(SalesInvoice.customer))
+            .order_by(
+                SalesInvoice.invoice_date.desc(),
+                SalesInvoice.invoice_number.desc(),
+                SalesInvoice.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(self._session.scalars(stmt))
 
     def get_by_id(self, company_id: int, invoice_id: int) -> SalesInvoice | None:
         statement = select(SalesInvoice).where(

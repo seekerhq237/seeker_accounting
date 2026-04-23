@@ -196,7 +196,7 @@ class UnitsOfMeasurePage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_toolbar())
         root_layout.addWidget(self._build_content_stack(), 1)
@@ -232,11 +232,18 @@ class UnitsOfMeasurePage(QWidget):
         card.setProperty("card", True)
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
+
+        title = QLabel('Units of Measure', card)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
+
+        self._count_label = QLabel(card)
+        self._count_label.setObjectName("ToolbarMeta")
+        layout.addWidget(self._count_label)
 
         layout.addStretch(1)
-
         self._new_btn = QPushButton("New UoM", card)
         self._new_btn.setProperty("variant", "primary")
         self._new_btn.clicked.connect(self._on_new)
@@ -268,22 +275,8 @@ class UnitsOfMeasurePage(QWidget):
         card = QFrame(self)
         card.setObjectName("PageCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(12)
-
-        top = QWidget(card)
-        top_layout = QHBoxLayout(top)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(12)
-        lbl = QLabel("Units of Measure", top)
-        lbl.setObjectName("CardTitle")
-        top_layout.addWidget(lbl)
-        top_layout.addStretch(1)
-        self._count_label = QLabel(top)
-        self._count_label.setObjectName("ToolbarMeta")
-        top_layout.addWidget(self._count_label)
-        layout.addWidget(top)
-
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         self._table = QTableWidget(card)
         self._table.setColumnCount(6)
         self._table.setHorizontalHeaderLabels(("Code", "Name", "Category", "Ratio", "Description", "Active"))

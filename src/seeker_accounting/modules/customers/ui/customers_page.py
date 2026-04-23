@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.accounting.reference_data.ui.account_role_mapping_dialog import (
     AccountRoleMappingDialog,
 )
@@ -32,16 +33,23 @@ from seeker_accounting.modules.parties.dto.control_account_foundation_dto import
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
 from seeker_accounting.shared.ui.table_helpers import configure_dense_table
 from seeker_accounting.shared.ui.register import RegisterPage
 
 
-class CustomersPage(QWidget):
+class CustomersPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
         self._customers: list[CustomerListItemDTO] = []
+        self._total_count: int = 0
+        # Debounce for the search box so typing doesn't fire a query per keystroke.
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(lambda: self.reload_customers(reset_page=True))
 
         self.setObjectName("CustomersPage")
 
@@ -54,45 +62,69 @@ class CustomersPage(QWidget):
         self._register = RegisterPage(self)
         self._populate_toolbar_strip(self._register)
         self._populate_action_band(self._register)
+        # Ribbon hosts the primary commands; hide the ActionBand band.
+        self._register.action_band.hide()
         self._register.set_table_widget(self._build_content_stack())
         root_layout.addWidget(self._register, 1)
 
         self._service_registry.active_company_context.active_company_changed.connect(
             self._handle_active_company_changed
         )
-        self._search_edit.textChanged.connect(self._apply_search_filter)
+        self._search_edit.textChanged.connect(self._handle_search_text_changed)
 
         self.reload_customers()
 
-    def reload_customers(self, selected_customer_id: int | None = None) -> None:
+    def _handle_search_text_changed(self, _text: str) -> None:
+        # Debounced — triggers a server-side reload with page reset.
+        self._search_debounce.start()
+
+    def reload_customers(
+        self,
+        selected_customer_id: int | None = None,
+        reset_page: bool = False,
+    ) -> None:
         active_company = self._active_company()
         self._sync_readiness(active_company)
 
         if active_company is None:
             self._customers = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Select a company")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
             return
 
+        if reset_page:
+            self._pager.reset()
+
+        search_text = self._search_edit.text().strip() or None
         try:
-            self._customers = self._service_registry.customer_service.list_customers(
+            page_result = self._service_registry.customer_service.list_customers_page(
                 active_company.company_id,
                 active_only=False,
+                query=search_text,
+                page=self._pager.page,
+                page_size=self._pager.page_size,
             )
         except Exception as exc:
             self._customers = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Unable to load")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
             show_error(self, "Customers", f"Customer data could not be loaded.\n\n{exc}")
             return
 
+        self._customers = list(page_result.items)
+        self._total_count = page_result.total_count
+        self._pager.apply_result(page_result)
         self._populate_table()
         self._sync_surface_state(active_company)
-        self._apply_search_filter()
+        self._update_record_count_label(search_text)
         self._restore_selection(selected_customer_id)
         self._update_action_state()
 
@@ -194,7 +226,7 @@ class CustomersPage(QWidget):
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(4)
 
         self._table = QTableWidget(container)
         self._table.setObjectName("CustomersTable")
@@ -206,7 +238,12 @@ class CustomersPage(QWidget):
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.itemSelectionChanged.connect(self._update_action_state)
         self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        layout.addWidget(self._table)
+        layout.addWidget(self._table, 1)
+
+        self._pager = Pager(container, default_page_size=100)
+        self._pager.page_changed.connect(lambda _p: self.reload_customers())
+        self._pager.page_size_changed.connect(lambda _s: self.reload_customers(reset_page=True))
+        layout.addWidget(self._pager)
         return container
 
     def _build_empty_state(self) -> QWidget:
@@ -334,57 +371,49 @@ class CustomersPage(QWidget):
         self._stack.setCurrentWidget(self._empty_state)
 
     def _populate_table(self) -> None:
+        # Bulk populate with paint updates and sorting suspended for speed.
+        self._table.setUpdatesEnabled(False)
         self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        try:
+            self._table.setRowCount(len(self._customers))
+            for row_index, customer in enumerate(self._customers):
+                values = (
+                    customer.customer_code,
+                    customer.display_name,
+                    customer.customer_group_name or "",
+                    customer.payment_term_name or "",
+                    self._format_amount(customer.credit_limit_amount),
+                    "Active" if customer.is_active else "Inactive",
+                )
+                for column_index, value in enumerate(values):
+                    item = QTableWidgetItem(value)
+                    if column_index == 0:
+                        item.setData(Qt.ItemDataRole.UserRole, customer.id)
+                    if column_index in {4, 5}:
+                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self._table.setItem(row_index, column_index, item)
 
-        for customer in self._customers:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                customer.customer_code,
-                customer.display_name,
-                customer.customer_group_name or "",
-                customer.payment_term_name or "",
-                self._format_amount(customer.credit_limit_amount),
-                "Active" if customer.is_active else "Inactive",
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, customer.id)
-                if column_index in {4, 5}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, column_index, item)
+            self._table.resizeColumnsToContents()
+            header = self._table.horizontalHeader()
+            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(1, header.ResizeMode.Stretch)
+            header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
+        finally:
+            self._table.setSortingEnabled(True)
+            self._table.setUpdatesEnabled(True)
 
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
-
-    def _apply_search_filter(self) -> None:
-        query = self._search_edit.text().strip().lower()
-        visible_count = 0
-        for row_index in range(self._table.rowCount()):
-            matches = not query or any(
-                query in (self._table.item(row_index, column_index).text().lower() if self._table.item(row_index, column_index) else "")
-                for column_index in range(self._table.columnCount())
-            )
-            self._table.setRowHidden(row_index, not matches)
-            if matches:
-                visible_count += 1
-
-        total_count = len(self._customers)
-        if query:
-            self._record_count_label.setText(f"{visible_count} shown of {total_count} customers")
+    def _update_record_count_label(self, search_text: str | None) -> None:
+        total = self._total_count
+        shown = len(self._customers)
+        if search_text:
+            self._record_count_label.setText(f"{shown} shown of {total} matches")
         else:
-            self._record_count_label.setText(f"{total_count} customer" if total_count == 1 else f"{total_count} customers")
-
-        self._update_action_state()
+            self._record_count_label.setText(
+                f"{total} customer" if total == 1 else f"{total} customers"
+            )
 
     def _restore_selection(self, selected_customer_id: int | None) -> None:
         if self._table.rowCount() == 0:
@@ -459,6 +488,27 @@ class CustomersPage(QWidget):
             )
         )
         self._export_list_button.setEnabled(has_active_company and bool(self._customers))
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ───────────────────────────────────────────────────
+
+    def _ribbon_commands(self):
+        return {
+            "customers.new": self._open_create_dialog,
+            "customers.edit": self._open_edit_dialog,
+            "customers.deactivate": self._deactivate_selected_customer,
+            "customers.refresh": self.reload_customers,
+            "customers.export_list": self._print_customer_list,
+        }
+
+    def ribbon_state(self):
+        return {
+            "customers.new": self._new_button.isEnabled(),
+            "customers.edit": self._edit_button.isEnabled(),
+            "customers.deactivate": self._deactivate_button.isEnabled(),
+            "customers.refresh": True,
+            "customers.export_list": self._export_list_button.isEnabled(),
+        }
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("customers.create"):

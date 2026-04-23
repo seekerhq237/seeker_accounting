@@ -28,10 +28,11 @@ from seeker_accounting.modules.accounting.reference_data.ui.tax_code_dialog impo
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
-class TaxCodesPage(QWidget):
+class TaxCodesPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
@@ -43,7 +44,9 @@ class TaxCodesPage(QWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_action_bar())
+        self._action_bar = self._build_action_bar()
+        root_layout.addWidget(self._action_bar)
+        self._action_bar.hide()
         root_layout.addWidget(self._build_content_stack(), 1)
 
         self._service_registry.active_company_context.active_company_changed.connect(
@@ -343,6 +346,31 @@ class TaxCodesPage(QWidget):
                 ("reference.tax_mappings.view", "reference.tax_mappings.manage")
             )
         )
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ────────────────────────────────────────────────────
+
+    def _ribbon_commands(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_handlers
+        return {
+            "tax_codes.new": self._open_create_dialog,
+            "tax_codes.edit": self._open_edit_dialog,
+            "tax_codes.deactivate": self._deactivate_selected_tax_code,
+            "tax_codes.account_mappings": self._open_tax_account_mappings,
+            "tax_codes.refresh": self.reload_tax_codes,
+            **related_goto_handlers(self._service_registry, "tax_codes"),
+        }
+
+    def ribbon_state(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_state
+        return {
+            "tax_codes.new": self._new_button.isEnabled(),
+            "tax_codes.edit": self._edit_button.isEnabled(),
+            "tax_codes.deactivate": self._deactivate_button.isEnabled(),
+            "tax_codes.account_mappings": self._mapping_button.isEnabled(),
+            "tax_codes.refresh": True,
+            **related_goto_state("tax_codes"),
+        }
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("reference.tax_codes.create"):

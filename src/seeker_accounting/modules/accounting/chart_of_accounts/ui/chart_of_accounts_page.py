@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.accounting.chart_of_accounts.dto.account_dto import AccountListItemDTO
 from seeker_accounting.modules.accounting.chart_of_accounts.dto.chart_import_dto import (
     ChartImportResultDTO,
@@ -32,6 +33,9 @@ from seeker_accounting.modules.accounting.chart_of_accounts.ui.account_form_dial
 from seeker_accounting.modules.accounting.chart_of_accounts.ui.chart_import_dialog import (
     ChartImportDialog,
 )
+from seeker_accounting.modules.accounting.chart_of_accounts.ui.chart_customization_wizard_dialog import (
+    ChartCustomizationWizardDialog,
+)
 from seeker_accounting.modules.accounting.reference_data.ui.account_role_mapping_dialog import (
     AccountRoleMappingDialog,
 )
@@ -42,7 +46,7 @@ from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
 from seeker_accounting.shared.ui.register import RegisterPage
 
 
-class ChartOfAccountsPage(QWidget):
+class ChartOfAccountsPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
@@ -58,6 +62,7 @@ class ChartOfAccountsPage(QWidget):
         self._register = RegisterPage(self)
         self._populate_toolbar_strip(self._register)
         self._populate_action_band(self._register)
+        self._register.action_band.hide()
         self._register.set_table_widget(self._build_content_stack())
         root_layout.addWidget(self._register)
 
@@ -139,6 +144,11 @@ class ChartOfAccountsPage(QWidget):
         self._deactivate_button.setProperty("variant", "secondary")
         self._deactivate_button.clicked.connect(self._deactivate_selected_account)
         band_layout.addWidget(self._deactivate_button)
+
+        self._wizard_button = QPushButton("Customize Chart", register.action_band)
+        self._wizard_button.setProperty("variant", "primary")
+        self._wizard_button.clicked.connect(self._open_customization_wizard)
+        band_layout.addWidget(self._wizard_button)
 
         self._seed_button = QPushButton("Seed OHADA Chart", register.action_band)
         self._seed_button.setProperty("variant", "secondary")
@@ -253,8 +263,13 @@ class ChartOfAccountsPage(QWidget):
         actions_layout.setContentsMargins(0, 4, 0, 0)
         actions_layout.setSpacing(10)
 
+        wizard_button = QPushButton("Customize Chart", actions)
+        wizard_button.setProperty("variant", "primary")
+        wizard_button.clicked.connect(self._open_customization_wizard)
+        actions_layout.addWidget(wizard_button, 0, Qt.AlignmentFlag.AlignLeft)
+
         seed_button = QPushButton("Seed Built-In OHADA Chart", actions)
-        seed_button.setProperty("variant", "primary")
+        seed_button.setProperty("variant", "secondary")
         seed_button.clicked.connect(self._seed_built_in_chart)
         actions_layout.addWidget(seed_button, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -506,6 +521,7 @@ class ChartOfAccountsPage(QWidget):
             and selected_account.is_active
             and permission_service.has_permission("chart.accounts.deactivate")
         )
+        self._wizard_button.setEnabled(has_active_company)
         self._seed_button.setEnabled(
             has_active_company and permission_service.has_permission("chart.seed")
         )
@@ -525,6 +541,39 @@ class ChartOfAccountsPage(QWidget):
             )
         )
         self._export_list_button.setEnabled(has_active_company and has_accounts)
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ───────────────────────────────────────────────────
+
+    def _ribbon_commands(self):
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_handlers
+        return {
+            "chart_of_accounts.new": self._open_create_dialog,
+            "chart_of_accounts.edit": self._open_edit_dialog,
+            "chart_of_accounts.deactivate": self._deactivate_selected_account,
+            "chart_of_accounts.wizard": self._open_customization_wizard,
+            "chart_of_accounts.seed": self._seed_built_in_chart,
+            "chart_of_accounts.import": self._open_import_dialog,
+            "chart_of_accounts.role_mappings": self._open_role_mapping_dialog,
+            "chart_of_accounts.refresh": self.reload_accounts,
+            "chart_of_accounts.export_list": self._print_account_list,
+            **related_goto_handlers(self._service_registry, "chart_of_accounts"),
+        }
+
+    def ribbon_state(self):
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_state
+        return {
+            "chart_of_accounts.new": self._new_button.isEnabled(),
+            "chart_of_accounts.edit": self._edit_button.isEnabled(),
+            "chart_of_accounts.deactivate": self._deactivate_button.isEnabled(),
+            "chart_of_accounts.wizard": self._wizard_button.isEnabled(),
+            "chart_of_accounts.seed": self._seed_button.isEnabled(),
+            "chart_of_accounts.import": self._import_button.isEnabled(),
+            "chart_of_accounts.role_mappings": self._role_mappings_button.isEnabled(),
+            "chart_of_accounts.refresh": True,
+            "chart_of_accounts.export_list": self._export_list_button.isEnabled(),
+            **related_goto_state("chart_of_accounts"),
+        }
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("chart.accounts.create"):
@@ -598,6 +647,24 @@ class ChartOfAccountsPage(QWidget):
             return
 
         self.reload_accounts(selected_account_id=account.id)
+
+    def _open_customization_wizard(self) -> None:
+        active_company = self._active_company()
+        if active_company is None:
+            show_info(self, "Chart of Accounts", "Select an active company before opening the chart wizard.")
+            return
+
+        result = ChartCustomizationWizardDialog.customize_chart(
+            self._service_registry,
+            company_id=active_company.company_id,
+            company_name=active_company.company_name,
+            parent=self,
+        )
+        if result is None:
+            return
+
+        self.reload_accounts()
+        show_info(self, "Chart of Accounts", result.summary)
 
     def _seed_built_in_chart(self) -> None:
         if not self._service_registry.permission_service.has_permission("chart.seed"):

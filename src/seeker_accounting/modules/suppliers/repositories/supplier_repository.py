@@ -17,6 +17,50 @@ class SupplierRepository:
         statement = statement.order_by(Supplier.display_name.asc(), Supplier.supplier_code.asc(), Supplier.id.asc())
         return list(self._session.scalars(statement))
 
+    def _build_search_filter(self, company_id: int, query: str | None, active_only: bool):
+        conditions = [Supplier.company_id == company_id]
+        if active_only:
+            conditions.append(Supplier.is_active.is_(True))
+        normalized = (query or "").strip().lower()
+        if normalized:
+            pattern = f"%{normalized}%"
+            conditions.append(
+                or_(
+                    func.lower(Supplier.supplier_code).like(pattern),
+                    func.lower(Supplier.display_name).like(pattern),
+                    func.lower(func.coalesce(Supplier.legal_name, "")).like(pattern),
+                )
+            )
+        return conditions
+
+    def count_filtered(
+        self,
+        company_id: int,
+        query: str | None = None,
+        active_only: bool = False,
+    ) -> int:
+        conditions = self._build_search_filter(company_id, query, active_only)
+        stmt = select(func.count(Supplier.id)).where(*conditions)
+        return int(self._session.scalar(stmt) or 0)
+
+    def list_filtered_page(
+        self,
+        company_id: int,
+        query: str | None = None,
+        active_only: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Supplier]:
+        conditions = self._build_search_filter(company_id, query, active_only)
+        stmt = (
+            select(Supplier)
+            .where(*conditions)
+            .order_by(Supplier.display_name.asc(), Supplier.supplier_code.asc(), Supplier.id.asc())
+            .offset(max(offset, 0))
+            .limit(max(limit, 1))
+        )
+        return list(self._session.scalars(stmt))
+
     def get_by_id(self, company_id: int, supplier_id: int) -> Supplier | None:
         statement = select(Supplier).where(
             Supplier.company_id == company_id,

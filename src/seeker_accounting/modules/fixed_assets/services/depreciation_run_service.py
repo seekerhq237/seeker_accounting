@@ -67,10 +67,14 @@ class DepreciationRunService:
             run_repo = self._asset_depreciation_run_repository_factory(uow.session)
             line_repo = self._asset_depreciation_run_line_repository_factory(uow.session)
             runs = run_repo.list_by_company(company_id, status_code=status_code)
+            if not runs:
+                return []
+            # Single aggregate query across all runs in this list — replaces
+            # the previous per-run line fetch (N+1).
+            totals = line_repo.aggregate_totals_by_run(run.id for run in runs)
             result = []
             for run in runs:
-                lines = line_repo.list_by_run(run.id)
-                total = sum(l.depreciation_amount for l in lines)
+                asset_count, total = totals.get(run.id, (0, _ZERO))
                 result.append(AssetDepreciationRunListItemDTO(
                     id=run.id,
                     company_id=run.company_id,
@@ -79,7 +83,7 @@ class DepreciationRunService:
                     period_end_date=run.period_end_date,
                     status_code=run.status_code,
                     posted_at=run.posted_at,
-                    asset_count=len(lines),
+                    asset_count=asset_count,
                     total_depreciation=total,
                 ))
             return result

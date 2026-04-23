@@ -7,6 +7,10 @@ from seeker_accounting.app.context.app_context import AppContext
 from seeker_accounting.app.context.session_context import SessionContext
 from seeker_accounting.app.navigation.navigation_service import NavigationService
 from seeker_accounting.app.navigation.workflow_resume_service import WorkflowResumeService
+from seeker_accounting.app.shell.child_windows.child_window_manager import (
+    ChildWindowManager,
+)
+from seeker_accounting.app.shell.ribbon.ribbon_registry import RibbonRegistry
 from seeker_accounting.config.settings import AppSettings
 from seeker_accounting.modules.accounting.chart_of_accounts.services.chart_of_accounts_service import (
     ChartOfAccountsService,
@@ -437,3 +441,8 @@ class ServiceRegistry:
     backup_merge_service: BackupMergeService
     license_service: LicenseService
 
+    # Shell subsystems introduced with the Sage-style ribbon / child-window
+    # UX. These use ``default_factory`` so no existing construction site
+    # (tests, smoke scripts, bootstrap) needs to be updated at once.
+    ribbon_registry: RibbonRegistry = None  # type: ignore[assignment]
+    child_window_manager: ChildWindowManager = None  # type: ignore[assignment]

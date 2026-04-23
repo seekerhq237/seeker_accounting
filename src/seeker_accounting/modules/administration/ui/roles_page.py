@@ -109,8 +109,12 @@ class RolesPage(QWidget):
         bar = QFrame(self)
         bar.setObjectName("PageToolbar")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
+
+        title = QLabel("Roles", bar)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
 
         self._record_count_label = QLabel("", bar)
         self._record_count_label.setObjectName("ToolbarMeta")

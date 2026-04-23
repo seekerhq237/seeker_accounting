@@ -267,6 +267,16 @@ QFrame#CommandBand > QWidget {{
     background: transparent;
 }}
 
+/* Menu-bar corner cluster: no frame, no forced height. */
+QFrame#ShellMenuCorner {{
+    background: transparent;
+    border: none;
+}}
+
+QFrame#ShellMenuCorner > QWidget {{
+    background: transparent;
+}}
+
 /* ── Operational Desktop — Menu Bar band ─────────────── */
 
 QMenuBar#ShellMenuBar {{
@@ -274,14 +284,14 @@ QMenuBar#ShellMenuBar {{
     color: {palette.text_primary};
     border: none;
     border-bottom: 1px solid {palette.border_default};
-    padding: 2px 6px;
+    padding: 1px 4px;
     font-size: {typography.size_small}px;
 }}
 
 QMenuBar#ShellMenuBar::item {{
     background: transparent;
     color: {palette.text_primary};
-    padding: 4px 10px;
+    padding: 2px 8px;
     margin: 0 1px;
     border-radius: {radius.small}px;
 }}
@@ -338,7 +348,7 @@ QFrame#TopBarProfileChip {{
 }}
 
 QFrame#TopBarProfileChip {{
-    min-height: {sizes.topbar_control_height}px;
+    min-height: 20px;
 }}
 
 QFrame#TopBarSearchTrigger {{
@@ -346,7 +356,7 @@ QFrame#TopBarSearchTrigger {{
 }}
 
 QFrame#TopBarChip {{
-    min-height: {sizes.topbar_control_height}px;
+    min-height: 20px;
 }}
 
 QFrame#TopBarChip[chipKind="fiscal"][fiscalTone="success"] {{
@@ -390,7 +400,7 @@ QLabel#TopBarShortcutHint {{
     background: {palette.workspace_surface};
     border: 1px solid {palette.border_default};
     border-radius: {radius.small}px;
-    padding: 2px 8px;
+    padding: 1px 4px;
     font-size: {typography.size_caption}px;
     font-weight: {typography.weight_medium};
 }}
@@ -401,11 +411,11 @@ QLabel#TopBarChipLabel {{
 }}
 
 QLabel#TopBarStatusDot {{
-    min-width: 8px;
-    max-width: 8px;
-    min-height: 8px;
-    max-height: 8px;
-    border-radius: 4px;
+    min-width: 6px;
+    max-width: 6px;
+    min-height: 6px;
+    max-height: 6px;
+    border-radius: 3px;
     background: {palette.text_muted};
 }}
 
@@ -430,7 +440,7 @@ QLabel#TopBarStatusDot[statusTone="neutral"] {{
 }}
 
 QLabel#TopBarAvatar {{
-    border-radius: 15px;
+    border-radius: 8px;
     font-size: {typography.size_caption}px;
     font-weight: {typography.weight_semibold};
     padding: 0;
@@ -472,11 +482,8 @@ QPushButton#TopBarThemeToggle,
 QPushButton#TopBarBellButton {{
     background: transparent;
     border: none;
-    border-radius: {radius.medium}px;
-    min-width: {sizes.topbar_control_height}px;
-    max-width: {sizes.topbar_control_height}px;
-    min-height: {sizes.topbar_control_height}px;
-    max-height: {sizes.topbar_control_height}px;
+    border-radius: {radius.small}px;
+    padding: 0;
 }}
 
 QPushButton#TopBarThemeToggle:hover,
@@ -808,8 +815,15 @@ QFrame#ActionBand {{
     border-top: 1px solid {palette.divider_subtle};
     border-bottom: 1px solid {palette.border_default};
     border-radius: 0;
-    min-height: 30px;
-    max-height: 30px;
+    min-height: 22px;
+    max-height: 22px;
+}}
+
+QFrame#ActionBand QPushButton,
+QFrame#ActionBand QToolButton {{
+    min-height: 16px;
+    max-height: 16px;
+    padding: 1px 8px;
 }}
 
 QFrame#CommandBand {{
@@ -883,6 +897,94 @@ QFrame#DocumentIdentityStrip {{
     border: none;
     border-bottom: 1px solid {palette.border_default};
     border-radius: 0;
+}}
+
+/* ── Sage-style context-aware ribbon ───────────────────────────────── */
+
+QFrame#RibbonBar {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-bottom: 1px solid {palette.border_default};
+    border-radius: 0;
+    min-height: {sizes.ribbon_height}px;
+    max-height: {sizes.ribbon_height}px;
+}}
+
+QStackedWidget#RibbonStack {{
+    background: transparent;
+    border: none;
+}}
+
+QWidget#RibbonSurface {{
+    background: transparent;
+    border: none;
+}}
+
+QWidget#RibbonPlaceholder {{
+    background: transparent;
+    border: none;
+}}
+
+QFrame#RibbonDivider {{
+    color: {palette.divider_subtle};
+    background: {palette.divider_subtle};
+    border: none;
+    margin: 0 6px;
+}}
+
+QToolButton#RibbonButton {{
+    background: transparent;
+    color: {palette.text_primary};
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 4px 2px 2px 2px;
+    margin: 2px 1px;
+    font-size: {typography.size_caption}px;
+}}
+
+QToolButton#RibbonButton:hover {{
+    background: {palette.sidebar_hover};
+    border: 1px solid {palette.border_default};
+}}
+
+QToolButton#RibbonButton:pressed {{
+    background: {palette.accent_soft_strong};
+    border: 1px solid {palette.border_strong};
+}}
+
+QToolButton#RibbonButton:focus {{
+    border: 1px solid {palette.accent};
+}}
+
+QToolButton#RibbonButton:disabled {{
+    color: {palette.disabled_text};
+    background: transparent;
+    border: 1px solid transparent;
+}}
+
+QToolButton#RibbonButton[ribbonVariant="primary"] {{
+    color: {palette.accent};
+}}
+
+QToolButton#RibbonButton[ribbonVariant="danger"] {{
+    color: {palette.danger};
+}}
+
+/* ── Top-level child document windows ──────────────────────────────── */
+
+QWidget#ChildWindowRoot {{
+    background: {palette.workspace_surface};
+}}
+
+QFrame#ChildWindowRibbonHost {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-bottom: 1px solid {palette.border_default};
+}}
+
+QFrame#ChildWindowBody {{
+    background: {palette.workspace_surface};
+    border: none;
 }}
 
 QFrame#MetaStrip {{
@@ -1021,6 +1123,28 @@ QLabel#DialogErrorLabel {{
     border: 1px solid rgba(183, 121, 31, 0.24);
     border-radius: {radius.small}px;
     padding: 8px 10px;
+}}
+
+QLabel#WizardStepPill {{
+    background: {palette.secondary_surface};
+    color: {palette.text_secondary};
+    border: 1px solid {palette.border_default};
+    border-radius: 0;
+    min-width: 112px;
+    padding: 6px 10px;
+    font-size: {typography.size_caption}px;
+    font-weight: {typography.weight_semibold};
+}}
+
+QLabel#WizardStepPill[current="true"] {{
+    background: {palette.accent_soft};
+    color: {palette.accent};
+    border-color: {palette.accent_soft_strong};
+}}
+
+QLabel#WizardStepPill[completed="true"] {{
+    background: {palette.workspace_surface};
+    color: {palette.text_primary};
 }}
 
 QLabel[chipTone="info"],

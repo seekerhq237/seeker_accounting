@@ -22,10 +22,11 @@ from seeker_accounting.modules.accounting.reference_data.ui.payment_term_dialog 
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
-class PaymentTermsPage(QWidget):
+class PaymentTermsPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
@@ -37,7 +38,9 @@ class PaymentTermsPage(QWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_action_bar())
+        self._action_bar = self._build_action_bar()
+        root_layout.addWidget(self._action_bar)
+        self._action_bar.hide()
         root_layout.addWidget(self._build_content_stack(), 1)
 
         self._service_registry.active_company_context.active_company_changed.connect(
@@ -352,6 +355,29 @@ class PaymentTermsPage(QWidget):
             and selected_payment_term.is_active
             and permission_service.has_permission("reference.payment_terms.deactivate")
         )
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ────────────────────────────────────────────────────
+
+    def _ribbon_commands(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_handlers
+        return {
+            "payment_terms.new": self._open_create_dialog,
+            "payment_terms.edit": self._open_edit_dialog,
+            "payment_terms.deactivate": self._deactivate_selected_payment_term,
+            "payment_terms.refresh": self.reload_payment_terms,
+            **related_goto_handlers(self._service_registry, "payment_terms"),
+        }
+
+    def ribbon_state(self) -> dict:
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_state
+        return {
+            "payment_terms.new": self._new_button.isEnabled(),
+            "payment_terms.edit": self._edit_button.isEnabled(),
+            "payment_terms.deactivate": self._deactivate_button.isEnabled(),
+            "payment_terms.refresh": True,
+            **related_goto_state("payment_terms"),
+        }
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("reference.payment_terms.create"):

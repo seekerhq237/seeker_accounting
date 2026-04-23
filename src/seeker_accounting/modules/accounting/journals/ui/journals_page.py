@@ -53,6 +53,11 @@ class JournalsPage(QWidget):
         self._register.set_table_widget(self._build_content_stack())
         root_layout.addWidget(self._register)
 
+        # The Sage-style ribbon replaces the register's in-page action band.
+        # Keep the band populated for any legacy/detached code paths, but hide
+        # it visually so ribbon commands are the only user-facing entry point.
+        self._register.action_band.hide()
+
         self._service_registry.active_company_context.active_company_changed.connect(
             self._handle_active_company_changed
         )
@@ -364,6 +369,76 @@ class JournalsPage(QWidget):
         self._print_button.setEnabled(has_active_company and selected_entry is not None)
         self._export_list_button.setEnabled(has_active_company and bool(self._journal_entries))
 
+        # Refresh ribbon enablement if a bar is listening for this page.
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ───────────────────────────────────────────────────
+
+    #: Map of ribbon command_id → bound handler. Populated lazily.
+    _RIBBON_COMMAND_MAP_ATTR = "_ribbon_command_map"
+
+    def _ribbon_commands(self) -> dict[str, callable]:
+        commands = getattr(self, self._RIBBON_COMMAND_MAP_ATTR, None)
+        if commands is None:
+            from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_handlers
+            commands = {
+                "journals.new_entry": self._open_create_dialog,
+                "journals.edit_draft": self._open_edit_dialog,
+                "journals.delete_draft": self._delete_selected_draft,
+                "journals.post_entry": self._post_selected_journal,
+                "journals.batch_post": self._batch_post_checked,
+                "journals.refresh": self.reload_entries,
+                "journals.print_entry": self._print_selected_entry,
+                "journals.export_list": self._print_entry_list,
+                **related_goto_handlers(self._service_registry, "journals"),
+            }
+            setattr(self, self._RIBBON_COMMAND_MAP_ATTR, commands)
+        return commands
+
+    def handle_ribbon_command(self, command_id: str) -> None:
+        handler = self._ribbon_commands().get(command_id)
+        if handler is None:
+            return
+        handler()
+
+    def ribbon_state(self) -> dict[str, bool]:
+        active_company = self._active_company()
+        selected_entry = self._selected_entry()
+        has_company = active_company is not None
+        has_draft_selection = (
+            selected_entry is not None and selected_entry.status_code == "DRAFT"
+        )
+        has_any_selection = selected_entry is not None
+        has_entries = bool(self._journal_entries)
+        from seeker_accounting.app.shell.ribbon.ribbon_nav import related_goto_state
+        return {
+            "journals.new_entry": has_company,
+            "journals.edit_draft": has_company and has_draft_selection,
+            "journals.delete_draft": has_company and has_draft_selection,
+            "journals.post_entry": has_company and has_draft_selection,
+            "journals.batch_post": has_company and self._count_checked_drafts() > 0,
+            "journals.refresh": True,
+            "journals.print_entry": has_company and has_any_selection,
+            "journals.export_list": has_company and has_entries,
+            **related_goto_state("journals"),
+        }
+
+    def _notify_ribbon_state_changed(self) -> None:
+        """Ask the shell's ribbon bar to re-pull ``ribbon_state`` for us.
+
+        Walks up the parent chain to locate a :class:`MainWindow`-like host
+        exposing ``_ribbon_bar``. Silent no-op if the shell has no ribbon
+        (e.g. in a standalone smoke test), so this is safe to call freely.
+        """
+
+        widget = self.parent()
+        while widget is not None:
+            ribbon_bar = getattr(widget, "_ribbon_bar", None)
+            if ribbon_bar is not None and hasattr(ribbon_bar, "refresh_active_state"):
+                ribbon_bar.refresh_active_state()
+                return
+            widget = widget.parent()
+
     def _on_checkbox_changed(self, item: QTableWidgetItem) -> None:
         if item.column() == 0:
             self._update_action_state()
@@ -496,6 +571,35 @@ class JournalsPage(QWidget):
             self._open_view_dialog()
             return
 
+        # Route through the ChildWindowManager so editing a journal entry
+        # opens an independent top-level window (Sage-style). If the same
+        # entry is already open, the manager raises / focuses it instead
+        # of instantiating a duplicate.
+        manager = getattr(self._service_registry, "child_window_manager", None)
+        if manager is not None:
+            from seeker_accounting.modules.accounting.journals.ui.journal_entry_window import (
+                JournalEntryWindow,
+            )
+
+            def _factory() -> JournalEntryWindow:
+                return JournalEntryWindow(
+                    self._service_registry,
+                    company_id=active_company.company_id,
+                    company_name=active_company.company_name,
+                    journal_entry_id=entry.id,
+                )
+
+            window = manager.open_document(
+                JournalEntryWindow.DOC_TYPE, entry.id, _factory
+            )
+            # When the window closes, reload the register so posted/edited
+            # entries appear with their current state.
+            window.closed.connect(
+                lambda *_: self.reload_entries(selected_journal_entry_id=entry.id)
+            )
+            return
+
+        # Fallback: legacy modal dialog (no shell available).
         updated_entry = JournalEntryDialog.edit_journal(
             self._service_registry,
             company_id=active_company.company_id,

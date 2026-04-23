@@ -69,7 +69,7 @@ class AuditLogPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_action_bar())
         root_layout.addWidget(self._build_content_stack(), 1)
@@ -89,8 +89,22 @@ class AuditLogPage(QWidget):
         card.setProperty("card", True)
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
+
+        title = QLabel("Audit Log", card)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
+
+        self._record_count_label = QLabel(card)
+        self._record_count_label.setObjectName("ToolbarMeta")
+        layout.addWidget(self._record_count_label)
+
+        self._search_edit = QLineEdit(card)
+        self._search_edit.setPlaceholderText("Search description, event type, or actor")
+        self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.setFixedWidth(240)
+        layout.addWidget(self._search_edit)
 
         # Module filter
         mod_label = QLabel("Module:", card)
@@ -151,32 +165,8 @@ class AuditLogPage(QWidget):
         card.setObjectName("PageCard")
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(12)
-
-        # ── Top row: title, search, record count ──
-        top_row = QWidget(card)
-        top_row_layout = QHBoxLayout(top_row)
-        top_row_layout.setContentsMargins(0, 0, 0, 0)
-        top_row_layout.setSpacing(12)
-
-        title = QLabel("Audit Log", top_row)
-        title.setObjectName("CardTitle")
-        top_row_layout.addWidget(title)
-
-        top_row_layout.addStretch(1)
-
-        self._search_edit = QLineEdit(top_row)
-        self._search_edit.setPlaceholderText("Search description, event type, or actor")
-        self._search_edit.setClearButtonEnabled(True)
-        self._search_edit.setFixedWidth(300)
-        top_row_layout.addWidget(self._search_edit)
-
-        self._record_count_label = QLabel(top_row)
-        self._record_count_label.setObjectName("ToolbarMeta")
-        top_row_layout.addWidget(self._record_count_label)
-
-        layout.addWidget(top_row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         # ── Table ──
         self._table = QTableWidget(card)

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from seeker_accounting.modules.customers.models.customer import Customer
 from seeker_accounting.modules.sales.models.customer_receipt import CustomerReceipt
 from seeker_accounting.modules.sales.models.customer_receipt_allocation import CustomerReceiptAllocation
 
@@ -22,6 +23,70 @@ class CustomerReceiptRepository:
             CustomerReceipt.id.desc(),
         )
         return list(self._session.scalars(statement))
+
+    # ------------------------------------------------------------------
+    # Paginated + searchable listing (server-side)
+    # ------------------------------------------------------------------
+
+    def _build_filter_conditions(
+        self,
+        company_id: int,
+        status_code: str | None,
+        query: str | None,
+    ) -> list:
+        conditions: list = [CustomerReceipt.company_id == company_id]
+        if status_code is not None:
+            conditions.append(CustomerReceipt.status_code == status_code)
+        if query:
+            like = f"%{query.strip().lower()}%"
+            conditions.append(
+                or_(
+                    func.lower(CustomerReceipt.receipt_number).like(like),
+                    func.lower(CustomerReceipt.reference_number).like(like),
+                    func.lower(Customer.display_name).like(like),
+                    func.lower(Customer.customer_code).like(like),
+                )
+            )
+        return conditions
+
+    def count_filtered(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        query: str | None = None,
+    ) -> int:
+        stmt = (
+            select(func.count(CustomerReceipt.id))
+            .join(Customer, Customer.id == CustomerReceipt.customer_id)
+            .where(*self._build_filter_conditions(company_id, status_code, query))
+        )
+        return int(self._session.scalar(stmt) or 0)
+
+    def list_filtered_page(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        query: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[CustomerReceipt]:
+        stmt = (
+            select(CustomerReceipt)
+            .join(Customer, Customer.id == CustomerReceipt.customer_id)
+            .where(*self._build_filter_conditions(company_id, status_code, query))
+            .options(
+                selectinload(CustomerReceipt.customer),
+                selectinload(CustomerReceipt.financial_account),
+            )
+            .order_by(
+                CustomerReceipt.receipt_date.desc(),
+                CustomerReceipt.receipt_number.desc(),
+                CustomerReceipt.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(self._session.scalars(stmt))
 
     def get_by_id(self, company_id: int, receipt_id: int) -> CustomerReceipt | None:
         statement = select(CustomerReceipt).where(

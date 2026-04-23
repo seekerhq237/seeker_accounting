@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -46,6 +46,12 @@ class JournalEntryDialog(BaseDialog):
         ("CLOSING", "Closing"),
     )
 
+    #: Emitted after a successful save. Payload is the freshly-persisted
+    #: :class:`JournalEntryDetailDTO`. Consumers embedding the dialog as a
+    #: child-window body use this to react to Save clicks without relying
+    #: on ``QDialog.exec()`` semantics.
+    saved = Signal(object)
+
     def __init__(
         self,
         service_registry: ServiceRegistry,
@@ -62,6 +68,10 @@ class JournalEntryDialog(BaseDialog):
         self._saved_entry: JournalEntryDetailDTO | None = None
         self._loaded_entry: JournalEntryDetailDTO | None = None
         self._read_only = read_only
+        # When embedded inside a :class:`ChildWindowBase`, we suppress the
+        # modal accept/reject transitions so the host window controls close
+        # behavior via its own ribbon (Save / Close) and dirty prompts.
+        self._embedded_mode = False
 
         title = "New Journal Entry" if journal_entry_id is None else "Journal Entry"
         super().__init__(title, parent, help_key="dialog.journal_entry")
@@ -109,6 +119,32 @@ class JournalEntryDialog(BaseDialog):
 
     @property
     def saved_entry(self) -> JournalEntryDetailDTO | None:
+        return self._saved_entry
+
+    # -- Embed support (child-window hosting) ------------------------------
+
+    def enable_embedded_mode(self) -> None:
+        """
+        Prepare the dialog for use as an embedded widget inside a
+        :class:`ChildWindowBase`. Hides the modal button box so only the
+        host window's ribbon drives Save / Cancel.
+        """
+
+        self._embedded_mode = True
+        self.setModal(False)
+        self.setWindowFlags(Qt.WindowType.Widget)
+        self.button_box.hide()
+
+    def save_programmatically(self) -> JournalEntryDetailDTO | None:
+        """
+        Run the dialog's submit flow without any click. Returns the saved
+        :class:`JournalEntryDetailDTO` on success, ``None`` on validation
+        or period-lock failures (the dialog will have displayed its own
+        inline error in that case).
+        """
+
+        self._saved_entry = None
+        self._handle_submit()
         return self._saved_entry
 
     # -- Factory methods ---------------------------------------------------
@@ -593,6 +629,12 @@ class JournalEntryDialog(BaseDialog):
             return
         except NotFoundError as exc:
             show_error(self, "Journal Entry", str(exc))
+            return
+
+        if self._saved_entry is not None:
+            self.saved.emit(self._saved_entry)
+
+        if self._embedded_mode:
             return
 
         self.accept()

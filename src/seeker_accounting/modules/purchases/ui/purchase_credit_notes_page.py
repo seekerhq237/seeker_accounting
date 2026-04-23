@@ -99,9 +99,8 @@ class PurchaseCreditNotesPage(QWidget):
         card.setObjectName("PageToolbar")
         card.setProperty("card", True)
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
-
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search credit notes...")
         self._search_input.setFixedWidth(180)

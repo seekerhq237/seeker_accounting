@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.management_reporting.dto.contract_summary_dto import (
     ContractProjectRollupItemDTO,
@@ -71,13 +72,16 @@ class ContractSummaryPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_toolbar())
         root_layout.addWidget(self._build_content_stack(), 1)
 
         self._service_registry.active_company_context.active_company_changed.connect(
             self._on_company_changed
+        )
+        self._service_registry.navigation_service.navigation_context_changed.connect(
+            self._on_navigation_context_changed
         )
 
         self._load_contracts()
@@ -92,9 +96,18 @@ class ContractSummaryPage(QWidget):
         card.setProperty("card", True)
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
 
+        title = QLabel('Linked Project Rollup', card)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
+
+        self._rollup_count = QLabel(card)
+        self._rollup_count.setObjectName("ToolbarMeta")
+        layout.addWidget(self._rollup_count)
+
+        layout.addStretch(1)
         # Contract selector
         ct_block = QWidget(card)
         ct_layout = QVBoxLayout(ct_block)
@@ -276,23 +289,6 @@ class ContractSummaryPage(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(10)
 
-        top_row = QWidget(card)
-        top_layout = QHBoxLayout(top_row)
-        top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(12)
-
-        title = QLabel("Linked Project Rollup", top_row)
-        title.setObjectName("CardTitle")
-        top_layout.addWidget(title)
-
-        top_layout.addStretch(1)
-
-        self._rollup_count = QLabel(top_row)
-        self._rollup_count.setObjectName("ToolbarMeta")
-        top_layout.addWidget(self._rollup_count)
-
-        layout.addWidget(top_row)
-
         self._rollup_table = QTableWidget(card)
         self._rollup_table.setObjectName("ContractRollupTable")
         self._rollup_table.setColumnCount(9)
@@ -350,6 +346,7 @@ class ContractSummaryPage(QWidget):
             )
 
         self._contract_combo.blockSignals(False)
+        self._apply_navigation_context()
         self._on_contract_changed()
 
     def _reload(self) -> None:
@@ -357,6 +354,22 @@ class ContractSummaryPage(QWidget):
 
     def _on_company_changed(self) -> None:
         self._load_contracts()
+
+    def _on_navigation_context_changed(self, nav_id: str, context: object) -> None:
+        _ = context
+        if nav_id != nav_ids.CONTRACT_SUMMARY:
+            return
+        self._apply_navigation_context()
+
+    def _apply_navigation_context(self) -> None:
+        context = self._service_registry.navigation_service.current_navigation_context
+        contract_id = context.get("contract_id")
+        if not isinstance(contract_id, int):
+            return
+        for index in range(self._contract_combo.count()):
+            if self._contract_combo.itemData(index) == contract_id:
+                self._contract_combo.setCurrentIndex(index)
+                return
 
     def _on_contract_changed(self) -> None:
         contract_id = self._contract_combo.currentData()

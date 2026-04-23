@@ -372,6 +372,84 @@ class PayrollRunService:
             uow.session.refresh(run)
             return self._to_run_dto(run)
 
+    def set_run_employee_inclusion(
+        self,
+        company_id: int,
+        run_employee_id: int,
+        *,
+        is_included: bool,
+        exclusion_reason: str | None = None,
+    ) -> PayrollRunEmployeeListItemDTO:
+        """Toggle a single run-employee row between included and excluded.
+
+        Allowed only while the parent run is still in ``calculated`` status
+        (i.e. after calculate, before approve). Once approved or posted, the
+        set of employees in the run is frozen for accounting integrity.
+
+        Errored rows (``status_code == 'error'``) cannot be toggled here —
+        they must be resolved through recalculation.
+        """
+        self._permission_service.require_permission(PAYROLL_RUN_CALCULATE)
+        with self._uow_factory() as uow:
+            emp_repo = self._run_employee_repo_factory(uow.session)
+            row = emp_repo.get_by_id(company_id, run_employee_id)
+            if row is None:
+                raise NotFoundError("Employee payroll row not found.")
+
+            run_repo = self._run_repo_factory(uow.session)
+            run = run_repo.get_by_id(company_id, row.run_id)
+            if run is None:
+                raise NotFoundError("Payroll run not found.")
+            if run.status_code != "calculated":
+                raise ValidationError(
+                    "Employees can only be included or excluded on a calculated run. "
+                    "Approved or posted runs are frozen."
+                )
+            if row.status_code == "error":
+                raise ValidationError(
+                    "This row has a calculation error and cannot be toggled. "
+                    "Recalculate the run to clear the error first."
+                )
+
+            new_status = "included" if is_included else "excluded"
+            if is_included:
+                reason: str | None = None
+            else:
+                reason = (exclusion_reason or "").strip() or None
+                if reason is None:
+                    raise ValidationError(
+                        "A reason is required when excluding an employee from a run."
+                    )
+
+            if row.status_code == new_status and (row.exclusion_reason or None) == reason:
+                # Idempotent no-op
+                uow.session.refresh(row)
+                return self._to_run_employee_list_dto(row)
+
+            row.status_code = new_status
+            row.exclusion_reason = reason
+            emp = row.employee
+            emp_label = emp.display_name if emp else f"#{row.employee_id}"
+            verb = "Included" if is_included else "Excluded"
+            description = (
+                f"{verb} {emp_label} from payroll run '{run.run_reference}'."
+                + (f" Reason: {reason}." if reason else "")
+            )
+            self._audit_service.record_event_in_session(
+                uow.session,
+                company_id,
+                RecordAuditEventCommand(
+                    event_type_code="PAYROLL_RUN_EMPLOYEE_INCLUSION_CHANGED",
+                    module_code="payroll",
+                    entity_type="payroll_run_employee",
+                    entity_id=row.id,
+                    description=description,
+                ),
+            )
+            uow.commit()
+            uow.session.refresh(row)
+            return self._to_run_employee_list_dto(row)
+
     def approve_run(self, company_id: int, run_id: int) -> None:
         self._permission_service.require_permission(PAYROLL_RUN_APPROVE)
         with self._uow_factory() as uow:
@@ -478,6 +556,7 @@ class PayrollRunService:
             net_payable=Decimal(str(r.net_payable)),
             employer_cost_base=Decimal(str(r.employer_cost_base)),
             status_code=r.status_code,
+            exclusion_reason=r.exclusion_reason,
         )
 
     @staticmethod
@@ -519,5 +598,6 @@ class PayrollRunService:
             total_taxes=Decimal(str(r.total_taxes)),
             status_code=r.status_code,
             calculation_notes=r.calculation_notes,
+            exclusion_reason=r.exclusion_reason,
             lines=lines,
         )

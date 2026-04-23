@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.purchases.dto.purchase_bill_dto import PurchaseBillListItemDTO
 from seeker_accounting.modules.purchases.ui.purchase_bill_dialog import PurchaseBillDialog
@@ -31,6 +32,7 @@ from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.exceptions.error_resolution_resolver import ErrorResolutionResolver
 from seeker_accounting.shared.ui.guided_resolution_coordinator import GuidedResolutionCoordinator
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
 from seeker_accounting.shared.ui.register import RegisterPage
 from seeker_accounting.shared.ui.table_helpers import configure_dense_table
@@ -41,12 +43,17 @@ from seeker_accounting.shared.workflow.document_sequence_preflight import (
 )
 
 
-class PurchaseBillsPage(QWidget):
+class PurchaseBillsPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
         self._bills: list[PurchaseBillListItemDTO] = []
+        self._total_count: int = 0
         self._pending_resume_payload: ResumeTokenPayload | None = None
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(lambda: self.reload_bills(reset_page=True))
 
         self.setObjectName("PurchaseBillsPage")
 
@@ -57,6 +64,7 @@ class PurchaseBillsPage(QWidget):
         self._register = RegisterPage(self)
         self._populate_toolbar_strip(self._register)
         self._populate_action_band(self._register)
+        self._register.action_band.hide()
         self._register.set_table_widget(self._build_content_stack())
         root_layout.addWidget(self._register)
 
@@ -65,36 +73,56 @@ class PurchaseBillsPage(QWidget):
         )
         self.reload_bills()
 
-    def reload_bills(self, selected_bill_id: int | None = None) -> None:
+    def reload_bills(
+        self,
+        selected_bill_id: int | None = None,
+        reset_page: bool = False,
+    ) -> None:
         active_company = self._active_company()
 
         if active_company is None:
             self._bills = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Select a company")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
             return
 
+        if reset_page:
+            self._pager.reset()
+
+        search_text = self._search_input.text().strip() or None
         try:
-            self._bills = self._service_registry.purchase_bill_service.list_purchase_bills(
+            page_result = self._service_registry.purchase_bill_service.list_purchase_bills_page(
                 active_company.company_id,
                 status_code=self._status_filter_value(),
+                query=search_text,
+                page=self._pager.page,
+                page_size=self._pager.page_size,
             )
         except Exception as exc:
             self._bills = []
+            self._total_count = 0
             self._table.setRowCount(0)
             self._record_count_label.setText("Unable to load")
+            self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
             show_error(self, "Purchase Bills", f"Bill data could not be loaded.\n\n{exc}")
             return
 
+        self._bills = list(page_result.items)
+        self._total_count = page_result.total_count
+        self._pager.apply_result(page_result)
         self._populate_table()
-        self._apply_search_filter()
         self._sync_surface_state(active_company)
         self._restore_selection(selected_bill_id)
         self._update_action_state()
+
+    def _handle_search_text_changed(self, _text: str) -> None:
+        self._search_debounce.start()
 
     def _populate_toolbar_strip(self, register: RegisterPage) -> None:
         strip_layout = register.toolbar_strip_layout
@@ -102,7 +130,7 @@ class PurchaseBillsPage(QWidget):
         self._search_input = QLineEdit(register.toolbar_strip)
         self._search_input.setPlaceholderText("Search bills…")
         self._search_input.setFixedWidth(200)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
+        self._search_input.textChanged.connect(self._handle_search_text_changed)
         strip_layout.addWidget(self._search_input)
 
         self._status_filter_combo = QComboBox(register.toolbar_strip)
@@ -110,7 +138,7 @@ class PurchaseBillsPage(QWidget):
         self._status_filter_combo.addItem("Draft", "draft")
         self._status_filter_combo.addItem("Posted", "posted")
         self._status_filter_combo.addItem("Cancelled", "cancelled")
-        self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_bills())
+        self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_bills(reset_page=True))
         strip_layout.addWidget(self._status_filter_combo)
 
         strip_layout.addStretch(1)
@@ -173,7 +201,7 @@ class PurchaseBillsPage(QWidget):
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(4)
 
         self._table = QTableWidget(container)
         self._table.setObjectName("PurchaseBillsTable")
@@ -193,7 +221,12 @@ class PurchaseBillsPage(QWidget):
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._table.itemSelectionChanged.connect(self._update_action_state)
         self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        layout.addWidget(self._table)
+        layout.addWidget(self._table, 1)
+
+        self._pager = Pager(container, default_page_size=100)
+        self._pager.page_changed.connect(lambda _p: self.reload_bills())
+        self._pager.page_size_changed.connect(lambda _s: self.reload_bills(reset_page=True))
+        layout.addWidget(self._pager)
         return container
 
     def _build_empty_state(self) -> QWidget:
@@ -283,39 +316,54 @@ class PurchaseBillsPage(QWidget):
             self._stack.setCurrentWidget(self._table_surface)
 
     def _populate_table(self) -> None:
-        self._table.setRowCount(len(self._bills))
-        for row, bill in enumerate(self._bills):
-            self._table.setItem(row, 0, QTableWidgetItem(bill.bill_number))
-            self._table.setItem(row, 1, QTableWidgetItem(str(bill.bill_date)))
-            self._table.setItem(row, 2, QTableWidgetItem(str(bill.due_date)))
-            self._table.setItem(row, 3, QTableWidgetItem(bill.supplier_name))
-            total_item = QTableWidgetItem(f"{bill.total_amount:.2f}")
-            total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
-            self._table.setItem(row, 4, total_item)
-            balance_item = QTableWidgetItem(f"{bill.open_balance_amount:.2f}")
-            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight)
-            self._table.setItem(row, 5, balance_item)
-            self._table.setItem(row, 6, QTableWidgetItem(bill.payment_status_code.title()))
-            self._table.setItem(row, 7, QTableWidgetItem(bill.status_code.title()))
-            posted = bill.posted_at.strftime("%Y-%m-%d %H:%M") if bill.posted_at else ""
-            self._table.setItem(row, 8, QTableWidgetItem(posted))
-        self._record_count_label.setText(f"{len(self._bills)} bill{'s' if len(self._bills) != 1 else ''}")
+        self._table.setUpdatesEnabled(False)
+        self._table.setSortingEnabled(False)
+        try:
+            self._table.setRowCount(len(self._bills))
+            for row, bill in enumerate(self._bills):
+                number_item = QTableWidgetItem(bill.bill_number)
+                number_item.setData(Qt.ItemDataRole.UserRole, bill.id)
+                self._table.setItem(row, 0, number_item)
+                self._table.setItem(row, 1, QTableWidgetItem(str(bill.bill_date)))
+                self._table.setItem(row, 2, QTableWidgetItem(str(bill.due_date)))
+                self._table.setItem(row, 3, QTableWidgetItem(bill.supplier_name))
+                total_item = QTableWidgetItem(f"{bill.total_amount:.2f}")
+                total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self._table.setItem(row, 4, total_item)
+                balance_item = QTableWidgetItem(f"{bill.open_balance_amount:.2f}")
+                balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                self._table.setItem(row, 5, balance_item)
+                self._table.setItem(row, 6, QTableWidgetItem(bill.payment_status_code.title()))
+                self._table.setItem(row, 7, QTableWidgetItem(bill.status_code.title()))
+                posted = bill.posted_at.strftime("%Y-%m-%d %H:%M") if bill.posted_at else ""
+                self._table.setItem(row, 8, QTableWidgetItem(posted))
+        finally:
+            self._table.setSortingEnabled(True)
+            self._table.setUpdatesEnabled(True)
+
+        search_text = self._search_input.text().strip()
+        total = self._total_count
+        shown = len(self._bills)
+        if search_text:
+            self._record_count_label.setText(f"{shown} shown of {total} matches")
+        else:
+            self._record_count_label.setText(
+                f"{total} bill" if total == 1 else f"{total} bills"
+            )
 
     def _apply_search_filter(self) -> None:
-        search_text = self._search_input.text().lower()
-        for row in range(self._table.rowCount()):
-            bill_number = self._table.item(row, 0).text().lower() if self._table.item(row, 0) else ""
-            supplier = self._table.item(row, 3).text().lower() if self._table.item(row, 3) else ""
-            visible = search_text in bill_number or search_text in supplier
-            self._table.setRowHidden(row, not visible)
+        # Search is now handled server-side via reload_bills. Kept as a
+        # no-op for backward compatibility with any external callers.
+        return
 
     def _restore_selection(self, bill_id: int | None) -> None:
         if bill_id is None or self._table.rowCount() == 0:
             return
         for row in range(self._table.rowCount()):
-            # Match by bill ID from stored list
-            if row < len(self._bills) and self._bills[row].id == bill_id:
+            item = self._table.item(row, 0)
+            if item is not None and item.data(Qt.ItemDataRole.UserRole) == bill_id:
                 self._table.selectRow(row)
+                return
                 return
 
     def _show_permission_denied(self, permission_code: str) -> None:
@@ -346,6 +394,31 @@ class PurchaseBillsPage(QWidget):
         )
         self._print_button.setEnabled(has_company and selected)
         self._export_list_button.setEnabled(has_company and bool(self._bills))
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ───────────────────────────────────────────────────
+
+    def _ribbon_commands(self):
+        return {
+            "purchase_bills.new": self._open_create_dialog,
+            "purchase_bills.edit": self._open_edit_dialog,
+            "purchase_bills.cancel": self._cancel_selected_draft,
+            "purchase_bills.post": self._post_selected_bill,
+            "purchase_bills.refresh": self.reload_bills,
+            "purchase_bills.print": self._print_selected_bill,
+            "purchase_bills.export_list": self._print_bill_list,
+        }
+
+    def ribbon_state(self):
+        return {
+            "purchase_bills.new": self._new_button.isEnabled(),
+            "purchase_bills.edit": self._edit_button.isEnabled(),
+            "purchase_bills.cancel": self._cancel_button.isEnabled(),
+            "purchase_bills.post": self._post_button.isEnabled(),
+            "purchase_bills.refresh": True,
+            "purchase_bills.print": self._print_button.isEnabled(),
+            "purchase_bills.export_list": self._export_list_button.isEnabled(),
+        }
 
     def _handle_active_company_changed(self) -> None:
         self.reload_bills()

@@ -32,7 +32,7 @@ class CompanyListPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_action_bar())
         root_layout.addWidget(self._build_table_surface(), 1)
@@ -65,11 +65,18 @@ class CompanyListPage(QWidget):
         card.setProperty("card", True)
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
+
+        title = QLabel('Company Directory', card)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
+
+        self._record_count_label = QLabel(card)
+        self._record_count_label.setObjectName("ToolbarMeta")
+        layout.addWidget(self._record_count_label)
 
         layout.addStretch(1)
-
         self._new_button = QPushButton("New Company", card)
         self._new_button.setProperty("variant", "primary")
         self._new_button.clicked.connect(self._open_create_dialog)
@@ -93,23 +100,6 @@ class CompanyListPage(QWidget):
         layout = QVBoxLayout(self._table_surface)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(12)
-
-        top_row = QWidget(self._table_surface)
-        top_row_layout = QHBoxLayout(top_row)
-        top_row_layout.setContentsMargins(0, 0, 0, 0)
-        top_row_layout.setSpacing(12)
-
-        title = QLabel("Company Directory", top_row)
-        title.setObjectName("CardTitle")
-        top_row_layout.addWidget(title)
-
-        top_row_layout.addStretch(1)
-
-        self._record_count_label = QLabel(top_row)
-        self._record_count_label.setObjectName("ToolbarMeta")
-        top_row_layout.addWidget(self._record_count_label)
-
-        layout.addWidget(top_row)
 
         self._table = QTableWidget(self._table_surface)
         self._table.setObjectName("CompanyListTable")

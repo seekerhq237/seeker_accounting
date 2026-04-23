@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.payroll.dto.payroll_validation_dashboard_dto import ValidationCheckDTO
 from seeker_accounting.modules.payroll.payroll_permissions import PAYROLL_AUDIT_VIEW
 from seeker_accounting.modules.payroll.ui.dialogs.payroll_export_dialog import PayrollExportDialog
@@ -57,7 +58,7 @@ _SEVERITY_COLORS = {
 }
 
 
-class PayrollOperationsWorkspace(QWidget):
+class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
     def __init__(
         self,
         service_registry: ServiceRegistry,
@@ -107,6 +108,18 @@ class PayrollOperationsWorkspace(QWidget):
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
+        # Selection change hooks for ribbon context swap (validation
+        # severity, pack selection, run selection in print tab).
+        self._validation_tab._table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._packs_tab._table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._print_tab._runs_table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+
         # Auto-select company
         ctx = service_registry.app_context
         if ctx.active_company_id:
@@ -122,11 +135,104 @@ class PayrollOperationsWorkspace(QWidget):
         self._imports_tab.set_company(company_id)
         self._print_tab.set_company(company_id)
         self._audit_tab.set_company(company_id)
+        self._notify_ribbon_context_changed()
 
     def _on_tab_changed(self, index: int) -> None:
+        self._notify_ribbon_context_changed()
         tab = self._tabs.widget(index)
         if hasattr(tab, "refresh") and self._company_id:
             tab.refresh()
+
+    # ── Ribbon host integration ───────────────────────────────────────────────
+
+    _TAB_VALIDATION = 0
+    _TAB_PACKS = 1
+    _TAB_IMPORTS = 2
+    _TAB_PRINT = 3
+    _TAB_AUDIT = 4
+
+    def _selected_validation_severity(self) -> str | None:
+        row = self._validation_tab._table.currentRow()
+        if row < 0:
+            return None
+        item = self._validation_tab._table.item(row, 0)
+        if item is None:
+            return None
+        check = item.data(Qt.ItemDataRole.UserRole)
+        return getattr(check, "severity", None)
+
+    def current_ribbon_surface_key(self) -> str | None:
+        index = self._tabs.currentIndex()
+        if index == self._TAB_VALIDATION:
+            severity = self._selected_validation_severity()
+            if severity == "error":
+                return "payroll_operations.validation.blocker_selected"
+            if severity == "warning":
+                return "payroll_operations.validation.warning_selected"
+            return "payroll_operations.validation.none"
+        if index == self._TAB_PACKS:
+            return "payroll_operations.packs"
+        if index == self._TAB_IMPORTS:
+            return "payroll_operations.imports"
+        if index == self._TAB_PRINT:
+            return "payroll_operations.print"
+        if index == self._TAB_AUDIT:
+            return "payroll_operations.audit"
+        return "payroll_operations"
+
+    def _refresh_active_tab(self) -> None:
+        tab = self._tabs.currentWidget()
+        if tab is not None and hasattr(tab, "refresh"):
+            tab.refresh()
+
+    def _on_open_check_detail(self) -> None:
+        self._validation_tab._on_check_double_clicked()
+
+    def _ribbon_commands(self):
+        return {
+            # Validation
+            "payroll_operations.run_assessment":    self._validation_tab.refresh,
+            "payroll_operations.open_check_detail": self._on_open_check_detail,
+            # Packs
+            "payroll_operations.apply_pack":        self._packs_tab._on_apply,
+            "payroll_operations.preview_pack":      self._packs_tab._on_preview,
+            # Imports
+            "payroll_operations.preview_import":    self._imports_tab._on_preview,
+            "payroll_operations.execute_import":    self._imports_tab._on_import,
+            # Print
+            "payroll_operations.print_payslips":    self._print_tab._on_print_payslips,
+            "payroll_operations.print_summary":     self._print_tab._on_print_summary,
+            "payroll_operations.save_pdf":          self._print_tab._on_save_pdf,
+            # Cross-tab
+            "payroll_operations.refresh":           self._refresh_active_tab,
+        }
+
+    def ribbon_state(self):
+        has_company = self._company_id is not None
+        check_selected = has_company and self._selected_validation_severity() is not None
+        pack_selected = has_company and self._packs_tab._selected_pack_code() is not None
+        has_import_file = has_company and bool(getattr(self._imports_tab, "_selected_file", None))
+        import_button_enabled = (
+            has_import_file and self._imports_tab._btn_import.isEnabled()
+        )
+        run_selected = has_company and self._print_tab._runs_table.currentRow() >= 0
+        return {
+            # Validation
+            "payroll_operations.run_assessment":    has_company,
+            "payroll_operations.open_check_detail": bool(check_selected),
+            # Packs
+            "payroll_operations.apply_pack":        bool(pack_selected),
+            "payroll_operations.preview_pack":      bool(pack_selected),
+            # Imports
+            "payroll_operations.preview_import":    bool(has_import_file),
+            "payroll_operations.execute_import":    bool(import_button_enabled),
+            # Print
+            "payroll_operations.print_payslips":    bool(run_selected),
+            "payroll_operations.print_summary":     bool(run_selected),
+            "payroll_operations.save_pdf":          bool(run_selected),
+            # Cross-tab
+            "payroll_operations.refresh":           True,
+        }
 
 
 # ══════════════════════════════════════════════════════════════════════════════

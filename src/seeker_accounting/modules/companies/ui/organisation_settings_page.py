@@ -36,7 +36,7 @@ class OrganisationSettingsPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
         root_layout.addWidget(self._build_action_bar())
 
@@ -61,8 +61,12 @@ class OrganisationSettingsPage(QWidget):
         card.setObjectName("PageToolbar")
 
         layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 2, 8, 2)
+        layout.setSpacing(6)
+
+        title = QLabel("Organisation Settings", card)
+        title.setObjectName("ToolbarTitle")
+        layout.addWidget(title)
 
         layout.addStretch(1)
 

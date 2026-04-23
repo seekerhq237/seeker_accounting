@@ -134,6 +134,81 @@ class PurchaseBillService:
                 for bill in bills
             ]
 
+    def list_purchase_bills_page(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        payment_status_code: str | None = None,
+        query: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> "PaginatedResult[PurchaseBillListItemDTO]":
+        """Paginated + searchable purchase bill listing.
+
+        Only the current page's posted bills have allocations fetched, so
+        register paging stays cheap on large AP books.
+        """
+        from seeker_accounting.shared.dto.paginated_result import (
+            PaginatedResult,
+            normalize_page,
+            normalize_page_size,
+        )
+
+        self._permission_service.require_permission("purchases.bills.view")
+        normalized_status = self._normalize_optional_choice(status_code, _ALLOWED_STATUS_CODES, "Status code")
+        normalized_payment_status = self._normalize_optional_choice(
+            payment_status_code,
+            _ALLOWED_PAYMENT_STATUS_CODES,
+            "Payment status code",
+        )
+        safe_page = normalize_page(page)
+        safe_size = normalize_page_size(page_size)
+        offset = (safe_page - 1) * safe_size
+
+        with self._unit_of_work_factory() as uow:
+            company = self._require_company_exists(uow.session, company_id)
+            repository = self._require_bill_repository(uow.session)
+            allocation_repository = self._require_allocation_repository(uow.session)
+
+            total = repository.count_filtered(
+                company_id,
+                status_code=normalized_status,
+                payment_status_code=normalized_payment_status,
+                query=query,
+            )
+            bills = repository.list_filtered_page(
+                company_id,
+                status_code=normalized_status,
+                payment_status_code=normalized_payment_status,
+                query=query,
+                limit=safe_size,
+                offset=offset,
+            )
+            allocated_totals = allocation_repository.get_allocated_totals_for_bill_ids(
+                company_id,
+                [bill.id for bill in bills if bill.status_code == "posted"],
+                posted_only=True,
+            )
+            items = tuple(
+                self._to_list_item_dto(
+                    bill=bill,
+                    company_base_currency_code=company.base_currency_code,
+                    allocated_amount=allocated_totals.get(bill.id, Decimal("0.00")),
+                    open_balance_amount=self._calculate_open_balance(
+                        bill,
+                        allocated_totals.get(bill.id, Decimal("0.00")),
+                    ),
+                )
+                for bill in bills
+            )
+
+        return PaginatedResult(
+            items=items,
+            total_count=total,
+            page=safe_page,
+            page_size=safe_size,
+        )
+
     def get_purchase_bill(self, company_id: int, bill_id: int) -> PurchaseBillDetailDTO:
         self._permission_service.require_permission("purchases.bills.view")
         with self._unit_of_work_factory() as uow:

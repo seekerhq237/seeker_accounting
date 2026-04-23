@@ -130,6 +130,81 @@ class SalesInvoiceService:
                 for invoice in invoices
             ]
 
+    def list_sales_invoices_page(
+        self,
+        company_id: int,
+        status_code: str | None = None,
+        payment_status_code: str | None = None,
+        query: str | None = None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> "PaginatedResult[SalesInvoiceListItemDTO]":
+        """Paginated + searchable sales invoice listing.
+
+        Allocations are fetched only for the current page's posted invoices,
+        which keeps register paging cheap even on large AR books.
+        """
+        from seeker_accounting.shared.dto.paginated_result import (
+            PaginatedResult,
+            normalize_page,
+            normalize_page_size,
+        )
+
+        self._permission_service.require_permission("sales.invoices.view")
+        normalized_status = self._normalize_optional_choice(status_code, _ALLOWED_STATUS_CODES, "Status code")
+        normalized_payment_status = self._normalize_optional_choice(
+            payment_status_code,
+            _ALLOWED_PAYMENT_STATUS_CODES,
+            "Payment status code",
+        )
+        safe_page = normalize_page(page)
+        safe_size = normalize_page_size(page_size)
+        offset = (safe_page - 1) * safe_size
+
+        with self._unit_of_work_factory() as uow:
+            company = self._require_company_exists(uow.session, company_id)
+            repository = self._require_sales_invoice_repository(uow.session)
+            allocation_repository = self._require_allocation_repository(uow.session)
+
+            total = repository.count_filtered(
+                company_id,
+                status_code=normalized_status,
+                payment_status_code=normalized_payment_status,
+                query=query,
+            )
+            invoices = repository.list_filtered_page(
+                company_id,
+                status_code=normalized_status,
+                payment_status_code=normalized_payment_status,
+                query=query,
+                limit=safe_size,
+                offset=offset,
+            )
+            allocated_totals = allocation_repository.get_allocated_totals_for_invoice_ids(
+                company_id,
+                [invoice.id for invoice in invoices if invoice.status_code == "posted"],
+                posted_only=True,
+            )
+            items = tuple(
+                self._to_list_item_dto(
+                    invoice=invoice,
+                    company_base_currency_code=company.base_currency_code,
+                    allocated_amount=allocated_totals.get(invoice.id, Decimal("0.00")),
+                    open_balance_amount=self._calculate_open_balance(
+                        invoice,
+                        allocated_totals.get(invoice.id, Decimal("0.00")),
+                    ),
+                )
+                for invoice in invoices
+            )
+
+        return PaginatedResult(
+            items=items,
+            total_count=total,
+            page=safe_page,
+            page_size=safe_size,
+        )
+
     def get_sales_invoice(self, company_id: int, invoice_id: int) -> SalesInvoiceDetailDTO:
         self._permission_service.require_permission("sales.invoices.view")
         with self._unit_of_work_factory() as uow:

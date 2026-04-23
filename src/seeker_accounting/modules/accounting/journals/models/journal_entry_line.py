@@ -14,6 +14,13 @@ class JournalEntryLine(TimestampMixin, Base):
         CheckConstraint("debit_amount >= 0", name="debit_amount_non_negative"),
         CheckConstraint("credit_amount >= 0", name="credit_amount_non_negative"),
         UniqueConstraint("journal_entry_id", "line_number"),
+        # Core reporting indexes: GL drill-downs, Trial Balance, and account-
+        # scoped aggregations filter on account_id and join to journal_entries.
+        Index(
+            "ix_journal_entry_lines_account_id_entry",
+            "account_id",
+            "journal_entry_id",
+        ),
         Index("ix_journal_entry_lines_project_id", "project_id"),
         Index("ix_journal_entry_lines_project_job_id", "project_job_id"),
         Index("ix_journal_entry_lines_project_cost_code_id", "project_cost_code_id"),

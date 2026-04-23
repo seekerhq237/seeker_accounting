@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.payroll.ui.dialogs.payroll_payment_record_dialog import (
     PayrollPaymentRecordDialog,
 )
@@ -49,6 +51,9 @@ from seeker_accounting.modules.payroll.ui.dialogs.payroll_run_posting_detail_dia
 )
 from seeker_accounting.modules.payroll.ui.dialogs.payroll_summary_dialog import (
     PayrollSummaryDialog,
+)
+from seeker_accounting.modules.payroll.ui.wizards.remittance_wizard import (
+    RemittanceWizardDialog,
 )
 from seeker_accounting.modules.payroll.services.payroll_remittance_deadline_service import (
     compute_filing_deadline,
@@ -100,7 +105,7 @@ def _fmt(v) -> str:
         return "—"
 
 
-class PayrollAccountingWorkspace(QWidget):
+class PayrollAccountingWorkspace(RibbonHostMixin, QWidget):
     def __init__(
         self,
         service_registry: ServiceRegistry,
@@ -148,6 +153,22 @@ class PayrollAccountingWorkspace(QWidget):
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
+        # Notify the shell whenever selection changes inside a tab so
+        # the ribbon surface can swap between ``.none`` / ``.postable_run``
+        # / ``.posted_run`` / ``.batch_selected`` variants.
+        self._posting_tab._table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._payments_tab._table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._payments_tab._run_combo.currentIndexChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+        self._remittances_tab._batch_table.selectionModel().selectionChanged.connect(
+            lambda *_: self._notify_ribbon_context_changed()
+        )
+
         ctx = self._registry.active_company_context
         if ctx.company_id:
             self._set_company(ctx.company_id, ctx.company_name or "")
@@ -159,13 +180,126 @@ class PayrollAccountingWorkspace(QWidget):
         self._payments_tab.set_company(company_id)
         self._remittances_tab.set_company(company_id)
         self._summary_tab.set_company(company_id)
+        self._notify_ribbon_context_changed()
 
     def _on_tab_changed(self, index: int) -> None:
+        self._notify_ribbon_context_changed()
         if self._company_id is None:
             return
         tab = self._tabs.widget(index)
         if hasattr(tab, "refresh"):
             tab.refresh()
+
+    # ── Ribbon host integration ───────────────────────────────────────────────
+
+    _TAB_POSTING = 0
+    _TAB_PAYMENTS = 1
+    _TAB_REMITTANCES = 2
+    _TAB_SUMMARY = 3
+
+    def current_ribbon_surface_key(self) -> str | None:
+        index = self._tabs.currentIndex()
+        if index == self._TAB_POSTING:
+            run = self._posting_tab._selected_run()
+            if run is None:
+                return "payroll_accounting.posting.none"
+            if run.status_code == "posted":
+                return "payroll_accounting.posting.posted_run"
+            if run.status_code in ("approved", "calculated"):
+                return "payroll_accounting.posting.postable_run"
+            return "payroll_accounting.posting.none"
+        if index == self._TAB_PAYMENTS:
+            if self._payments_tab._selected_summary() is not None:
+                return "payroll_accounting.payments.employee_selected"
+            if self._payments_tab._selected_run_id is not None:
+                return "payroll_accounting.payments.run_selected"
+            return "payroll_accounting.payments.none"
+        if index == self._TAB_REMITTANCES:
+            if self._remittances_tab._selected_batch() is not None:
+                return "payroll_accounting.remittances.batch_selected"
+            return "payroll_accounting.remittances.none"
+        if index == self._TAB_SUMMARY:
+            return "payroll_accounting.summary"
+        return "payroll_accounting"
+
+    def _open_calculation_workspace(self) -> None:
+        self._registry.navigation_service.navigate(nav_ids.PAYROLL_CALCULATION)
+
+    def _open_validation_workspace(self) -> None:
+        self._registry.navigation_service.navigate(nav_ids.PAYROLL_OPERATIONS)
+
+    def _refresh_active_tab(self) -> None:
+        tab = self._tabs.currentWidget()
+        if tab is not None and hasattr(tab, "refresh"):
+            tab.refresh()
+
+    def _on_remittance_wizard(self) -> None:
+        if self._company_id is None:
+            show_error(self, "Remittance Wizard", "Select an active company first.")
+            return
+        ctx = self._registry.active_company_context
+        company_name = ctx.company_name or self._company_label.text() or ""
+        result = RemittanceWizardDialog.run(
+            self._registry, self._company_id, company_name, parent=self,
+        )
+        if result is not None:
+            self._tabs.setCurrentIndex(self._TAB_REMITTANCES)
+            self._remittances_tab.refresh()
+            self._notify_ribbon_context_changed()
+            show_info(self, "Remittance Wizard", result.summary)
+
+    def _ribbon_commands(self):
+        return {
+            # Posting
+            "payroll_accounting.post_to_gl":        self._posting_tab._on_post,
+            "payroll_accounting.posting_detail":    self._posting_tab._on_detail,
+            # Payments
+            "payroll_accounting.record_payment":    self._payments_tab._on_record_payment,
+            # Remittances
+            "payroll_accounting.remittance_wizard": self._on_remittance_wizard,
+            "payroll_accounting.new_batch":         self._remittances_tab._on_new_batch,
+            "payroll_accounting.open_batch":        self._remittances_tab._on_open_batch,
+            "payroll_accounting.add_line":          self._remittances_tab._on_add_line,
+            "payroll_accounting.cancel_batch":      self._remittances_tab._on_cancel_batch,
+            # Summary
+            "payroll_accounting.open_full_summary": self._summary_tab._on_open_summary_dialog,
+            # Cross-tab
+            "payroll_accounting.refresh":           self._refresh_active_tab,
+            "payroll_accounting.open_calculation":  self._open_calculation_workspace,
+            "payroll_accounting.open_validation":   self._open_validation_workspace,
+        }
+
+    def ribbon_state(self):
+        has_company = self._company_id is not None
+        posting_run = self._posting_tab._selected_run() if has_company else None
+        posting_status = getattr(posting_run, "status_code", None) if posting_run else None
+        can_post = posting_status in ("approved", "calculated")
+        can_posting_detail = posting_status == "posted"
+        payment_selected = has_company and self._payments_tab._selected_summary() is not None
+        remit_batch = self._remittances_tab._selected_batch() if has_company else None
+        remit_status = getattr(remit_batch, "status_code", None) if remit_batch else None
+        can_open_batch = remit_status == "draft"
+        can_add_line = remit_status in ("draft", "open")
+        can_cancel = remit_status not in (None, "cancelled", "paid")
+        return {
+            # Posting
+            "payroll_accounting.post_to_gl":        bool(can_post),
+            "payroll_accounting.posting_detail":    bool(can_posting_detail),
+            # Payments
+            "payroll_accounting.record_payment":    bool(payment_selected),
+            # Remittances
+            "payroll_accounting.remittance_wizard": has_company,
+            "payroll_accounting.new_batch":         has_company,
+            "payroll_accounting.open_batch":        bool(can_open_batch),
+            "payroll_accounting.add_line":          bool(can_add_line),
+            "payroll_accounting.cancel_batch":      bool(can_cancel),
+            # Summary
+            "payroll_accounting.open_full_summary": has_company,
+            # Cross-tab
+            "payroll_accounting.refresh":           True,
+            "payroll_accounting.open_calculation":  True,
+            "payroll_accounting.open_validation":   True,
+        }
 
 
 # ── Tab: Posting ───────────────────────────────────────────────────────────────
