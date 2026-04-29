@@ -74,6 +74,7 @@ class PurchaseOrderDetailDTO:
     converted_to_bill_id: int | None
     created_at: datetime
     updated_at: datetime
+    is_tax_inclusive: bool
     totals: PurchaseOrderTotalsDTO
     lines: tuple[PurchaseOrderLineDTO, ...]
     contract_id: int | None = None

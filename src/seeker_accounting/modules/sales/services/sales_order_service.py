@@ -15,7 +15,13 @@ from seeker_accounting.modules.accounting.reference_data.models.currency import 
 from seeker_accounting.modules.accounting.reference_data.models.tax_code import TaxCode
 from seeker_accounting.modules.accounting.reference_data.repositories.currency_repository import CurrencyRepository
 from seeker_accounting.modules.accounting.reference_data.repositories.tax_code_repository import TaxCodeRepository
+from seeker_accounting.modules.accounting.reference_data.services.tax_calculation_service import (
+    TaxCalculationService,
+)
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
+from seeker_accounting.modules.companies.repositories.company_preference_repository import (
+    CompanyPreferenceRepository,
+)
 from seeker_accounting.modules.customers.repositories.customer_repository import CustomerRepository
 from seeker_accounting.modules.job_costing.services.project_dimension_validation_service import (
     ProjectDimensionValidationService,
@@ -39,6 +45,7 @@ from seeker_accounting.modules.sales.dto.sales_order_dto import (
 )
 from seeker_accounting.modules.sales.models.sales_order import SalesOrder
 from seeker_accounting.modules.sales.models.sales_order_line import SalesOrderLine
+from seeker_accounting.modules.sales.models.sales_order_line_tax import SalesOrderLineTax
 from seeker_accounting.modules.sales.repositories.sales_invoice_repository import SalesInvoiceRepository
 from seeker_accounting.modules.sales.repositories.sales_order_line_repository import SalesOrderLineRepository
 from seeker_accounting.modules.sales.repositories.sales_order_repository import SalesOrderRepository
@@ -49,6 +56,7 @@ if TYPE_CHECKING:
     from seeker_accounting.modules.sales.services.sales_invoice_service import SalesInvoiceService
 
 CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
+CompanyPreferenceRepositoryFactory = Callable[[Session], CompanyPreferenceRepository]
 CustomerRepositoryFactory = Callable[[Session], CustomerRepository]
 CurrencyRepositoryFactory = Callable[[Session], CurrencyRepository]
 AccountRepositoryFactory = Callable[[Session], AccountRepository]
@@ -80,6 +88,7 @@ class SalesOrderService:
         project_dimension_validation_service: ProjectDimensionValidationService,
         permission_service: PermissionService,
         audit_service: "AuditService | None" = None,
+        company_preference_repository_factory: CompanyPreferenceRepositoryFactory = CompanyPreferenceRepository,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._company_repository_factory = company_repository_factory
@@ -94,6 +103,7 @@ class SalesOrderService:
         self._project_dimension_validation_service = project_dimension_validation_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._company_preference_repository_factory = company_preference_repository_factory
 
     # ── Read ──────────────────────────────────────────────────────────────────
     def list_orders(
@@ -150,6 +160,9 @@ class SalesOrderService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
             )
+            effective_inclusive = self._resolve_effective_tax_inclusive(
+                uow.session, company_id, normalized_command.is_tax_inclusive
+            )
             order_lines = self._build_order_lines(
                 session=uow.session,
                 company_id=company_id,
@@ -159,6 +172,7 @@ class SalesOrderService:
                 lines=normalized_command.lines,
                 account_repository=account_repository,
                 tax_code_repository=tax_code_repository,
+                is_tax_inclusive=effective_inclusive,
             )
             subtotal_amount, tax_amount, total_amount = self._calculate_header_totals(order_lines)
             self._require_positive_total(total_amount)
@@ -177,6 +191,7 @@ class SalesOrderService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
                 source_quote_id=normalized_command.source_quote_id,
+                is_tax_inclusive=effective_inclusive,
                 subtotal_amount=subtotal_amount,
                 tax_amount=tax_amount,
                 total_amount=total_amount,
@@ -232,6 +247,9 @@ class SalesOrderService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
             )
+            effective_inclusive = self._resolve_effective_tax_inclusive(
+                uow.session, company_id, normalized_command.is_tax_inclusive
+            )
             order_lines = self._build_order_lines(
                 session=uow.session,
                 company_id=company_id,
@@ -241,6 +259,7 @@ class SalesOrderService:
                 lines=normalized_command.lines,
                 account_repository=account_repository,
                 tax_code_repository=tax_code_repository,
+                is_tax_inclusive=effective_inclusive,
             )
             subtotal_amount, tax_amount, total_amount = self._calculate_header_totals(order_lines)
             self._require_positive_total(total_amount)
@@ -254,6 +273,7 @@ class SalesOrderService:
             order.notes = normalized_command.notes
             order.contract_id = normalized_command.contract_id
             order.project_id = normalized_command.project_id
+            order.is_tax_inclusive = effective_inclusive
             order.subtotal_amount = subtotal_amount
             order.tax_amount = tax_amount
             order.total_amount = total_amount
@@ -355,6 +375,7 @@ class SalesOrderService:
                 notes=notes if notes is not None else order.notes,
                 contract_id=order.contract_id,
                 project_id=order.project_id,
+                is_tax_inclusive=order.is_tax_inclusive,
                 lines=tuple(invoice_line_commands),
             )
 
@@ -509,6 +530,7 @@ class SalesOrderService:
         lines: tuple[SalesOrderLineCommand, ...],
         account_repository: AccountRepository,
         tax_code_repository: TaxCodeRepository,
+        is_tax_inclusive: bool,
     ) -> list[SalesOrderLine]:
         built: list[SalesOrderLine] = []
         for line_number, command in enumerate(lines, start=1):
@@ -538,33 +560,41 @@ class SalesOrderService:
                 project_cost_code_id=resolved_dimensions.project_cost_code_id,
                 line_number=line_number,
             )
-            subtotal_amount, tax_amount, total_amount = self._calculate_line_totals(command, tax_code)
-            built.append(
-                SalesOrderLine(
-                    sales_order_id=0,
-                    line_number=line_number,
-                    description=command.description,
-                    quantity=command.quantity,
-                    unit_price=command.unit_price,
-                    discount_percent=command.discount_percent,
-                    discount_amount=command.discount_amount,
-                    tax_code_id=tax_code.id if tax_code is not None else None,
-                    revenue_account_id=revenue_account_id,
-                    line_subtotal_amount=subtotal_amount,
-                    line_tax_amount=tax_amount,
-                    line_total_amount=total_amount,
-                    contract_id=resolved_dimensions.contract_id,
-                    project_id=resolved_dimensions.project_id,
-                    project_job_id=resolved_dimensions.project_job_id,
-                    project_cost_code_id=resolved_dimensions.project_cost_code_id,
-                )
+            subtotal_amount, tax_amount, total_amount = self._calculate_line_totals(command, tax_code, is_tax_inclusive)
+            order_line = SalesOrderLine(
+                sales_order_id=0,
+                line_number=line_number,
+                description=command.description,
+                quantity=command.quantity,
+                unit_price=command.unit_price,
+                discount_percent=command.discount_percent,
+                discount_amount=command.discount_amount,
+                tax_code_id=tax_code.id if tax_code is not None else None,
+                revenue_account_id=revenue_account_id,
+                line_subtotal_amount=subtotal_amount,
+                line_tax_amount=tax_amount,
+                line_total_amount=total_amount,
+                contract_id=resolved_dimensions.contract_id,
+                project_id=resolved_dimensions.project_id,
+                project_job_id=resolved_dimensions.project_job_id,
+                project_cost_code_id=resolved_dimensions.project_cost_code_id,
             )
+            order_line.tax_details = [
+                SalesOrderLineTax(
+                    tax_code_id=tax_code.id if tax_code is not None else None,
+                    taxable_base=subtotal_amount,
+                    tax_amount=tax_amount,
+                    is_recoverable=None,
+                )
+            ]
+            built.append(order_line)
         return built
 
     def _calculate_line_totals(
         self,
         command: SalesOrderLineCommand,
         tax_code: TaxCode | None,
+        is_tax_inclusive: bool,
     ) -> tuple[Decimal, Decimal, Decimal]:
         base_amount = self._quantize_money(command.quantity * command.unit_price)
         if command.discount_amount is not None:
@@ -575,26 +605,28 @@ class SalesOrderService:
             discount_amount = Decimal("0.00")
         if discount_amount > base_amount:
             raise ValidationError("Discount amount cannot exceed the line amount.")
-        line_subtotal_amount = self._quantize_money(base_amount - discount_amount)
-        line_tax_amount = self._calculate_tax_amount(line_subtotal_amount, tax_code)
-        line_total_amount = self._quantize_money(line_subtotal_amount + line_tax_amount)
-        return line_subtotal_amount, line_tax_amount, line_total_amount
+        line_amount = self._quantize_money(base_amount - discount_amount)
+        breakdown = TaxCalculationService.calculate_line_tax(
+            line_amount, tax_code, is_tax_inclusive=is_tax_inclusive
+        )
+        return breakdown.taxable_base, breakdown.tax_amount, breakdown.gross_amount
 
     def _calculate_tax_amount(self, line_subtotal_amount: Decimal, tax_code: TaxCode | None) -> Decimal:
-        if tax_code is None:
-            return Decimal("0.00")
-        method_code = tax_code.calculation_method_code.strip().upper()
-        if method_code == "PERCENTAGE":
-            if tax_code.rate_percent is None:
-                raise ValidationError("Percentage tax code is missing a rate.")
-            return self._quantize_money(
-                line_subtotal_amount * Decimal(str(tax_code.rate_percent)) / Decimal("100")
-            )
-        if method_code == "FIXED_AMOUNT":
-            if tax_code.rate_percent is None:
-                return Decimal("0.00")
-            return self._quantize_money(Decimal(str(tax_code.rate_percent)))
-        return Decimal("0.00")
+        return TaxCalculationService.calculate_line_tax_amount(
+            line_subtotal_amount,
+            tax_code,
+        )
+
+    def _resolve_effective_tax_inclusive(
+        self, session: Session, company_id: int, command_value: bool | None
+    ) -> bool:
+        if command_value is not None:
+            return bool(command_value)
+        preference_repository = self._company_preference_repository_factory(session)
+        preference = preference_repository.get_by_company_id(company_id)
+        if preference is None:
+            return False
+        return bool(preference.tax_inclusive_default)
 
     def _calculate_header_totals(self, lines: list[SalesOrderLine]) -> tuple[Decimal, Decimal, Decimal]:
         subtotal_amount = self._quantize_money(sum((l.line_subtotal_amount for l in lines), Decimal("0.00")))
@@ -875,6 +907,7 @@ class SalesOrderService:
             status_code=order.status_code,
             reference_number=order.reference_number,
             notes=order.notes,
+            is_tax_inclusive=order.is_tax_inclusive,
             subtotal_amount=order.subtotal_amount,
             tax_amount=order.tax_amount,
             total_amount=order.total_amount,

@@ -1,0 +1,20 @@
+"""State keys for the New Item Wizard."""
+KEY_ITEM_CODE = "item_code"
+KEY_ITEM_NAME = "item_name"
+KEY_ITEM_TYPE_CODE = "item_type_code"
+KEY_DESCRIPTION = "description"
+
+KEY_UNIT_OF_MEASURE_ID = "unit_of_measure_id"
+KEY_UNIT_OF_MEASURE_CODE = "unit_of_measure_code"
+KEY_ITEM_CATEGORY_ID = "item_category_id"
+KEY_INVENTORY_COST_METHOD_CODE = "inventory_cost_method_code"
+KEY_REORDER_LEVEL_QUANTITY = "reorder_level_quantity"
+
+KEY_REVENUE_ACCOUNT_ID = "revenue_account_id"
+KEY_COGS_ACCOUNT_ID = "cogs_account_id"
+KEY_INVENTORY_ACCOUNT_ID = "inventory_account_id"
+KEY_EXPENSE_ACCOUNT_ID = "expense_account_id"
+KEY_SALES_TAX_CODE_ID = "sales_tax_code_id"
+KEY_PURCHASE_TAX_CODE_ID = "purchase_tax_code_id"
+
+KEY_ITEM_ID = "item_id"

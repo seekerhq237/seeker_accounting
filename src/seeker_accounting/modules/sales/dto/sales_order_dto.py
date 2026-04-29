@@ -65,6 +65,7 @@ class SalesOrderDetailDTO:
     status_code: str
     reference_number: str | None
     notes: str | None
+    is_tax_inclusive: bool
     subtotal_amount: Decimal
     tax_amount: Decimal
     total_amount: Decimal

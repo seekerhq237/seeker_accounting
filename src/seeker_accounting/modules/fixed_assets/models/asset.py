@@ -61,6 +61,16 @@ class Asset(TimestampMixin, Base):
     )
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
+    # Disposal — populated when status_code == "disposed"
+    disposal_date: Mapped[date | None] = mapped_column(Date(), nullable=True)
+    disposal_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    disposal_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    disposal_journal_entry_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("journal_entries.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     company: Mapped["Company"] = relationship("Company")
     category: Mapped["AssetCategory"] = relationship("AssetCategory", back_populates="assets")
     supplier: Mapped["Supplier | None"] = relationship("Supplier")

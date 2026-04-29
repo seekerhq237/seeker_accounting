@@ -8,6 +8,11 @@ CUSTOMERS: Final = "customers"
 SUPPLIERS: Final = "suppliers"
 PAYMENT_TERMS: Final = "payment_terms"
 TAX_CODES: Final = "tax_codes"
+TAX_PROFILE: Final = "tax_profile"
+TAX_COMPLIANCE: Final = "tax_compliance"
+TAX_DASHBOARD: Final = "tax_dashboard"
+TAX_AUDIT_TRAIL: Final = "tax_audit_trail"
+WITHHOLDING_CERTIFICATES: Final = "withholding_certificates"
 DOCUMENT_SEQUENCES: Final = "document_sequences"
 CHART_OF_ACCOUNTS: Final = "chart_of_accounts"
 ACCOUNT_ROLE_MAPPINGS: Final = "account_role_mappings"
@@ -67,6 +72,11 @@ ALL_NAV_IDS: Final[tuple[str, ...]] = (
     SUPPLIERS,
     PAYMENT_TERMS,
     TAX_CODES,
+    TAX_PROFILE,
+    TAX_COMPLIANCE,
+    TAX_DASHBOARD,
+    TAX_AUDIT_TRAIL,
+    WITHHOLDING_CERTIFICATES,
     DOCUMENT_SEQUENCES,
     CHART_OF_ACCOUNTS,
     ACCOUNT_ROLE_MAPPINGS,

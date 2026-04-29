@@ -69,3 +69,9 @@ class CustomerQuoteLine(TimestampMixin, Base):
     project: Mapped["Project | None"] = relationship("Project")
     project_job: Mapped["ProjectJob | None"] = relationship("ProjectJob")
     project_cost_code: Mapped["ProjectCostCode | None"] = relationship("ProjectCostCode")
+    tax_details: Mapped[list["CustomerQuoteLineTax"]] = relationship(
+        "CustomerQuoteLineTax",
+        back_populates="customer_quote_line",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

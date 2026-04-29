@@ -31,6 +31,7 @@ class CreateSalesInvoiceCommand:
     notes: str | None = None
     contract_id: int | None = None
     project_id: int | None = None
+    is_tax_inclusive: bool | None = None
     lines: tuple[SalesInvoiceLineCommand, ...] = ()
 
 
@@ -45,6 +46,7 @@ class UpdateSalesInvoiceCommand:
     notes: str | None = None
     contract_id: int | None = None
     project_id: int | None = None
+    is_tax_inclusive: bool | None = None
     lines: tuple[SalesInvoiceLineCommand, ...] = ()
 
 

@@ -40,6 +40,15 @@ from seeker_accounting.modules.administration.models.user_role import UserRole
 from seeker_accounting.modules.administration.models.user_session import UserSession
 from seeker_accounting.modules.companies.models.company import Company
 from seeker_accounting.modules.companies.models.company_fiscal_default import CompanyFiscalDefault
+from seeker_accounting.modules.taxation.models.company_tax_profile import CompanyTaxProfile
+from seeker_accounting.modules.taxation.models.tax_obligation import TaxObligation
+from seeker_accounting.modules.taxation.models.tax_return import TaxReturn
+from seeker_accounting.modules.taxation.models.tax_return_line import TaxReturnLine
+from seeker_accounting.modules.taxation.models.tax_payment import TaxPayment
+from seeker_accounting.modules.taxation.models.posted_tax_line import PostedTaxLine
+from seeker_accounting.modules.taxation.models.withholding_tax_certificate import (
+    WithholdingTaxCertificate,
+)
 from seeker_accounting.modules.companies.models.company_preference import CompanyPreference
 from seeker_accounting.modules.companies.models.company_project_preference import CompanyProjectPreference
 from seeker_accounting.modules.companies.models.system_admin_credential import SystemAdminCredential
@@ -56,22 +65,29 @@ from seeker_accounting.modules.customers.models.customer import Customer
 from seeker_accounting.modules.customers.models.customer_group import CustomerGroup
 from seeker_accounting.modules.sales.models.sales_invoice import SalesInvoice
 from seeker_accounting.modules.sales.models.sales_invoice_line import SalesInvoiceLine
+from seeker_accounting.modules.sales.models.sales_invoice_line_tax import SalesInvoiceLineTax
 from seeker_accounting.modules.sales.models.customer_quote import CustomerQuote
 from seeker_accounting.modules.sales.models.customer_quote_line import CustomerQuoteLine
+from seeker_accounting.modules.sales.models.customer_quote_line_tax import CustomerQuoteLineTax
 from seeker_accounting.modules.sales.models.sales_order import SalesOrder
 from seeker_accounting.modules.sales.models.sales_order_line import SalesOrderLine
+from seeker_accounting.modules.sales.models.sales_order_line_tax import SalesOrderLineTax
 from seeker_accounting.modules.sales.models.sales_credit_note import SalesCreditNote
 from seeker_accounting.modules.sales.models.sales_credit_note_line import SalesCreditNoteLine
+from seeker_accounting.modules.sales.models.sales_credit_note_line_tax import SalesCreditNoteLineTax
 from seeker_accounting.modules.sales.models.customer_receipt import CustomerReceipt
 from seeker_accounting.modules.sales.models.customer_receipt_allocation import CustomerReceiptAllocation
 from seeker_accounting.modules.suppliers.models.supplier import Supplier
 from seeker_accounting.modules.suppliers.models.supplier_group import SupplierGroup
 from seeker_accounting.modules.purchases.models.purchase_bill import PurchaseBill
 from seeker_accounting.modules.purchases.models.purchase_bill_line import PurchaseBillLine
+from seeker_accounting.modules.purchases.models.purchase_bill_line_tax import PurchaseBillLineTax
 from seeker_accounting.modules.purchases.models.purchase_order import PurchaseOrder
 from seeker_accounting.modules.purchases.models.purchase_order_line import PurchaseOrderLine
+from seeker_accounting.modules.purchases.models.purchase_order_line_tax import PurchaseOrderLineTax
 from seeker_accounting.modules.purchases.models.purchase_credit_note import PurchaseCreditNote
 from seeker_accounting.modules.purchases.models.purchase_credit_note_line import PurchaseCreditNoteLine
+from seeker_accounting.modules.purchases.models.purchase_credit_note_line_tax import PurchaseCreditNoteLineTax
 from seeker_accounting.modules.purchases.models.supplier_payment import SupplierPayment
 from seeker_accounting.modules.purchases.models.supplier_payment_allocation import SupplierPaymentAllocation
 from seeker_accounting.modules.treasury.models.financial_account import FinancialAccount
@@ -123,6 +139,7 @@ from seeker_accounting.modules.payroll.models.payroll_payment_record import Payr
 from seeker_accounting.modules.payroll.models.payroll_remittance_batch import PayrollRemittanceBatch
 from seeker_accounting.modules.payroll.models.payroll_remittance_line import PayrollRemittanceLine
 from seeker_accounting.modules.audit.models.audit_event import AuditEvent
+from seeker_accounting.platform.wizards.persistence.wizard_run import WizardRun
 
 MODEL_REGISTRY = (
     User,
@@ -138,6 +155,7 @@ MODEL_REGISTRY = (
     UserCompanyAccess,
     CompanyPreference,
     CompanyFiscalDefault,
+    CompanyTaxProfile,
     CompanyProjectPreference,
     Currency,
     Country,
@@ -233,6 +251,7 @@ MODEL_REGISTRY = (
     PayrollRemittanceBatch,
     PayrollRemittanceLine,
     AuditEvent,
+    WizardRun,
 )
 
 target_metadata = Base.metadata

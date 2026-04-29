@@ -62,6 +62,27 @@ RELATED_PAGES: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("chart_of_accounts", "Chart of Accounts", "layout_grid"),
         ("tax_codes", "Tax Codes", "file_text"),
     ),
+    "tax_profile": (
+        ("tax_compliance", "Tax Compliance", "list_checks"),
+        ("tax_codes", "Tax Codes", "file_text"),
+        ("document_sequences", "Document Sequences", "file_text"),
+    ),
+    "tax_compliance": (
+        ("tax_profile", "Tax Profile", "user"),
+        ("tax_dashboard", "Tax Dashboard", "bar_chart"),
+        ("tax_audit_trail", "Tax Audit Trail", "list"),
+        ("tax_codes", "Tax Codes", "file_text"),
+        ("chart_of_accounts", "Chart of Accounts", "layout_grid"),
+    ),
+    "tax_dashboard": (
+        ("tax_compliance", "Tax Compliance", "list_checks"),
+        ("tax_profile", "Tax Profile", "user"),
+        ("tax_audit_trail", "Tax Audit Trail", "list"),
+    ),
+    "tax_audit_trail": (
+        ("tax_compliance", "Tax Compliance", "list_checks"),
+        ("tax_dashboard", "Tax Dashboard", "bar_chart"),
+    ),
 }
 
 
@@ -2041,6 +2062,164 @@ class RibbonRegistry:
         # Nav-id level fallback.
         self.register(
             RibbonSurfaceDef(surface_key="payroll_operations", items=validation_items)
+        )
+
+        # ── Taxation: Tax Profile (single-record setup) ───────────────
+        self.register(
+            RibbonSurfaceDef(
+                surface_key="tax_profile",
+                items=(
+                    RibbonButtonDef(
+                        command_id="tax_profile.edit",
+                        label="Edit Profile",
+                        icon_name="edit",
+                        tooltip="Edit the company's tax profile",
+                        variant="primary",
+                    ),
+                    RibbonDividerDef(key="after_edit"),
+                    RibbonButtonDef(
+                        command_id="tax_profile.refresh",
+                        label="Refresh",
+                        icon_name="refresh",
+                        tooltip="Reload the tax profile",
+                    ),
+                ),
+            )
+        )
+
+        # ── Taxation: Tax Compliance workspace ────────────────────────
+        self.register(
+            RibbonSurfaceDef(
+                surface_key="tax_compliance",
+                items=(
+                    RibbonButtonDef(
+                        command_id="tax_compliance.generate_vat_calendar",
+                        label="Generate VAT Calendar",
+                        icon_name="plus",
+                        tooltip="Generate the 12 monthly VAT obligations for a year",
+                        variant="primary",
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.generate_cit_installments",
+                        label="CIT Installments",
+                        icon_name="plus",
+                        tooltip="Generate the four quarterly CIT installments for a year",
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.generate_withholding_calendar",
+                        label="WHT Calendar",
+                        icon_name="plus",
+                        tooltip="Generate the 12 monthly withholding obligations for a year",
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.generate_patente_obligation",
+                        label="Patente",
+                        icon_name="plus",
+                        tooltip="Generate the annual Patente obligation for a year",
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.generate_tsr_calendar",
+                        label="TSR Calendar",
+                        icon_name="plus",
+                        tooltip="Generate the 12 monthly TSR obligations for a year",
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.record_customs_duty",
+                        label="Customs Duty",
+                        icon_name="plus",
+                        tooltip="Record a customs duty obligation",
+                    ),
+                    RibbonDividerDef(key="after_generate"),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.draft_return",
+                        label="Draft Return",
+                        icon_name="file_text",
+                        tooltip="Draft a VAT return for the selected obligation",
+                        default_enabled=False,
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.file_return",
+                        label="File Return",
+                        icon_name="check_square",
+                        tooltip="File the selected draft return",
+                        default_enabled=False,
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.settle_return",
+                        label="Settle Return",
+                        icon_name="check",
+                        tooltip="Post the VAT settlement journal for the selected filed return",
+                        default_enabled=False,
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.record_payment",
+                        label="Record Payment",
+                        icon_name="dollar_sign",
+                        tooltip="Record a payment against the selected filed return",
+                        default_enabled=False,
+                    ),
+                    RibbonDividerDef(key="after_returns"),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.export_pdf",
+                        label="Export PDF",
+                        icon_name="printer",
+                        tooltip="Export the selected tax return to a PDF document",
+                        default_enabled=False,
+                    ),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.export_dsf",
+                        label="Export DSF",
+                        icon_name="download",
+                        tooltip="Run DSF readiness check and export the annual return",
+                    ),
+                    RibbonDividerDef(key="after_dsf"),
+                    RibbonButtonDef(
+                        command_id="tax_compliance.refresh",
+                        label="Refresh",
+                        icon_name="refresh",
+                        tooltip="Reload obligations, returns, and payments",
+                    ),
+                ),
+            )
+        )
+
+        # ── Taxation: Tax Dashboard ───────────────────────────────────
+        self.register(
+            RibbonSurfaceDef(
+                surface_key="tax_dashboard",
+                items=(
+                    RibbonButtonDef(
+                        command_id="tax_dashboard.refresh",
+                        label="Refresh",
+                        icon_name="refresh",
+                        tooltip="Reload the tax dashboard snapshot",
+                        variant="primary",
+                    ),
+                ),
+            )
+        )
+
+        # ── Taxation: Tax Audit Trail ─────────────────────────────────
+        self.register(
+            RibbonSurfaceDef(
+                surface_key="tax_audit_trail",
+                items=(
+                    RibbonButtonDef(
+                        command_id="tax_audit_trail.apply_filter",
+                        label="Apply Filter",
+                        icon_name="filter",
+                        tooltip="Apply the current filter and reload from the first page",
+                        variant="primary",
+                    ),
+                    RibbonDividerDef(key="after_filter"),
+                    RibbonButtonDef(
+                        command_id="tax_audit_trail.refresh",
+                        label="Refresh",
+                        icon_name="refresh",
+                        tooltip="Reload the current page",
+                    ),
+                ),
+            )
         )
 
     def _append_related_links(self, surface_key: str) -> None:

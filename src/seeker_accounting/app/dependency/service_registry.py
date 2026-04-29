@@ -30,6 +30,12 @@ from seeker_accounting.modules.accounting.fiscal_periods.services.period_control
 from seeker_accounting.modules.accounting.journals.services.journal_posting_service import (
     JournalPostingService,
 )
+from seeker_accounting.modules.accounting.journals.services.fx_revaluation_service import (
+    FxRevaluationService,
+)
+from seeker_accounting.modules.accounting.journals.services.journal_reversal_service import (
+    JournalReversalService,
+)
 from seeker_accounting.modules.accounting.journals.services.journal_service import JournalService
 from seeker_accounting.modules.accounting.reference_data.services.numbering_setup_service import (
     NumberingSetupService,
@@ -41,6 +47,39 @@ from seeker_accounting.modules.accounting.reference_data.services.reference_data
     ReferenceDataService,
 )
 from seeker_accounting.modules.accounting.reference_data.services.tax_setup_service import TaxSetupService
+from seeker_accounting.modules.taxation.services.company_tax_profile_service import (
+    CompanyTaxProfileService,
+)
+from seeker_accounting.modules.taxation.services.tax_obligation_service import (
+    TaxObligationService,
+)
+from seeker_accounting.modules.taxation.services.withholding_tax_certificate_service import (
+    WithholdingTaxCertificateService,
+)
+from seeker_accounting.modules.taxation.services.tax_payment_service import (
+    TaxPaymentService,
+)
+from seeker_accounting.modules.taxation.services.tax_return_service import (
+    TaxReturnService,
+)
+from seeker_accounting.modules.taxation.services.tax_settlement_service import (
+    TaxSettlementService,
+)
+from seeker_accounting.modules.taxation.services.dsf_export_service import (
+    DSFExportService,
+)
+from seeker_accounting.modules.taxation.services.tax_fact_service import (
+    TaxFactService,
+)
+from seeker_accounting.modules.taxation.services.tax_dashboard_service import (
+    TaxDashboardService,
+)
+from seeker_accounting.modules.taxation.services.tax_audit_trail_service import (
+    TaxAuditTrailService,
+)
+from seeker_accounting.modules.taxation.services.tax_return_pdf_export_service import (
+    TaxReturnPDFExportService,
+)
 from seeker_accounting.modules.companies.services.company_context_service import CompanyContextService
 from seeker_accounting.modules.companies.services.company_logo_service import CompanyLogoService
 from seeker_accounting.modules.companies.services.company_project_preference_service import CompanyProjectPreferenceService
@@ -84,6 +123,15 @@ from seeker_accounting.modules.reporting.services.ap_aging_report_service import
 )
 from seeker_accounting.modules.reporting.services.ar_aging_report_service import (
     ARAgingReportService,
+)
+from seeker_accounting.modules.reporting.services.cash_flow_forecast_service import (
+    CashFlowForecastService,
+)
+from seeker_accounting.modules.reporting.services.control_account_reconciliation_service import (
+    ControlAccountReconciliationService,
+)
+from seeker_accounting.modules.reporting.services.control_account_reconciliation_service import (
+    ControlAccountReconciliationService,
 )
 from seeker_accounting.modules.reporting.services.depreciation_report_service import (
     DepreciationReportService,
@@ -203,6 +251,7 @@ from seeker_accounting.modules.administration.services.backup_export_service imp
 from seeker_accounting.modules.administration.services.backup_analysis_service import BackupAnalysisService
 from seeker_accounting.modules.administration.services.backup_merge_service import BackupMergeService
 from seeker_accounting.platform.licensing.license_service import LicenseService
+from seeker_accounting.platform.wizards.persistence.wizard_run_service import WizardRunService
 from seeker_accounting.modules.treasury.services.financial_account_service import FinancialAccountService
 from seeker_accounting.modules.treasury.services.treasury_transaction_service import TreasuryTransactionService
 from seeker_accounting.modules.treasury.services.treasury_transaction_posting_service import (
@@ -227,6 +276,7 @@ from seeker_accounting.modules.fixed_assets.services.asset_service import AssetS
 from seeker_accounting.modules.fixed_assets.services.depreciation_schedule_service import DepreciationScheduleService
 from seeker_accounting.modules.fixed_assets.services.depreciation_run_service import DepreciationRunService
 from seeker_accounting.modules.fixed_assets.services.depreciation_posting_service import DepreciationPostingService
+from seeker_accounting.modules.fixed_assets.services.asset_disposal_service import AssetDisposalService
 from seeker_accounting.modules.fixed_assets.services.depreciation_method_service import DepreciationMethodService
 from seeker_accounting.modules.fixed_assets.services.asset_depreciation_settings_service import AssetDepreciationSettingsService
 from seeker_accounting.modules.fixed_assets.services.asset_component_service import AssetComponentService
@@ -260,6 +310,7 @@ from seeker_accounting.modules.payroll.services.payroll_print_service import Pay
 from seeker_accounting.modules.payroll.services.payroll_export_service import PayrollExportService
 from seeker_accounting.modules.payroll.services.payroll_output_warning_service import PayrollOutputWarningService
 from seeker_accounting.modules.payroll.services.payroll_remittance_deadline_service import PayrollRemittanceDeadlineService
+from seeker_accounting.modules.audit.services.audit_export_service import AuditExportService
 from seeker_accounting.modules.audit.services.audit_service import AuditService
 from seeker_accounting.modules.dashboard.services.dashboard_service import DashboardService
 from seeker_accounting.modules.administration.services.permission_service import PermissionService
@@ -323,6 +374,8 @@ class ServiceRegistry:
     general_ledger_report_service: GeneralLedgerReportService
     ar_aging_report_service: ARAgingReportService
     ap_aging_report_service: APAgingReportService
+    control_account_reconciliation_service: ControlAccountReconciliationService
+    cash_flow_forecast_service: CashFlowForecastService
     customer_statement_service: CustomerStatementService
     supplier_statement_service: SupplierStatementService
     payroll_summary_report_service: PayrollSummaryReportService
@@ -335,6 +388,17 @@ class ServiceRegistry:
     project_dimension_validation_service: ProjectDimensionValidationService
     reference_data_service: ReferenceDataService
     tax_setup_service: TaxSetupService
+    company_tax_profile_service: CompanyTaxProfileService
+    tax_obligation_service: TaxObligationService
+    tax_return_service: TaxReturnService
+    tax_payment_service: TaxPaymentService
+    tax_settlement_service: TaxSettlementService
+    dsf_export_service: DSFExportService
+    tax_fact_service: TaxFactService
+    withholding_tax_certificate_service: WithholdingTaxCertificateService
+    tax_dashboard_service: TaxDashboardService
+    tax_audit_trail_service: TaxAuditTrailService
+    tax_return_pdf_export_service: TaxReturnPDFExportService
     numbering_setup_service: NumberingSetupService
     chart_of_accounts_service: ChartOfAccountsService
     chart_seed_service: ChartSeedService
@@ -344,6 +408,8 @@ class ServiceRegistry:
     period_control_service: PeriodControlService
     journal_service: JournalService
     journal_posting_service: JournalPostingService
+    fx_revaluation_service: FxRevaluationService
+    journal_reversal_service: JournalReversalService
     company_seed_service: CompanySeedService
     customer_service: CustomerService
     supplier_service: SupplierService
@@ -383,6 +449,7 @@ class ServiceRegistry:
     depreciation_schedule_service: DepreciationScheduleService
     depreciation_run_service: DepreciationRunService
     depreciation_posting_service: DepreciationPostingService
+    asset_disposal_service: AssetDisposalService
     depreciation_method_service: DepreciationMethodService
     asset_depreciation_settings_service: AssetDepreciationSettingsService
     asset_component_service: AssetComponentService
@@ -436,10 +503,12 @@ class ServiceRegistry:
     asset_print_service: AssetPrintService
     depreciation_run_print_service: DepreciationRunPrintService
     audit_log_print_service: AuditLogPrintService
+    audit_export_service: AuditExportService
     backup_export_service: BackupExportService
     backup_analysis_service: BackupAnalysisService
     backup_merge_service: BackupMergeService
     license_service: LicenseService
+    wizard_run_service: WizardRunService
 
     # Shell subsystems introduced with the Sage-style ribbon / child-window
     # UX. These use ``default_factory`` so no existing construction site

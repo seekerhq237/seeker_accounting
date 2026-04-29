@@ -1,0 +1,10 @@
+"""State keys for the Document Numbering Wizard."""
+KEY_MODE = "mode"  # "create" or "update"
+KEY_DOCUMENT_TYPE_CODE = "document_type_code"
+KEY_SEQUENCE_ID = "sequence_id"  # populated when mode == "update" or after commit
+KEY_PREFIX = "prefix"
+KEY_SUFFIX = "suffix"
+KEY_NEXT_NUMBER = "next_number"
+KEY_PADDING_WIDTH = "padding_width"
+KEY_RESET_FREQUENCY_CODE = "reset_frequency_code"
+KEY_PREVIEW_NUMBER = "preview_number"

@@ -66,3 +66,9 @@ class PurchaseCreditNoteLine(TimestampMixin, Base):
     project: Mapped["Project | None"] = relationship("Project")
     project_job: Mapped["ProjectJob | None"] = relationship("ProjectJob")
     project_cost_code: Mapped["ProjectCostCode | None"] = relationship("ProjectCostCode")
+    tax_details: Mapped[list["PurchaseCreditNoteLineTax"]] = relationship(
+        "PurchaseCreditNoteLineTax",
+        back_populates="purchase_credit_note_line",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

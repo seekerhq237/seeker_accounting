@@ -43,6 +43,27 @@ AccountRepositoryFactory = Callable[[Session], AccountRepository]
 CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
 
 
+# Permitted ``exemption_kind`` codes on a tax code. NULL is also valid
+# (meaning "not an exemption / no qualifier"). Codes are normalised to
+# upper case before validation. See slice T14.
+EXEMPTION_KIND_NONE = "NONE"
+EXEMPTION_KIND_EXPORT = "EXPORT"
+EXEMPTION_KIND_EXEMPT = "EXEMPT"
+EXEMPTION_KIND_STATE_BORNE = "STATE_BORNE"
+EXEMPTION_KIND_OUT_OF_SCOPE = "OUT_OF_SCOPE"
+ALL_EXEMPTION_KINDS: frozenset[str] = frozenset(
+    {
+        EXEMPTION_KIND_NONE,
+        EXEMPTION_KIND_EXPORT,
+        EXEMPTION_KIND_EXEMPT,
+        EXEMPTION_KIND_STATE_BORNE,
+        EXEMPTION_KIND_OUT_OF_SCOPE,
+    }
+)
+
+_CAC_TOLERANCE = Decimal("0.01")
+
+
 class TaxSetupService:
     def __init__(
         self,
@@ -95,6 +116,14 @@ class TaxSetupService:
             raise ValidationError("Effective to must be on or after effective from.")
 
         rate_percent = self._normalize_rate_percent(command.rate_percent, normalized_calculation_method_code)
+        base_rate, cac_rate = self._normalize_cac_split(
+            has_cac=command.has_cac,
+            base_rate=command.base_rate_percent,
+            cac_rate=command.cac_rate_percent,
+            combined_rate=rate_percent,
+        )
+        normalized_exemption_kind = self._normalize_exemption_kind(command.exemption_kind)
+        normalized_return_box_code = self._normalize_return_box_code(command.return_box_code)
 
         with self._unit_of_work_factory() as uow:
             self._require_company_exists(uow.session, company_id)
@@ -110,6 +139,11 @@ class TaxSetupService:
                 calculation_method_code=normalized_calculation_method_code,
                 rate_percent=rate_percent,
                 is_recoverable=command.is_recoverable,
+                has_cac=command.has_cac,
+                base_rate_percent=base_rate,
+                cac_rate_percent=cac_rate,
+                exemption_kind=normalized_exemption_kind,
+                return_box_code=normalized_return_box_code,
                 effective_from=effective_from,
                 effective_to=effective_to,
             )
@@ -139,6 +173,14 @@ class TaxSetupService:
             raise ValidationError("Effective to must be on or after effective from.")
 
         rate_percent = self._normalize_rate_percent(command.rate_percent, normalized_calculation_method_code)
+        base_rate, cac_rate = self._normalize_cac_split(
+            has_cac=command.has_cac,
+            base_rate=command.base_rate_percent,
+            cac_rate=command.cac_rate_percent,
+            combined_rate=rate_percent,
+        )
+        normalized_exemption_kind = self._normalize_exemption_kind(command.exemption_kind)
+        normalized_return_box_code = self._normalize_return_box_code(command.return_box_code)
 
         with self._unit_of_work_factory() as uow:
             self._require_company_exists(uow.session, company_id)
@@ -161,6 +203,11 @@ class TaxSetupService:
             tax_code.calculation_method_code = normalized_calculation_method_code
             tax_code.rate_percent = rate_percent
             tax_code.is_recoverable = command.is_recoverable
+            tax_code.has_cac = command.has_cac
+            tax_code.base_rate_percent = base_rate
+            tax_code.cac_rate_percent = cac_rate
+            tax_code.exemption_kind = normalized_exemption_kind
+            tax_code.return_box_code = normalized_return_box_code
             tax_code.effective_from = effective_from
             tax_code.effective_to = effective_to
             repository.save(tax_code)
@@ -400,6 +447,70 @@ class TaxSetupService:
             raise ValidationError("Rate percent cannot be negative.")
         return value
 
+    def _normalize_cac_split(
+        self,
+        *,
+        has_cac: bool,
+        base_rate: Decimal | None,
+        cac_rate: Decimal | None,
+        combined_rate: Decimal | None,
+    ) -> tuple[Decimal | None, Decimal | None]:
+        """Validate and normalise the CAC split for a tax code.
+
+        When ``has_cac`` is False, both rate columns must be NULL.
+
+        When ``has_cac`` is True:
+
+        * both ``base_rate`` and ``cac_rate`` are required
+        * neither may be negative
+        * the combined rate (``base * (1 + cac/100)``) must equal
+          ``combined_rate`` within ``_CAC_TOLERANCE`` of a percentage
+          point — otherwise the user's three numbers contradict and we
+          refuse the save rather than let drift accumulate.
+        """
+        if not has_cac:
+            if base_rate is not None or cac_rate is not None:
+                raise ValidationError(
+                    "Base and CAC rates can only be set when CAC split is enabled.",
+                )
+            return None, None
+
+        if base_rate is None or cac_rate is None:
+            raise ValidationError(
+                "Base and CAC rate are both required when CAC split is enabled.",
+            )
+        if base_rate < Decimal("0") or cac_rate < Decimal("0"):
+            raise ValidationError("Base and CAC rate cannot be negative.")
+
+        if combined_rate is not None:
+            expected = base_rate * (Decimal("100") + cac_rate) / Decimal("100")
+            if abs(expected - combined_rate) > _CAC_TOLERANCE:
+                raise ValidationError(
+                    "CAC split does not reconcile to the combined rate "
+                    f"(base {base_rate} + CAC {cac_rate}% of base "
+                    f"= {expected}, expected {combined_rate}).",
+                )
+        return base_rate, cac_rate
+
+    def _normalize_exemption_kind(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if not normalized:
+            return None
+        if normalized not in ALL_EXEMPTION_KINDS:
+            raise ValidationError(
+                "Exemption kind must be one of: "
+                + ", ".join(sorted(ALL_EXEMPTION_KINDS)),
+            )
+        return normalized
+
+    def _normalize_return_box_code(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        return normalized or None
+
     def _translate_tax_code_integrity_error(self, exc: IntegrityError) -> ValidationError | ConflictError:
         message = str(exc.orig).lower() if exc.orig is not None else str(exc).lower()
         if "unique" in message or "uq_tax_codes" in message:
@@ -414,6 +525,11 @@ class TaxSetupService:
             tax_type_code=row.tax_type_code,
             calculation_method_code=row.calculation_method_code,
             rate_percent=row.rate_percent,
+            has_cac=bool(row.has_cac),
+            base_rate_percent=row.base_rate_percent,
+            cac_rate_percent=row.cac_rate_percent,
+            exemption_kind=row.exemption_kind,
+            return_box_code=row.return_box_code,
             effective_from=row.effective_from,
             effective_to=row.effective_to,
             is_active=row.is_active,
@@ -429,6 +545,11 @@ class TaxSetupService:
             calculation_method_code=row.calculation_method_code,
             rate_percent=row.rate_percent,
             is_recoverable=row.is_recoverable,
+            has_cac=bool(row.has_cac),
+            base_rate_percent=row.base_rate_percent,
+            cac_rate_percent=row.cac_rate_percent,
+            exemption_kind=row.exemption_kind,
+            return_box_code=row.return_box_code,
             effective_from=row.effective_from,
             effective_to=row.effective_to,
             is_active=row.is_active,

@@ -49,6 +49,12 @@ from seeker_accounting.modules.accounting.journals.repositories.journal_entry_re
 from seeker_accounting.modules.accounting.journals.services.journal_posting_service import (
     JournalPostingService,
 )
+from seeker_accounting.modules.accounting.journals.services.fx_revaluation_service import (
+    FxRevaluationService,
+)
+from seeker_accounting.modules.accounting.journals.services.journal_reversal_service import (
+    JournalReversalService,
+)
 from seeker_accounting.modules.accounting.journals.services.journal_service import JournalService
 from seeker_accounting.modules.accounting.reference_data.repositories.account_class_repository import (
     AccountClassRepository,
@@ -81,6 +87,57 @@ from seeker_accounting.modules.accounting.reference_data.services.reference_data
     ReferenceDataService,
 )
 from seeker_accounting.modules.accounting.reference_data.services.tax_setup_service import TaxSetupService
+from seeker_accounting.modules.taxation.repositories.company_tax_profile_repository import (
+    CompanyTaxProfileRepository,
+)
+from seeker_accounting.modules.taxation.repositories.tax_obligation_repository import (
+    TaxObligationRepository,
+)
+from seeker_accounting.modules.taxation.repositories.tax_payment_repository import (
+    TaxPaymentRepository,
+)
+from seeker_accounting.modules.taxation.repositories.tax_return_repository import (
+    TaxReturnRepository,
+)
+from seeker_accounting.modules.taxation.repositories.posted_tax_line_repository import (
+    PostedTaxLineRepository,
+)
+from seeker_accounting.modules.taxation.repositories.withholding_tax_certificate_repository import (
+    WithholdingTaxCertificateRepository,
+)
+from seeker_accounting.modules.taxation.services.company_tax_profile_service import (
+    CompanyTaxProfileService,
+)
+from seeker_accounting.modules.taxation.services.tax_obligation_service import (
+    TaxObligationService,
+)
+from seeker_accounting.modules.taxation.services.tax_payment_service import (
+    TaxPaymentService,
+)
+from seeker_accounting.modules.taxation.services.tax_return_service import (
+    TaxReturnService,
+)
+from seeker_accounting.modules.taxation.services.tax_settlement_service import (
+    TaxSettlementService,
+)
+from seeker_accounting.modules.taxation.services.dsf_export_service import (
+    DSFExportService,
+)
+from seeker_accounting.modules.taxation.services.tax_fact_service import (
+    TaxFactService,
+)
+from seeker_accounting.modules.taxation.services.withholding_tax_certificate_service import (
+    WithholdingTaxCertificateService,
+)
+from seeker_accounting.modules.taxation.services.tax_dashboard_service import (
+    TaxDashboardService,
+)
+from seeker_accounting.modules.taxation.services.tax_audit_trail_service import (
+    TaxAuditTrailService,
+)
+from seeker_accounting.modules.taxation.services.tax_return_pdf_export_service import (
+    TaxReturnPDFExportService,
+)
 from seeker_accounting.modules.companies.repositories.company_fiscal_default_repository import (
     CompanyFiscalDefaultRepository,
 )
@@ -210,6 +267,12 @@ from seeker_accounting.modules.reporting.services.ap_aging_report_service import
 )
 from seeker_accounting.modules.reporting.services.ar_aging_report_service import (
     ARAgingReportService,
+)
+from seeker_accounting.modules.reporting.services.cash_flow_forecast_service import (
+    CashFlowForecastService,
+)
+from seeker_accounting.modules.reporting.services.control_account_reconciliation_service import (
+    ControlAccountReconciliationService,
 )
 from seeker_accounting.modules.reporting.services.depreciation_report_service import (
     DepreciationReportService,
@@ -435,6 +498,8 @@ from seeker_accounting.modules.fixed_assets.services.asset_service import AssetS
 from seeker_accounting.modules.fixed_assets.services.depreciation_schedule_service import DepreciationScheduleService
 from seeker_accounting.modules.fixed_assets.services.depreciation_run_service import DepreciationRunService
 from seeker_accounting.modules.fixed_assets.services.depreciation_posting_service import DepreciationPostingService
+from seeker_accounting.modules.fixed_assets.services.asset_disposal_service import AssetDisposalService
+from seeker_accounting.modules.fixed_assets.services.asset_disposal_service import AssetDisposalService
 from seeker_accounting.modules.fixed_assets.services.depreciation_method_service import DepreciationMethodService
 from seeker_accounting.modules.fixed_assets.services.asset_depreciation_settings_service import AssetDepreciationSettingsService
 from seeker_accounting.modules.fixed_assets.services.asset_component_service import AssetComponentService
@@ -500,6 +565,7 @@ from seeker_accounting.modules.payroll.services.payroll_export_service import Pa
 from seeker_accounting.modules.payroll.services.payroll_output_warning_service import PayrollOutputWarningService
 from seeker_accounting.modules.payroll.services.payroll_remittance_deadline_service import PayrollRemittanceDeadlineService
 from seeker_accounting.modules.audit.repositories.audit_event_repository import AuditEventRepository
+from seeker_accounting.modules.audit.services.audit_export_service import AuditExportService
 from seeker_accounting.modules.audit.services.audit_service import AuditService
 from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.administration.services.role_service import RoleService
@@ -890,6 +956,33 @@ def create_ap_aging_report_service(
     )
 
 
+def create_control_account_reconciliation_service(
+    session_context: SessionContext,
+) -> ControlAccountReconciliationService:
+    return ControlAccountReconciliationService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        ar_aging_report_repository_factory=ARAgingReportRepository,
+        ap_aging_report_repository_factory=APAgingReportRepository,
+        account_repository_factory=AccountRepository,
+        account_role_mapping_repository_factory=AccountRoleMappingRepository,
+    )
+
+
+def create_cash_flow_forecast_service(
+    session_context: SessionContext,
+) -> CashFlowForecastService:
+    from seeker_accounting.modules.reporting.repositories.cash_flow_forecast_repository import (
+        CashFlowForecastRepository,
+    )
+    return CashFlowForecastService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        ar_aging_report_repository_factory=ARAgingReportRepository,
+        ap_aging_report_repository_factory=APAgingReportRepository,
+        cash_flow_forecast_repository_factory=CashFlowForecastRepository,
+        financial_account_repository_factory=FinancialAccountRepository,
+    )
+
+
 def create_customer_statement_service(
     session_context: SessionContext,
     permission_service: PermissionService,
@@ -1187,6 +1280,203 @@ def create_tax_setup_service(
     )
 
 
+def create_company_tax_profile_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+) -> CompanyTaxProfileService:
+    return CompanyTaxProfileService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        company_tax_profile_repository_factory=CompanyTaxProfileRepository,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+
+
+def create_tax_obligation_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+) -> TaxObligationService:
+    return TaxObligationService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        tax_obligation_repository_factory=TaxObligationRepository,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+
+
+def create_tax_return_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+) -> TaxReturnService:
+    return TaxReturnService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        tax_return_repository_factory=TaxReturnRepository,
+        tax_obligation_repository_factory=TaxObligationRepository,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+
+
+def create_tax_payment_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+    *,
+    numbering_service: NumberingService | None = None,
+) -> TaxPaymentService:
+    return TaxPaymentService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        tax_payment_repository_factory=TaxPaymentRepository,
+        tax_return_repository_factory=TaxReturnRepository,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        account_repository_factory=AccountRepository,
+        fiscal_period_repository_factory=FiscalPeriodRepository,
+        journal_entry_repository_factory=JournalEntryRepository,
+        numbering_service=numbering_service,
+    )
+
+
+def create_tax_settlement_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    numbering_service: NumberingService,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+) -> TaxSettlementService:
+    return TaxSettlementService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        tax_return_repository_factory=TaxReturnRepository,
+        posted_tax_line_repository_factory=PostedTaxLineRepository,
+        tax_code_account_mapping_repository_factory=TaxCodeAccountMappingRepository,
+        fiscal_period_repository_factory=FiscalPeriodRepository,
+        account_repository_factory=AccountRepository,
+        journal_entry_repository_factory=JournalEntryRepository,
+        company_repository_factory=CompanyRepository,
+        numbering_service=numbering_service,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+
+
+def create_dsf_export_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+    ohada_balance_sheet_service: "OhadaBalanceSheetService | None" = None,
+    ohada_income_statement_service: "OhadaIncomeStatementService | None" = None,
+) -> DSFExportService:
+    return DSFExportService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        company_tax_profile_repository_factory=CompanyTaxProfileRepository,
+        tax_obligation_repository_factory=TaxObligationRepository,
+        tax_return_repository_factory=TaxReturnRepository,
+        tax_payment_repository_factory=TaxPaymentRepository,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        ohada_balance_sheet_service=ohada_balance_sheet_service,
+        ohada_income_statement_service=ohada_income_statement_service,
+        withholding_tax_certificate_repository_factory=(
+            WithholdingTaxCertificateRepository
+        ),
+    )
+
+
+def create_tax_fact_service() -> TaxFactService:
+    """Create the (stateless) TaxFactService.
+
+    The service holds no per-session state and depends only on a
+    repository factory.  It is invoked from inside posting-service
+    transactions and never opens its own unit of work.
+    """
+    return TaxFactService(
+        posted_tax_line_repository_factory=PostedTaxLineRepository,
+    )
+
+
+def create_withholding_tax_certificate_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+) -> WithholdingTaxCertificateService:
+    return WithholdingTaxCertificateService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        certificate_repository_factory=WithholdingTaxCertificateRepository,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        journal_entry_repository_factory=JournalEntryRepository,
+    )
+
+
+def create_tax_dashboard_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+) -> TaxDashboardService:
+    return TaxDashboardService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        tax_obligation_repository_factory=TaxObligationRepository,
+        tax_return_repository_factory=TaxReturnRepository,
+        tax_payment_repository_factory=TaxPaymentRepository,
+        withholding_tax_certificate_repository_factory=(
+            WithholdingTaxCertificateRepository
+        ),
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+    )
+
+
+def create_tax_audit_trail_service(
+    audit_service: AuditService,
+    permission_service: PermissionService,
+) -> TaxAuditTrailService:
+    return TaxAuditTrailService(
+        audit_service=audit_service,
+        permission_service=permission_service,
+    )
+
+
+def create_tax_return_pdf_export_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    print_engine,
+    audit_service: AuditService | None = None,
+) -> TaxReturnPDFExportService:
+    return TaxReturnPDFExportService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        tax_return_repository_factory=TaxReturnRepository,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        print_engine=print_engine,
+        audit_service=audit_service,
+    )
+
+
 def create_numbering_setup_service(
     session_context: SessionContext,
     permission_service: PermissionService,
@@ -1328,6 +1618,39 @@ def create_company_seed_service(chart_seed_service: ChartSeedService) -> Company
     return CompanySeedService(chart_seed_service)
 
 
+def create_fx_revaluation_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    numbering_service: NumberingService,
+    audit_service: AuditService | None = None,
+) -> FxRevaluationService:
+    return FxRevaluationService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        fiscal_period_repository_factory=FiscalPeriodRepository,
+        company_repository_factory=CompanyRepository,
+        numbering_service=numbering_service,
+        audit_service=audit_service,
+    )
+
+
+def create_journal_reversal_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    numbering_service: NumberingService,
+    audit_service: AuditService | None = None,
+) -> JournalReversalService:
+    return JournalReversalService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        journal_entry_repository_factory=JournalEntryRepository,
+        fiscal_period_repository_factory=FiscalPeriodRepository,
+        company_repository_factory=CompanyRepository,
+        numbering_service=numbering_service,
+        audit_service=audit_service,
+    )
+
+
 def create_customer_service(
     session_context: SessionContext,
     permission_service: PermissionService,
@@ -1415,6 +1738,7 @@ def create_sales_invoice_posting_service(
     app_context: AppContext,
     numbering_service: NumberingService,
     permission_service: PermissionService,
+    tax_fact_service: TaxFactService,
     audit_service: AuditService | None = None,
 ) -> SalesInvoicePostingService:
     return SalesInvoicePostingService(
@@ -1430,6 +1754,7 @@ def create_sales_invoice_posting_service(
         company_repository_factory=CompanyRepository,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
 
@@ -1480,6 +1805,7 @@ def create_sales_credit_note_posting_service(
     app_context: AppContext,
     numbering_service: NumberingService,
     permission_service: PermissionService,
+    tax_fact_service: TaxFactService,
     audit_service: AuditService | None = None,
 ) -> SalesCreditNotePostingService:
     return SalesCreditNotePostingService(
@@ -1494,6 +1820,7 @@ def create_sales_credit_note_posting_service(
         company_repository_factory=CompanyRepository,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
 
@@ -1864,6 +2191,7 @@ def create_purchase_credit_note_posting_service(
     app_context: AppContext,
     numbering_service: NumberingService,
     permission_service: PermissionService,
+    tax_fact_service: TaxFactService,
     audit_service: AuditService | None = None,
 ) -> PurchaseCreditNotePostingService:
     return PurchaseCreditNotePostingService(
@@ -1878,6 +2206,7 @@ def create_purchase_credit_note_posting_service(
         company_repository_factory=CompanyRepository,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
 
@@ -1887,6 +2216,7 @@ def create_purchase_bill_posting_service(
     app_context: AppContext,
     numbering_service: NumberingService,
     permission_service: PermissionService,
+    tax_fact_service: TaxFactService,
     audit_service: AuditService | None = None,
 ) -> PurchaseBillPostingService:
     return PurchaseBillPostingService(
@@ -1902,6 +2232,7 @@ def create_purchase_bill_posting_service(
         company_repository_factory=CompanyRepository,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
 
@@ -2224,6 +2555,24 @@ def create_depreciation_posting_service(
         asset_repository_factory=AssetRepository,
         asset_depreciation_run_repository_factory=AssetDepreciationRunRepository,
         asset_depreciation_run_line_repository_factory=AssetDepreciationRunLineRepository,
+        fiscal_period_repository_factory=FiscalPeriodRepository,
+        journal_entry_repository_factory=JournalEntryRepository,
+        company_repository_factory=CompanyRepository,
+        numbering_service=numbering_service,
+        audit_service=audit_service,
+    )
+
+
+def create_asset_disposal_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    numbering_service: NumberingService,
+    audit_service: AuditService | None = None,
+) -> AssetDisposalService:
+    return AssetDisposalService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        asset_repository_factory=AssetRepository,
         fiscal_period_repository_factory=FiscalPeriodRepository,
         journal_entry_repository_factory=JournalEntryRepository,
         company_repository_factory=CompanyRepository,
@@ -2661,6 +3010,16 @@ def create_audit_service(
     )
 
 
+def create_audit_export_service(
+    session_context: SessionContext,
+) -> AuditExportService:
+    return AuditExportService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        journal_entry_repository_factory=JournalEntryRepository,
+        audit_event_repository_factory=AuditEventRepository,
+    )
+
+
 def create_permission_service(
     app_context: AppContext,
 ) -> PermissionService:
@@ -2830,6 +3189,38 @@ def create_service_registry(
         permission_service=permission_service,
         audit_service=audit_service,
     )
+    company_tax_profile_service = create_company_tax_profile_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+    tax_obligation_service = create_tax_obligation_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+    tax_return_service = create_tax_return_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+    tax_payment_service = create_tax_payment_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        # numbering_service injected after creation below.
+    )
+    tax_fact_service = create_tax_fact_service()
+    withholding_tax_certificate_service = create_withholding_tax_certificate_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
     numbering_setup_service = create_numbering_setup_service(
         session_context=session_context,
         permission_service=permission_service,
@@ -2871,6 +3262,29 @@ def create_service_registry(
         permission_service=permission_service,
         audit_service=audit_service,
     )
+    tax_settlement_service = create_tax_settlement_service(
+        session_context=session_context,
+        app_context=app_context,
+        numbering_service=numbering_service,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+    # T16: tax_payment_service was created earlier without numbering_service
+    # (which is constructed later in this factory).  Inject it now so the
+    # bank-side JE posting path is wired.
+    tax_payment_service._numbering_service = numbering_service  # noqa: SLF001
+    fx_revaluation_service = create_fx_revaluation_service(
+        session_context=session_context,
+        app_context=app_context,
+        numbering_service=numbering_service,
+        audit_service=audit_service,
+    )
+    journal_reversal_service = create_journal_reversal_service(
+        session_context=session_context,
+        app_context=app_context,
+        numbering_service=numbering_service,
+        audit_service=audit_service,
+    )
     company_seed_service = create_company_seed_service(chart_seed_service)
     customer_service = create_customer_service(
         session_context=session_context,
@@ -2900,6 +3314,7 @@ def create_service_registry(
         app_context=app_context,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
     customer_quote_service = create_customer_quote_service(
@@ -2925,6 +3340,7 @@ def create_service_registry(
         app_context=app_context,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
     customer_receipt_service = create_customer_receipt_service(
@@ -2960,6 +3376,7 @@ def create_service_registry(
         app_context=app_context,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
     purchase_bill_posting_service = create_purchase_bill_posting_service(
@@ -2967,6 +3384,7 @@ def create_service_registry(
         app_context=app_context,
         numbering_service=numbering_service,
         permission_service=permission_service,
+        tax_fact_service=tax_fact_service,
         audit_service=audit_service,
     )
     supplier_payment_service = create_supplier_payment_service(
@@ -3058,6 +3476,12 @@ def create_service_registry(
         audit_service=audit_service,
     )
     depreciation_posting_service = create_depreciation_posting_service(
+        session_context=session_context,
+        app_context=app_context,
+        numbering_service=numbering_service,
+        audit_service=audit_service,
+    )
+    asset_disposal_service = create_asset_disposal_service(
         session_context=session_context,
         app_context=app_context,
         numbering_service=numbering_service,
@@ -3224,6 +3648,12 @@ def create_service_registry(
         session_context=session_context,
         permission_service=permission_service,
     )
+    control_account_reconciliation_service = create_control_account_reconciliation_service(
+        session_context=session_context,
+    )
+    cash_flow_forecast_service = create_cash_flow_forecast_service(
+        session_context=session_context,
+    )
     customer_statement_service = create_customer_statement_service(
         session_context=session_context,
         permission_service=permission_service,
@@ -3257,6 +3687,30 @@ def create_service_registry(
     ohada_income_statement_service = create_ohada_income_statement_service(
         session_context=session_context,
         permission_service=permission_service,
+    )
+    dsf_export_service = create_dsf_export_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        ohada_balance_sheet_service=ohada_balance_sheet_service,
+        ohada_income_statement_service=ohada_income_statement_service,
+    )
+    tax_dashboard_service = create_tax_dashboard_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+    )
+    tax_audit_trail_service = create_tax_audit_trail_service(
+        audit_service=audit_service,
+        permission_service=permission_service,
+    )
+    tax_return_pdf_export_service = create_tax_return_pdf_export_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        print_engine=print_engine,
+        audit_service=audit_service,
     )
     balance_sheet_export_service = BalanceSheetExportService(
         company_service=company_service,
@@ -3403,6 +3857,9 @@ def create_service_registry(
         company_service=company_service,
         company_logo_service=company_logo_service,
     )
+    audit_export_service = create_audit_export_service(
+        session_context=session_context,
+    )
     backup_export_service = create_backup_export_service(settings=settings, audit_service=audit_service)
     backup_analysis_service = create_backup_analysis_service(session_context=session_context)
     backup_merge_service = create_backup_merge_service(
@@ -3413,6 +3870,18 @@ def create_service_registry(
 
     from seeker_accounting.platform.licensing.license_service import LicenseService
     license_service = LicenseService(settings=settings)
+
+    # Wizard run persistence service (resumable wizard state).
+    from seeker_accounting.platform.wizards.persistence.wizard_run_repository import (
+        WizardRunRepository as _WizardRunRepository,
+    )
+    from seeker_accounting.platform.wizards.persistence.wizard_run_service import (
+        WizardRunService as _WizardRunService,
+    )
+    wizard_run_service = _WizardRunService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        repository_factory=lambda session: _WizardRunRepository(session),
+    )
 
     # Shell subsystems for the context-aware ribbon + top-level child windows.
     from seeker_accounting.app.shell.child_windows.child_window_manager import (
@@ -3471,6 +3940,8 @@ def create_service_registry(
         general_ledger_report_service=general_ledger_report_service,
         ar_aging_report_service=ar_aging_report_service,
         ap_aging_report_service=ap_aging_report_service,
+        control_account_reconciliation_service=control_account_reconciliation_service,
+        cash_flow_forecast_service=cash_flow_forecast_service,
         customer_statement_service=customer_statement_service,
         supplier_statement_service=supplier_statement_service,
         payroll_summary_report_service=payroll_summary_report_service,
@@ -3483,6 +3954,17 @@ def create_service_registry(
         project_dimension_validation_service=project_dimension_validation_service,
         reference_data_service=reference_data_service,
         tax_setup_service=tax_setup_service,
+        company_tax_profile_service=company_tax_profile_service,
+        tax_obligation_service=tax_obligation_service,
+        tax_return_service=tax_return_service,
+        tax_payment_service=tax_payment_service,
+        tax_settlement_service=tax_settlement_service,
+        dsf_export_service=dsf_export_service,
+        tax_fact_service=tax_fact_service,
+        withholding_tax_certificate_service=withholding_tax_certificate_service,
+        tax_dashboard_service=tax_dashboard_service,
+        tax_audit_trail_service=tax_audit_trail_service,
+        tax_return_pdf_export_service=tax_return_pdf_export_service,
         numbering_setup_service=numbering_setup_service,
         chart_of_accounts_service=chart_of_accounts_service,
         chart_seed_service=chart_seed_service,
@@ -3492,6 +3974,8 @@ def create_service_registry(
         period_control_service=period_control_service,
         journal_service=journal_service,
         journal_posting_service=journal_posting_service,
+        fx_revaluation_service=fx_revaluation_service,
+        journal_reversal_service=journal_reversal_service,
         company_seed_service=company_seed_service,
         customer_service=customer_service,
         supplier_service=supplier_service,
@@ -3531,6 +4015,7 @@ def create_service_registry(
         depreciation_schedule_service=depreciation_schedule_service,
         depreciation_run_service=depreciation_run_service,
         depreciation_posting_service=depreciation_posting_service,
+        asset_disposal_service=asset_disposal_service,
         depreciation_method_service=depreciation_method_service,
         asset_depreciation_settings_service=asset_depreciation_settings_service,
         asset_component_service=asset_component_service,
@@ -3584,10 +4069,12 @@ def create_service_registry(
         asset_print_service=asset_print_service,
         depreciation_run_print_service=depreciation_run_print_service,
         audit_log_print_service=audit_log_print_service,
+        audit_export_service=audit_export_service,
         backup_export_service=backup_export_service,
         backup_analysis_service=backup_analysis_service,
         backup_merge_service=backup_merge_service,
         license_service=license_service,
+        wizard_run_service=wizard_run_service,
         ribbon_registry=ribbon_registry,
         child_window_manager=child_window_manager,
     )

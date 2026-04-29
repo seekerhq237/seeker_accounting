@@ -15,7 +15,13 @@ from seeker_accounting.modules.accounting.reference_data.models.currency import 
 from seeker_accounting.modules.accounting.reference_data.models.tax_code import TaxCode
 from seeker_accounting.modules.accounting.reference_data.repositories.currency_repository import CurrencyRepository
 from seeker_accounting.modules.accounting.reference_data.repositories.tax_code_repository import TaxCodeRepository
+from seeker_accounting.modules.accounting.reference_data.services.tax_calculation_service import (
+    TaxCalculationService,
+)
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
+from seeker_accounting.modules.companies.repositories.company_preference_repository import (
+    CompanyPreferenceRepository,
+)
 from seeker_accounting.modules.job_costing.services.project_dimension_validation_service import (
     ProjectDimensionValidationService,
 )
@@ -33,6 +39,7 @@ from seeker_accounting.modules.purchases.dto.purchase_bill_dto import (
 )
 from seeker_accounting.modules.purchases.models.purchase_bill import PurchaseBill
 from seeker_accounting.modules.purchases.models.purchase_bill_line import PurchaseBillLine
+from seeker_accounting.modules.purchases.models.purchase_bill_line_tax import PurchaseBillLineTax
 from seeker_accounting.modules.purchases.repositories.purchase_bill_line_repository import (
     PurchaseBillLineRepository,
 )
@@ -50,6 +57,7 @@ if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
 
 CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
+CompanyPreferenceRepositoryFactory = Callable[[Session], CompanyPreferenceRepository]
 SupplierRepositoryFactory = Callable[[Session], SupplierRepository]
 CurrencyRepositoryFactory = Callable[[Session], CurrencyRepository]
 AccountRepositoryFactory = Callable[[Session], AccountRepository]
@@ -78,6 +86,7 @@ class PurchaseBillService:
         project_dimension_validation_service: ProjectDimensionValidationService,
         permission_service: PermissionService,
         audit_service: AuditService | None = None,
+        company_preference_repository_factory: CompanyPreferenceRepositoryFactory = CompanyPreferenceRepository,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._company_repository_factory = company_repository_factory
@@ -91,6 +100,7 @@ class PurchaseBillService:
         self._project_dimension_validation_service = project_dimension_validation_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._company_preference_repository_factory = company_preference_repository_factory
 
     def list_purchase_bills(
         self,
@@ -260,6 +270,9 @@ class PurchaseBillService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
             )
+            effective_inclusive = self._resolve_effective_tax_inclusive(
+                uow.session, company_id, normalized_command.is_tax_inclusive
+            )
             bill_lines = self._build_bill_lines(
                 session=uow.session,
                 company_id=company_id,
@@ -269,6 +282,7 @@ class PurchaseBillService:
                 lines=normalized_command.lines,
                 account_repository=account_repository,
                 tax_code_repository=tax_code_repository,
+                is_tax_inclusive=effective_inclusive,
             )
             subtotal_amount, tax_amount, total_amount = self._calculate_header_totals(bill_lines)
             self._require_positive_bill_total(total_amount)
@@ -287,6 +301,7 @@ class PurchaseBillService:
                 notes=normalized_command.notes,
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
+                is_tax_inclusive=effective_inclusive,
                 subtotal_amount=subtotal_amount,
                 tax_amount=tax_amount,
                 total_amount=total_amount,
@@ -343,6 +358,9 @@ class PurchaseBillService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
             )
+            effective_inclusive = self._resolve_effective_tax_inclusive(
+                uow.session, company_id, normalized_command.is_tax_inclusive
+            )
             bill_lines = self._build_bill_lines(
                 session=uow.session,
                 company_id=company_id,
@@ -352,6 +370,7 @@ class PurchaseBillService:
                 lines=normalized_command.lines,
                 account_repository=account_repository,
                 tax_code_repository=tax_code_repository,
+                is_tax_inclusive=effective_inclusive,
             )
             subtotal_amount, tax_amount, total_amount = self._calculate_header_totals(bill_lines)
             self._require_positive_bill_total(total_amount)
@@ -365,6 +384,7 @@ class PurchaseBillService:
             bill.notes = normalized_command.notes
             bill.contract_id = normalized_command.contract_id
             bill.project_id = normalized_command.project_id
+            bill.is_tax_inclusive = effective_inclusive
             bill.subtotal_amount = subtotal_amount
             bill.tax_amount = tax_amount
             bill.total_amount = total_amount
@@ -449,6 +469,7 @@ class PurchaseBillService:
         lines: tuple[PurchaseBillLineCommand, ...],
         account_repository: AccountRepository,
         tax_code_repository: TaxCodeRepository,
+        is_tax_inclusive: bool,
     ) -> list[PurchaseBillLine]:
         if not lines:
             raise ValidationError("At least one bill line is required.")
@@ -466,6 +487,16 @@ class PurchaseBillService:
                 tax_code = tax_code_repository.get_by_id(company_id, line_cmd.tax_code_id)
                 if tax_code is None:
                     raise ValidationError(f"Tax code on line {idx} does not exist.")
+                TaxCalculationService.validate_tax_code_for_date(
+                    tax_code,
+                    bill_date,
+                    not_yet_effective_message=(
+                        f"Tax code on line {idx} is not yet effective for the bill date."
+                    ),
+                    no_longer_effective_message=(
+                        f"Tax code on line {idx} is no longer effective for the bill date."
+                    ),
+                )
 
             resolved_dimensions = self._project_dimension_validation_service.resolve_line_dimensions(
                 header_contract_id=header_contract_id,
@@ -487,30 +518,40 @@ class PurchaseBillService:
 
             quantity = line_cmd.quantity if line_cmd.quantity is not None else Decimal("1.00")
             unit_cost = line_cmd.unit_cost if line_cmd.unit_cost is not None else Decimal("0.00")
-            line_subtotal = self._quantize_money(quantity * unit_cost)
-            line_tax = Decimal("0.00")
-            if tax_code is not None:
-                tax_percent = tax_code.rate_percent / Decimal("100")
-                line_tax = self._quantize_money(line_subtotal * tax_percent)
-            line_total = self._quantize_money(line_subtotal + line_tax)
-
-            bill_lines.append(
-                PurchaseBillLine(
-                    line_number=idx,
-                    description=line_cmd.description,
-                    quantity=quantity,
-                    unit_cost=unit_cost,
-                    expense_account_id=expense_account.id,
-                    tax_code_id=tax_code.id if tax_code is not None else None,
-                    line_subtotal_amount=line_subtotal,
-                    line_tax_amount=line_tax,
-                    line_total_amount=line_total,
-                    contract_id=resolved_dimensions.contract_id,
-                    project_id=resolved_dimensions.project_id,
-                    project_job_id=resolved_dimensions.project_job_id,
-                    project_cost_code_id=resolved_dimensions.project_cost_code_id,
-                )
+            line_amount = self._quantize_money(quantity * unit_cost)
+            breakdown = TaxCalculationService.calculate_line_tax(
+                line_amount, tax_code, is_tax_inclusive=is_tax_inclusive
             )
+            line_subtotal = breakdown.taxable_base
+            line_tax = breakdown.tax_amount
+            line_total = breakdown.gross_amount
+
+            bill_line = PurchaseBillLine(
+                line_number=idx,
+                description=line_cmd.description,
+                quantity=quantity,
+                unit_cost=unit_cost,
+                expense_account_id=expense_account.id,
+                tax_code_id=tax_code.id if tax_code is not None else None,
+                line_subtotal_amount=line_subtotal,
+                line_tax_amount=line_tax,
+                line_total_amount=line_total,
+                contract_id=resolved_dimensions.contract_id,
+                project_id=resolved_dimensions.project_id,
+                project_job_id=resolved_dimensions.project_job_id,
+                project_cost_code_id=resolved_dimensions.project_cost_code_id,
+            )
+            bill_line.tax_details = [
+                PurchaseBillLineTax(
+                    tax_code_id=tax_code.id if tax_code is not None else None,
+                    taxable_base=line_subtotal,
+                    tax_amount=line_tax,
+                    is_recoverable=(
+                        bool(tax_code.is_recoverable) if tax_code is not None and tax_code.is_recoverable is not None else None
+                    ),
+                )
+            ]
+            bill_lines.append(bill_line)
         return bill_lines
 
     def _calculate_header_totals(
@@ -524,6 +565,17 @@ class PurchaseBillService:
             self._quantize_money(tax),
             self._quantize_money(total),
         )
+
+    def _resolve_effective_tax_inclusive(
+        self, session: Session, company_id: int, command_value: bool | None
+    ) -> bool:
+        if command_value is not None:
+            return bool(command_value)
+        preference_repository = self._company_preference_repository_factory(session)
+        preference = preference_repository.get_by_company_id(company_id)
+        if preference is None:
+            return False
+        return bool(preference.tax_inclusive_default)
 
     def _normalize_command(self, command: CreatePurchaseBillCommand) -> CreatePurchaseBillCommand:
         return CreatePurchaseBillCommand(
@@ -823,6 +875,7 @@ class PurchaseBillService:
             posted_by_user_id=bill.posted_by_user_id,
             created_at=bill.created_at,
             updated_at=bill.updated_at,
+            is_tax_inclusive=bill.is_tax_inclusive,
             totals=PurchaseBillTotalsDTO(
                 subtotal_amount=bill.subtotal_amount,
                 tax_amount=bill.tax_amount,

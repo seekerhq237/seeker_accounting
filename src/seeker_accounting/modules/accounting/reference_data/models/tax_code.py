@@ -26,6 +26,11 @@ class TaxCode(TimestampMixin, ActiveFlagMixin, Base):
     calculation_method_code: Mapped[str] = mapped_column(String(50), nullable=False)
     rate_percent: Mapped[Decimal | None] = mapped_column(Numeric(9, 4), nullable=True)
     is_recoverable: Mapped[bool | None] = mapped_column(nullable=True)
+    has_cac: Mapped[bool] = mapped_column(nullable=False, default=False)
+    base_rate_percent: Mapped[Decimal | None] = mapped_column(Numeric(7, 4), nullable=True)
+    cac_rate_percent: Mapped[Decimal | None] = mapped_column(Numeric(7, 4), nullable=True)
+    exemption_kind: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    return_box_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     effective_from: Mapped[Date] = mapped_column(Date(), nullable=False)
     effective_to: Mapped[Date | None] = mapped_column(Date(), nullable=True)
 

@@ -80,6 +80,7 @@ class PurchaseBillDetailDTO:
     posted_by_user_id: int | None
     created_at: datetime
     updated_at: datetime
+    is_tax_inclusive: bool
     totals: PurchaseBillTotalsDTO
     lines: tuple[PurchaseBillLineDTO, ...]
     contract_id: int | None = None

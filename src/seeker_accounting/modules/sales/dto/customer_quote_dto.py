@@ -74,6 +74,7 @@ class CustomerQuoteDetailDTO:
     converted_to_invoice_id: int | None
     created_at: datetime
     updated_at: datetime
+    is_tax_inclusive: bool
     totals: CustomerQuoteTotalsDTO
     lines: tuple[CustomerQuoteLineDTO, ...]
     contract_id: int | None = None

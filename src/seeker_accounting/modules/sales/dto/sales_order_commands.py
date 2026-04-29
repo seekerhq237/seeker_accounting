@@ -32,6 +32,7 @@ class CreateSalesOrderCommand:
     contract_id: int | None = None
     project_id: int | None = None
     source_quote_id: int | None = None
+    is_tax_inclusive: bool | None = None
     lines: tuple[SalesOrderLineCommand, ...] = ()
 
 
@@ -46,6 +47,7 @@ class UpdateSalesOrderCommand:
     notes: str | None = None
     contract_id: int | None = None
     project_id: int | None = None
+    is_tax_inclusive: bool | None = None
     lines: tuple[SalesOrderLineCommand, ...] = ()
 
 

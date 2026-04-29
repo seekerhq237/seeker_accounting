@@ -31,6 +31,7 @@ class CreatePurchaseOrderCommand:
     notes: str | None = None
     contract_id: int | None = None
     project_id: int | None = None
+    is_tax_inclusive: bool | None = None
     lines: tuple[PurchaseOrderLineCommand, ...] = ()
 
 
@@ -45,6 +46,7 @@ class UpdatePurchaseOrderCommand:
     notes: str | None = None
     contract_id: int | None = None
     project_id: int | None = None
+    is_tax_inclusive: bool | None = None
     lines: tuple[PurchaseOrderLineCommand, ...] = ()
 
 

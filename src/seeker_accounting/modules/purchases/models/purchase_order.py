@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from seeker_accounting.db.base import Base, TimestampMixin
@@ -46,6 +46,7 @@ class PurchaseOrder(TimestampMixin, Base):
     status_code: Mapped[str] = mapped_column(String(20), nullable=False)
     reference_number: Mapped[str | None] = mapped_column(String(120), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    is_tax_inclusive: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
     subtotal_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)

@@ -1,0 +1,21 @@
+"""State keys for the Asset Disposal Wizard."""
+
+KEY_ASSET_ID = "asset_id"
+KEY_ASSET_NUMBER = "asset_number"
+KEY_ASSET_NAME = "asset_name"
+KEY_ASSET_ACQUISITION_COST = "asset_acquisition_cost"
+KEY_ASSET_STATUS_CODE = "asset_status_code"
+
+KEY_DISPOSAL_DATE = "disposal_date"
+KEY_DISPOSAL_AMOUNT = "disposal_amount"
+KEY_PROCEEDS_ACCOUNT_ID = "proceeds_account_id"
+KEY_GAIN_LOSS_ACCOUNT_ID = "gain_loss_account_id"
+KEY_REFERENCE = "reference"
+KEY_NOTES = "notes"
+
+KEY_DISPOSAL_RESULT_JE_ID = "disposal_result_je_id"
+KEY_DISPOSAL_RESULT_JE_NUMBER = "disposal_result_je_number"
+KEY_DISPOSAL_RESULT_NBV = "disposal_result_nbv"
+KEY_DISPOSAL_RESULT_ACCUMULATED = "disposal_result_accumulated"
+KEY_DISPOSAL_RESULT_GAIN_LOSS = "disposal_result_gain_loss"
+KEY_DISPOSED = "disposed"

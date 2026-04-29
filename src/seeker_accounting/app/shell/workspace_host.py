@@ -265,6 +265,31 @@ class WorkspaceHost(QFrame):
         if nav_id == nav_ids.TAX_CODES:
             from seeker_accounting.modules.accounting.reference_data.ui.tax_codes_page import TaxCodesPage
             return TaxCodesPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.TAX_PROFILE:
+            from seeker_accounting.modules.taxation.ui.company_tax_profile_page import (
+                CompanyTaxProfilePage,
+            )
+            return CompanyTaxProfilePage(self._service_registry, self._stack)
+        if nav_id == nav_ids.TAX_COMPLIANCE:
+            from seeker_accounting.modules.taxation.ui.tax_compliance_page import (
+                TaxCompliancePage,
+            )
+            return TaxCompliancePage(self._service_registry, self._stack)
+        if nav_id == nav_ids.TAX_DASHBOARD:
+            from seeker_accounting.modules.taxation.ui.tax_dashboard_page import (
+                TaxDashboardPage,
+            )
+            return TaxDashboardPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.TAX_AUDIT_TRAIL:
+            from seeker_accounting.modules.taxation.ui.tax_audit_trail_page import (
+                TaxAuditTrailPage,
+            )
+            return TaxAuditTrailPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.WITHHOLDING_CERTIFICATES:
+            from seeker_accounting.modules.taxation.ui.withholding_certificates_page import (
+                WithholdingCertificatesPage,
+            )
+            return WithholdingCertificatesPage(self._service_registry, self._stack)
         if nav_id == nav_ids.DOCUMENT_SEQUENCES:
             from seeker_accounting.modules.accounting.reference_data.ui.document_sequences_page import DocumentSequencesPage
             return DocumentSequencesPage(self._service_registry, self._stack)

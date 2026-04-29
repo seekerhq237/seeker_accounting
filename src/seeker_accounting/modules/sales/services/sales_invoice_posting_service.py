@@ -30,6 +30,14 @@ from seeker_accounting.modules.sales.repositories.customer_receipt_allocation_re
     CustomerReceiptAllocationRepository,
 )
 from seeker_accounting.modules.sales.repositories.sales_invoice_repository import SalesInvoiceRepository
+from seeker_accounting.modules.taxation.models.posted_tax_line import (
+    DIRECTION_SALES,
+    SOURCE_SALES_INVOICE,
+)
+from seeker_accounting.modules.taxation.services.tax_fact_service import (
+    TaxFactInput,
+    TaxFactService,
+)
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
@@ -65,10 +73,12 @@ class SalesInvoicePostingService:
         company_repository_factory: CompanyRepositoryFactory,
         numbering_service: NumberingService,
         permission_service: PermissionService,
+        tax_fact_service: TaxFactService,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
+        self._tax_fact_service = tax_fact_service
         self._sales_invoice_repository_factory = sales_invoice_repository_factory
         self._journal_entry_repository_factory = journal_entry_repository_factory
         self._account_repository_factory = account_repository_factory
@@ -226,6 +236,61 @@ class SalesInvoicePostingService:
             for jl in journal_lines:
                 jl.journal_entry_id = journal_entry.id
             uow.session.add_all(journal_lines)
+
+            # --- Record immutable tax facts (Slice T11 / T12) ---
+            # Prefer the per-line tax-detail snapshot rows (Slice T3 /
+            # T12) so multi-tax-per-line authoring flows naturally into
+            # PostedTaxLine. Fall back to the parent line's single
+            # tax_code/line_tax_amount for documents drafted before the
+            # snapshot rows existed.
+            tax_facts: list[TaxFactInput] = []
+            for inv_line in invoice.lines:
+                detail_rows = list(inv_line.tax_details or ())
+                if detail_rows:
+                    for detail in detail_rows:
+                        if (
+                            detail.tax_code_id is None
+                            and detail.tax_amount == Decimal("0.00")
+                        ):
+                            continue
+                        tax_facts.append(
+                            TaxFactInput(
+                                tax_code_id=detail.tax_code_id,
+                                taxable_base=detail.taxable_base,
+                                tax_amount=detail.tax_amount,
+                                is_recoverable=None,  # output VAT — not applicable
+                                source_line_id=inv_line.id,
+                            )
+                        )
+                else:
+                    if (
+                        inv_line.tax_code_id is None
+                        and inv_line.line_tax_amount == Decimal("0.00")
+                    ):
+                        continue
+                    tax_facts.append(
+                        TaxFactInput(
+                            tax_code_id=inv_line.tax_code_id,
+                            taxable_base=inv_line.line_subtotal_amount,
+                            tax_amount=inv_line.line_tax_amount,
+                            is_recoverable=None,
+                            source_line_id=inv_line.id,
+                        )
+                    )
+            if tax_facts:
+                posted_at_value = datetime.utcnow()
+                self._tax_fact_service.record_facts_in_session(
+                    uow.session,
+                    company_id=company_id,
+                    fiscal_period_id=fiscal_period.id,
+                    direction=DIRECTION_SALES,
+                    source_document_type=SOURCE_SALES_INVOICE,
+                    source_document_id=invoice.id,
+                    journal_entry_id=journal_entry.id,
+                    posted_at=posted_at_value,
+                    posted_by_user_id=actor_id,
+                    line_facts=tax_facts,
+                )
 
             # --- Assign invoice number and update status ---
             invoice.invoice_number = self._numbering_service.issue_next_number(

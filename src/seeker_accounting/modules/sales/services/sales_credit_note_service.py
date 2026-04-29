@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 
 from seeker_accounting.app.context.app_context import AppContext
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
+from seeker_accounting.modules.accounting.reference_data.models.tax_code import TaxCode
+from seeker_accounting.modules.accounting.reference_data.services.tax_calculation_service import (
+    TaxCalculationService,
+)
 from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.audit import event_type_catalog
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
@@ -23,6 +27,7 @@ from seeker_accounting.modules.sales.dto.sales_credit_note_dto import (
 )
 from seeker_accounting.modules.sales.models.sales_credit_note import SalesCreditNote
 from seeker_accounting.modules.sales.models.sales_credit_note_line import SalesCreditNoteLine
+from seeker_accounting.modules.sales.models.sales_credit_note_line_tax import SalesCreditNoteLineTax
 from seeker_accounting.modules.sales.repositories.sales_credit_note_line_repository import (
     SalesCreditNoteLineRepository,
 )
@@ -94,7 +99,7 @@ class SalesCreditNoteService:
             self._require_company(uow.session, cmd.company_id)
             self._require_customer(uow.session, cmd.company_id, cmd.customer_id)
 
-            lines = self._validate_and_build_lines(cmd.lines)
+            lines = self._validate_and_build_lines(uow.session, cmd.lines)
             subtotal, tax_total, grand_total = self._compute_totals(lines)
 
             cn = SalesCreditNote(
@@ -153,7 +158,7 @@ class SalesCreditNoteService:
 
             self._require_customer(uow.session, cmd.company_id, cmd.customer_id)
 
-            lines = self._validate_and_build_lines(cmd.lines)
+            lines = self._validate_and_build_lines(uow.session, cmd.lines)
             subtotal, tax_total, grand_total = self._compute_totals(lines)
 
             cn.customer_id = cmd.customer_id
@@ -229,6 +234,7 @@ class SalesCreditNoteService:
 
     @staticmethod
     def _validate_and_build_lines(
+        session: Session,
         line_cmds: list[SalesCreditNoteLineCommand],
     ) -> list[SalesCreditNoteLine]:
         if not line_cmds:
@@ -249,27 +255,53 @@ class SalesCreditNoteService:
                 disc = Decimal("0.00")
             subtotal = gross - disc
 
-            # Tax computed by posting service; here we store zero until posting
-            lines.append(
-                SalesCreditNoteLine(
-                    sales_credit_note_id=0,
-                    line_number=idx,
-                    description=lc.description,
-                    quantity=lc.quantity,
-                    unit_price=lc.unit_price,
-                    discount_percent=lc.discount_percent,
-                    discount_amount=disc if disc > Decimal("0") else None,
-                    tax_code_id=lc.tax_code_id,
-                    revenue_account_id=lc.revenue_account_id,
-                    line_subtotal_amount=subtotal,
-                    line_tax_amount=Decimal("0.00"),
-                    line_total_amount=subtotal,
-                    contract_id=lc.contract_id,
-                    project_id=lc.project_id,
-                    project_job_id=lc.project_job_id,
-                    project_cost_code_id=lc.project_cost_code_id,
-                )
+            # Resolve tax code and compute the line tax at draft time so
+            # posting writes correct (non-zero) tax facts. Credit notes
+            # are tax-exclusive at draft (no header is_tax_inclusive
+            # flag today); the posting service inverts the sign.
+            tax_code: TaxCode | None = None
+            if lc.tax_code_id is not None:
+                tax_code = session.get(TaxCode, lc.tax_code_id)
+                if tax_code is None:
+                    raise ValidationError(
+                        f"Line {idx}: tax code {lc.tax_code_id} not found."
+                    )
+            breakdown = TaxCalculationService.calculate_line_tax(
+                subtotal, tax_code, is_tax_inclusive=False
             )
+            line_tax_amount = breakdown.tax_amount
+            line_total_amount = breakdown.gross_amount
+
+            credit_line = SalesCreditNoteLine(
+                sales_credit_note_id=0,
+                line_number=idx,
+                description=lc.description,
+                quantity=lc.quantity,
+                unit_price=lc.unit_price,
+                discount_percent=lc.discount_percent,
+                discount_amount=disc if disc > Decimal("0") else None,
+                tax_code_id=lc.tax_code_id,
+                revenue_account_id=lc.revenue_account_id,
+                line_subtotal_amount=subtotal,
+                line_tax_amount=line_tax_amount,
+                line_total_amount=line_total_amount,
+                contract_id=lc.contract_id,
+                project_id=lc.project_id,
+                project_job_id=lc.project_job_id,
+                project_cost_code_id=lc.project_cost_code_id,
+            )
+            # Snapshot tax-detail row (Slice T12). Mirrors the legacy
+            # single-tax shape; multi-tax-per-line authoring lands without
+            # another migration. is_recoverable is null on sales rows.
+            credit_line.tax_details = [
+                SalesCreditNoteLineTax(
+                    tax_code_id=lc.tax_code_id,
+                    taxable_base=subtotal,
+                    tax_amount=line_tax_amount,
+                    is_recoverable=None,
+                )
+            ]
+            lines.append(credit_line)
         return lines
 
     @staticmethod

@@ -15,7 +15,13 @@ from seeker_accounting.modules.accounting.reference_data.models.currency import 
 from seeker_accounting.modules.accounting.reference_data.models.tax_code import TaxCode
 from seeker_accounting.modules.accounting.reference_data.repositories.currency_repository import CurrencyRepository
 from seeker_accounting.modules.accounting.reference_data.repositories.tax_code_repository import TaxCodeRepository
+from seeker_accounting.modules.accounting.reference_data.services.tax_calculation_service import (
+    TaxCalculationService,
+)
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
+from seeker_accounting.modules.companies.repositories.company_preference_repository import (
+    CompanyPreferenceRepository,
+)
 from seeker_accounting.modules.customers.models.customer import Customer
 from seeker_accounting.modules.customers.repositories.customer_repository import CustomerRepository
 from seeker_accounting.modules.job_costing.services.project_dimension_validation_service import (
@@ -40,6 +46,7 @@ from seeker_accounting.modules.sales.dto.sales_invoice_commands import (
 )
 from seeker_accounting.modules.sales.models.customer_quote import CustomerQuote
 from seeker_accounting.modules.sales.models.customer_quote_line import CustomerQuoteLine
+from seeker_accounting.modules.sales.models.customer_quote_line_tax import CustomerQuoteLineTax
 from seeker_accounting.modules.sales.repositories.customer_quote_line_repository import CustomerQuoteLineRepository
 from seeker_accounting.modules.sales.repositories.customer_quote_repository import CustomerQuoteRepository
 from seeker_accounting.modules.sales.repositories.sales_invoice_repository import SalesInvoiceRepository
@@ -50,6 +57,7 @@ if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
 
 CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
+CompanyPreferenceRepositoryFactory = Callable[[Session], CompanyPreferenceRepository]
 CustomerRepositoryFactory = Callable[[Session], CustomerRepository]
 CurrencyRepositoryFactory = Callable[[Session], CurrencyRepository]
 AccountRepositoryFactory = Callable[[Session], AccountRepository]
@@ -79,6 +87,7 @@ class CustomerQuoteService:
         project_dimension_validation_service: ProjectDimensionValidationService,
         permission_service: PermissionService,
         audit_service: "AuditService | None" = None,
+        company_preference_repository_factory: CompanyPreferenceRepositoryFactory = CompanyPreferenceRepository,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._company_repository_factory = company_repository_factory
@@ -93,6 +102,7 @@ class CustomerQuoteService:
         self._project_dimension_validation_service = project_dimension_validation_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._company_preference_repository_factory = company_preference_repository_factory
 
     # ── Read ──────────────────────────────────────────────────────────
     def list_quotes(
@@ -149,6 +159,9 @@ class CustomerQuoteService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
             )
+            effective_inclusive = self._resolve_effective_tax_inclusive(
+                uow.session, company_id, normalized_command.is_tax_inclusive
+            )
             quote_lines = self._build_quote_lines(
                 session=uow.session,
                 company_id=company_id,
@@ -158,6 +171,7 @@ class CustomerQuoteService:
                 lines=normalized_command.lines,
                 account_repository=account_repository,
                 tax_code_repository=tax_code_repository,
+                is_tax_inclusive=effective_inclusive,
             )
             subtotal_amount, tax_amount, total_amount = self._calculate_header_totals(quote_lines)
             self._require_positive_total(total_amount)
@@ -175,6 +189,7 @@ class CustomerQuoteService:
                 notes=normalized_command.notes,
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
+                is_tax_inclusive=effective_inclusive,
                 subtotal_amount=subtotal_amount,
                 tax_amount=tax_amount,
                 total_amount=total_amount,
@@ -230,6 +245,9 @@ class CustomerQuoteService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
             )
+            effective_inclusive = self._resolve_effective_tax_inclusive(
+                uow.session, company_id, normalized_command.is_tax_inclusive
+            )
             quote_lines = self._build_quote_lines(
                 session=uow.session,
                 company_id=company_id,
@@ -239,6 +257,7 @@ class CustomerQuoteService:
                 lines=normalized_command.lines,
                 account_repository=account_repository,
                 tax_code_repository=tax_code_repository,
+                is_tax_inclusive=effective_inclusive,
             )
             subtotal_amount, tax_amount, total_amount = self._calculate_header_totals(quote_lines)
             self._require_positive_total(total_amount)
@@ -252,6 +271,7 @@ class CustomerQuoteService:
             quote.notes = normalized_command.notes
             quote.contract_id = normalized_command.contract_id
             quote.project_id = normalized_command.project_id
+            quote.is_tax_inclusive = effective_inclusive
             quote.subtotal_amount = subtotal_amount
             quote.tax_amount = tax_amount
             quote.total_amount = total_amount
@@ -393,6 +413,7 @@ class CustomerQuoteService:
                 notes=notes if notes is not None else quote.notes,
                 contract_id=quote.contract_id,
                 project_id=quote.project_id,
+                is_tax_inclusive=quote.is_tax_inclusive,
                 lines=tuple(invoice_line_commands),
             )
 
@@ -543,6 +564,7 @@ class CustomerQuoteService:
         lines: tuple[CustomerQuoteLineCommand, ...],
         account_repository: AccountRepository,
         tax_code_repository: TaxCodeRepository,
+        is_tax_inclusive: bool,
     ) -> list[CustomerQuoteLine]:
         built: list[CustomerQuoteLine] = []
         for line_number, command in enumerate(lines, start=1):
@@ -572,33 +594,41 @@ class CustomerQuoteService:
                 project_cost_code_id=resolved_dimensions.project_cost_code_id,
                 line_number=line_number,
             )
-            subtotal_amount, tax_amount, total_amount = self._calculate_line_totals(command, tax_code)
-            built.append(
-                CustomerQuoteLine(
-                    customer_quote_id=0,
-                    line_number=line_number,
-                    description=command.description,
-                    quantity=command.quantity,
-                    unit_price=command.unit_price,
-                    discount_percent=command.discount_percent,
-                    discount_amount=command.discount_amount,
-                    tax_code_id=tax_code.id if tax_code is not None else None,
-                    revenue_account_id=revenue_account_id,
-                    line_subtotal_amount=subtotal_amount,
-                    line_tax_amount=tax_amount,
-                    line_total_amount=total_amount,
-                    contract_id=resolved_dimensions.contract_id,
-                    project_id=resolved_dimensions.project_id,
-                    project_job_id=resolved_dimensions.project_job_id,
-                    project_cost_code_id=resolved_dimensions.project_cost_code_id,
-                )
+            subtotal_amount, tax_amount, total_amount = self._calculate_line_totals(command, tax_code, is_tax_inclusive)
+            quote_line = CustomerQuoteLine(
+                customer_quote_id=0,
+                line_number=line_number,
+                description=command.description,
+                quantity=command.quantity,
+                unit_price=command.unit_price,
+                discount_percent=command.discount_percent,
+                discount_amount=command.discount_amount,
+                tax_code_id=tax_code.id if tax_code is not None else None,
+                revenue_account_id=revenue_account_id,
+                line_subtotal_amount=subtotal_amount,
+                line_tax_amount=tax_amount,
+                line_total_amount=total_amount,
+                contract_id=resolved_dimensions.contract_id,
+                project_id=resolved_dimensions.project_id,
+                project_job_id=resolved_dimensions.project_job_id,
+                project_cost_code_id=resolved_dimensions.project_cost_code_id,
             )
+            quote_line.tax_details = [
+                CustomerQuoteLineTax(
+                    tax_code_id=tax_code.id if tax_code is not None else None,
+                    taxable_base=subtotal_amount,
+                    tax_amount=tax_amount,
+                    is_recoverable=None,
+                )
+            ]
+            built.append(quote_line)
         return built
 
     def _calculate_line_totals(
         self,
         command: CustomerQuoteLineCommand,
         tax_code: TaxCode | None,
+        is_tax_inclusive: bool,
     ) -> tuple[Decimal, Decimal, Decimal]:
         base_amount = self._quantize_money(command.quantity * command.unit_price)
         if command.discount_amount is not None:
@@ -609,24 +639,25 @@ class CustomerQuoteService:
             discount_amount = Decimal("0.00")
         if discount_amount > base_amount:
             raise ValidationError("Discount amount cannot exceed the line amount.")
-        line_subtotal_amount = self._quantize_money(base_amount - discount_amount)
-        line_tax_amount = self._calculate_tax_amount(line_subtotal_amount, tax_code)
-        line_total_amount = self._quantize_money(line_subtotal_amount + line_tax_amount)
-        return line_subtotal_amount, line_tax_amount, line_total_amount
+        line_amount = self._quantize_money(base_amount - discount_amount)
+        breakdown = TaxCalculationService.calculate_line_tax(
+            line_amount, tax_code, is_tax_inclusive=is_tax_inclusive
+        )
+        return breakdown.taxable_base, breakdown.tax_amount, breakdown.gross_amount
 
     def _calculate_tax_amount(self, line_subtotal_amount: Decimal, tax_code: TaxCode | None) -> Decimal:
-        if tax_code is None:
-            return Decimal("0.00")
-        method_code = tax_code.calculation_method_code.strip().upper()
-        if method_code == "PERCENTAGE":
-            if tax_code.rate_percent is None:
-                raise ValidationError("Percentage tax code is missing a rate.")
-            return self._quantize_money(line_subtotal_amount * Decimal(str(tax_code.rate_percent)) / Decimal("100"))
-        if method_code == "FIXED_AMOUNT":
-            if tax_code.rate_percent is None:
-                return Decimal("0.00")
-            return self._quantize_money(Decimal(str(tax_code.rate_percent)))
-        return Decimal("0.00")
+        return TaxCalculationService.calculate_line_tax_amount(line_subtotal_amount, tax_code)
+
+    def _resolve_effective_tax_inclusive(
+        self, session: Session, company_id: int, command_value: bool | None
+    ) -> bool:
+        if command_value is not None:
+            return bool(command_value)
+        preference_repository = self._company_preference_repository_factory(session)
+        preference = preference_repository.get_by_company_id(company_id)
+        if preference is None:
+            return False
+        return bool(preference.tax_inclusive_default)
 
     def _calculate_header_totals(self, lines: list[CustomerQuoteLine]) -> tuple[Decimal, Decimal, Decimal]:
         subtotal_amount = self._quantize_money(sum((line.line_subtotal_amount for line in lines), Decimal("0.00")))
@@ -924,6 +955,7 @@ class CustomerQuoteService:
             converted_to_invoice_id=quote.converted_to_invoice_id,
             created_at=quote.created_at,
             updated_at=quote.updated_at,
+            is_tax_inclusive=quote.is_tax_inclusive,
             totals=totals,
             lines=lines,
             contract_id=quote.contract_id,

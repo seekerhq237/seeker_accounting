@@ -69,3 +69,9 @@ class SalesOrderLine(TimestampMixin, Base):
     project: Mapped["Project | None"] = relationship("Project")
     project_job: Mapped["ProjectJob | None"] = relationship("ProjectJob")
     project_cost_code: Mapped["ProjectCostCode | None"] = relationship("ProjectCostCode")
+    tax_details: Mapped[list["SalesOrderLineTax"]] = relationship(
+        "SalesOrderLineTax",
+        back_populates="sales_order_line",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

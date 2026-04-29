@@ -86,6 +86,26 @@ _NAV_ALIASES: dict[str, list[str]] = {
     nav_ids.PAYROLL_OPERATIONS: ["payslips", "statutory", "payroll audit"],
     nav_ids.PAYMENT_TERMS: ["credit terms", "due terms"],
     nav_ids.TAX_CODES: ["VAT", "tax rates", "tax setup"],
+    nav_ids.TAX_PROFILE: ["NIU", "tax regime", "DSF", "tax identity"],
+    nav_ids.TAX_COMPLIANCE: [
+        "tax obligations",
+        "VAT returns",
+        "tax payments",
+        "DSF export",
+        "tax filing",
+    ],
+    nav_ids.TAX_DASHBOARD: [
+        "tax dashboard",
+        "tax KPI",
+        "compliance dashboard",
+        "upcoming obligations",
+    ],
+    nav_ids.TAX_AUDIT_TRAIL: [
+        "tax audit",
+        "tax audit trail",
+        "taxation audit log",
+        "taxation activity",
+    ],
     nav_ids.DOCUMENT_SEQUENCES: ["numbering", "auto-number", "sequence"],
     nav_ids.ACCOUNT_ROLE_MAPPINGS: ["control accounts", "role mapping"],
     nav_ids.REPORTS: ["reporting", "financial reports"],
@@ -238,6 +258,360 @@ class ActionsProvider:
         _add_global("Toggle Theme", "Switch between light and dark theme",
                      sr.theme_manager.toggle_theme, ["dark mode", "light mode", "theme"])
 
+        def _open_company_setup_wizard() -> None:
+            from seeker_accounting.modules.wizards.company_setup import (
+                launch_company_setup_wizard,
+            )
+            launch_company_setup_wizard(sr)
+
+        _add_global(
+            "Launch Company Setup Wizard",
+            "Guided end-to-end company configuration",
+            _open_company_setup_wizard,
+            ["wizard", "setup", "company", "onboard", "new company"],
+        )
+
+        def _open_month_end_close_wizard() -> None:
+            from seeker_accounting.modules.wizards.month_end_close import (
+                launch_month_end_close_wizard,
+            )
+            launch_month_end_close_wizard(sr)
+
+        _add_global(
+            "Launch Month-End Close Wizard",
+            "Guided period close with drafts & reconciliation checks",
+            _open_month_end_close_wizard,
+            ["wizard", "close", "month end", "period", "lock period"],
+        )
+
+        def _open_payroll_run_wizard() -> None:
+            from seeker_accounting.modules.wizards.payroll_run import (
+                launch_payroll_run_wizard,
+            )
+            launch_payroll_run_wizard(sr)
+
+        _add_global(
+            "Launch Payroll Run Wizard",
+            "Guided payroll: create, calculate, approve, and post",
+            _open_payroll_run_wizard,
+            ["wizard", "payroll", "run", "payslip", "salary"],
+        )
+
+        def _open_period_reopen_wizard() -> None:
+            from seeker_accounting.modules.wizards.period_reopen import (
+                launch_period_reopen_wizard,
+            )
+            launch_period_reopen_wizard(sr)
+
+        _add_global(
+            "Launch Period Reopen Wizard",
+            "Reopen a closed or locked fiscal period with audit trail",
+            _open_period_reopen_wizard,
+            ["wizard", "period", "reopen", "unlock", "fiscal"],
+        )
+
+        def _open_depreciation_run_wizard() -> None:
+            from seeker_accounting.modules.wizards.depreciation_run import (
+                launch_depreciation_run_wizard,
+            )
+            launch_depreciation_run_wizard(sr)
+
+        _add_global(
+            "Launch Depreciation Run Wizard",
+            "Compute, preview, and post a period depreciation run",
+            _open_depreciation_run_wizard,
+            ["wizard", "depreciation", "fixed assets", "amortization", "run"],
+        )
+
+        def _open_bank_reconciliation_wizard() -> None:
+            from seeker_accounting.modules.wizards.bank_reconciliation import (
+                launch_bank_reconciliation_wizard,
+            )
+            launch_bank_reconciliation_wizard(sr)
+
+        _add_global(
+            "Launch Bank Reconciliation Wizard",
+            "Open or finalize a bank reconciliation session",
+            _open_bank_reconciliation_wizard,
+            ["wizard", "bank", "reconciliation", "reconcile", "treasury", "statement"],
+        )
+
+        def _open_receipt_allocation_wizard() -> None:
+            from seeker_accounting.modules.wizards.receipt_allocation import (
+                launch_receipt_allocation_wizard,
+            )
+            launch_receipt_allocation_wizard(sr)
+
+        _add_global(
+            "Launch Receipt & Allocation Wizard",
+            "Capture a customer receipt and allocate to open invoices",
+            _open_receipt_allocation_wizard,
+            ["wizard", "receipt", "allocate", "AR", "customer payment", "apply receipt"],
+        )
+
+        def _open_supplier_payment_wizard() -> None:
+            from seeker_accounting.modules.wizards.supplier_payment import (
+                launch_supplier_payment_wizard,
+            )
+            launch_supplier_payment_wizard(sr)
+
+        _add_global(
+            "Launch Supplier Payment Wizard",
+            "Capture an AP payment and allocate to open bills",
+            _open_supplier_payment_wizard,
+            ["wizard", "payment", "supplier", "AP", "vendor", "pay bills"],
+        )
+
+        def _open_new_customer_wizard() -> None:
+            from seeker_accounting.modules.wizards.new_customer import (
+                launch_new_customer_wizard,
+            )
+            launch_new_customer_wizard(sr)
+
+        _add_global(
+            "Launch New Customer Wizard",
+            "Guided customer creation (identity, contact, financial)",
+            _open_new_customer_wizard,
+            ["wizard", "new customer", "add customer", "AR onboarding"],
+        )
+
+        def _open_new_supplier_wizard() -> None:
+            from seeker_accounting.modules.wizards.new_supplier import (
+                launch_new_supplier_wizard,
+            )
+            launch_new_supplier_wizard(sr)
+
+        _add_global(
+            "Launch New Supplier Wizard",
+            "Guided supplier creation (identity, contact, financial)",
+            _open_new_supplier_wizard,
+            ["wizard", "new supplier", "add supplier", "AP onboarding", "vendor"],
+        )
+
+        def _open_new_item_wizard() -> None:
+            from seeker_accounting.modules.wizards.new_item import (
+                launch_new_item_wizard,
+            )
+            launch_new_item_wizard(sr)
+
+        _add_global(
+            "Launch New Item Wizard",
+            "Guided item creation (identity, classification, default accounts)",
+            _open_new_item_wizard,
+            ["wizard", "new item", "add item", "product", "service", "inventory"],
+        )
+
+        def _open_sales_credit_note_wizard() -> None:
+            from seeker_accounting.modules.wizards.sales_credit_note import (
+                launch_sales_credit_note_wizard,
+            )
+            launch_sales_credit_note_wizard(sr)
+
+        _add_global(
+            "Launch Sales Credit Note Wizard",
+            "Issue a customer credit note (draft + optional posting)",
+            _open_sales_credit_note_wizard,
+            ["wizard", "credit note", "AR credit", "customer refund", "return"],
+        )
+
+        def _open_purchase_credit_note_wizard() -> None:
+            from seeker_accounting.modules.wizards.purchase_credit_note import (
+                launch_purchase_credit_note_wizard,
+            )
+            launch_purchase_credit_note_wizard(sr)
+
+        _add_global(
+            "Launch Purchase Credit Note Wizard",
+            "Record a supplier credit note (draft + optional posting)",
+            _open_purchase_credit_note_wizard,
+            ["wizard", "credit note", "AP credit", "supplier credit", "vendor", "return"],
+        )
+
+        def _open_document_numbering_wizard() -> None:
+            from seeker_accounting.modules.wizards.document_numbering import (
+                launch_document_numbering_wizard,
+            )
+            launch_document_numbering_wizard(sr)
+
+        _add_global(
+            "Launch Document Numbering Wizard",
+            "Configure document numbering sequences (prefix, padding, reset)",
+            _open_document_numbering_wizard,
+            ["wizard", "numbering", "sequence", "document number", "invoice number", "prefix"],
+        )
+
+        def _open_opening_balances_wizard() -> None:
+            from seeker_accounting.modules.wizards.opening_balances import (
+                launch_opening_balances_wizard,
+            )
+            launch_opening_balances_wizard(sr)
+
+        _add_global(
+            "Launch Opening Balances Wizard",
+            "Capture brought-forward balances as a draft OPENING journal entry",
+            _open_opening_balances_wizard,
+            ["wizard", "opening balances", "trial balance", "brought forward", "company setup"],
+        )
+
+        def _open_bank_cash_setup_wizard() -> None:
+            from seeker_accounting.modules.wizards.bank_cash_setup import (
+                launch_bank_cash_setup_wizard,
+            )
+            launch_bank_cash_setup_wizard(sr)
+
+        _add_global(
+            "Launch Bank & Cash Setup Wizard",
+            "Add a bank, cash, or petty-cash financial account",
+            _open_bank_cash_setup_wizard,
+            ["wizard", "bank", "cash", "petty cash", "financial account", "treasury setup"],
+        )
+
+        def _open_user_provisioning_wizard() -> None:
+            from seeker_accounting.modules.wizards.user_provisioning import (
+                launch_user_provisioning_wizard,
+            )
+            launch_user_provisioning_wizard(sr)
+
+        _add_global(
+            "Launch User Provisioning Wizard",
+            "Create a user, assign roles, and grant company access",
+            _open_user_provisioning_wizard,
+            ["wizard", "user", "provisioning", "role", "permission", "administration", "access"],
+        )
+
+        def _open_tax_regime_wizard() -> None:
+            from seeker_accounting.modules.wizards.tax_regime import (
+                launch_tax_regime_wizard,
+            )
+            launch_tax_regime_wizard(sr)
+
+        _add_global(
+            "Launch Tax Regime Wizard",
+            "Configure the company's tax regime, rates, and default tax accounts",
+            _open_tax_regime_wizard,
+            ["wizard", "tax", "VAT", "TVA", "regime", "tax rates", "tax setup"],
+        )
+
+        def _open_coa_customization_wizard() -> None:
+            from seeker_accounting.modules.wizards.coa_customization import (
+                launch_coa_customization_wizard,
+            )
+            launch_coa_customization_wizard(sr)
+
+        _add_global(
+            "Launch Chart of Accounts Customization Wizard",
+            "Tailor the chart of accounts (rename, deactivate, add custom accounts)",
+            _open_coa_customization_wizard,
+            ["wizard", "chart of accounts", "COA", "account", "customize chart"],
+        )
+
+        def _open_year_end_close_wizard() -> None:
+            from seeker_accounting.modules.wizards.year_end_close import (
+                launch_year_end_close_wizard,
+            )
+            launch_year_end_close_wizard(sr)
+
+        _add_global(
+            "Launch Year-End Close Wizard",
+            "Close the fiscal year: lock periods, post closing entries, roll forward",
+            _open_year_end_close_wizard,
+            ["wizard", "year end", "close", "fiscal year", "closing entries", "lock period"],
+        )
+
+        def _open_asset_disposal_wizard() -> None:
+            from seeker_accounting.modules.wizards.asset_disposal import (
+                launch_asset_disposal_wizard,
+            )
+            launch_asset_disposal_wizard(sr)
+
+        _add_global(
+            "Launch Asset Disposal Wizard",
+            "Dispose a fixed asset and post the gain or loss",
+            _open_asset_disposal_wizard,
+            ["wizard", "asset", "disposal", "dispose", "fixed asset", "scrap", "sell asset"],
+        )
+
+        def _open_fx_revaluation_wizard() -> None:
+            from seeker_accounting.modules.wizards.fx_revaluation import (
+                launch_fx_revaluation_wizard,
+            )
+            launch_fx_revaluation_wizard(sr)
+
+        _add_global(
+            "Launch FX Revaluation Wizard",
+            "Revalue foreign-currency balances and post the unrealised gain/loss",
+            _open_fx_revaluation_wizard,
+            ["wizard", "FX", "foreign exchange", "revaluation", "currency", "unrealised", "gain", "loss"],
+        )
+
+        def _open_stock_count_wizard() -> None:
+            from seeker_accounting.modules.wizards.stock_count import (
+                launch_stock_count_wizard,
+            )
+            launch_stock_count_wizard(sr)
+
+        _add_global(
+            "Launch Stock Count Wizard",
+            "Reconcile physical stock counts and post the inventory adjustment",
+            _open_stock_count_wizard,
+            ["wizard", "stock count", "stocktake", "inventory count", "physical count", "adjustment"],
+        )
+
+        def _open_journal_reversal_wizard() -> None:
+            from seeker_accounting.modules.wizards.journal_reversal import (
+                launch_journal_reversal_wizard,
+            )
+            launch_journal_reversal_wizard(sr)
+
+        _add_global(
+            "Launch Journal Reversal Wizard",
+            "Reverse a posted journal entry with a balanced contra entry",
+            _open_journal_reversal_wizard,
+            ["wizard", "reverse", "journal", "reversal", "undo journal", "contra"],
+        )
+
+        def _open_control_account_reconciliation_wizard() -> None:
+            from seeker_accounting.modules.wizards.control_account_reconciliation import (
+                launch_control_account_reconciliation_wizard,
+            )
+            launch_control_account_reconciliation_wizard(sr)
+
+        _add_global(
+            "Launch Control Account Reconciliation Wizard",
+            "Compare AR/AP control GL balances against subledger aging totals",
+            _open_control_account_reconciliation_wizard,
+            ["wizard", "reconciliation", "control account", "AR control", "AP control",
+             "subledger", "aging", "variance"],
+        )
+
+        def _open_audit_export_wizard() -> None:
+            from seeker_accounting.modules.wizards.audit_export import (
+                launch_audit_export_wizard,
+            )
+            launch_audit_export_wizard(sr)
+
+        _add_global(
+            "Launch Audit Export Wizard",
+            "Export posted journal entries and audit events for an external auditor",
+            _open_audit_export_wizard,
+            ["wizard", "audit", "export", "auditor", "journal entries",
+             "audit trail", "handover", "csv"],
+        )
+
+        def _open_cash_flow_forecast_wizard() -> None:
+            from seeker_accounting.modules.wizards.cash_flow_forecast import (
+                launch_cash_flow_forecast_wizard,
+            )
+            launch_cash_flow_forecast_wizard(sr)
+
+        _add_global(
+            "Launch Cash Flow Forecast Wizard",
+            "Project net cash position from AR receipts and AP payments by due date",
+            _open_cash_flow_forecast_wizard,
+            ["wizard", "cash flow", "forecast", "treasury", "liquidity",
+             "AR", "AP", "due date", "projection"],
+        )
+
         # ── Company-scoped creation actions ──
         _add("Create Customer", "Add a new customer record", nav_ids.CUSTOMERS,
              ["new customer", "add customer", "add client"], required_permission="customers.create")
@@ -283,6 +657,32 @@ class ActionsProvider:
              ["new payment term", "add credit term"], required_permission="reference.payment_terms.create")
         _add("Create Tax Code", "Add a new tax code", nav_ids.TAX_CODES,
              ["new tax code", "add VAT rate", "new tax rate"], required_permission="reference.tax_codes.create")
+        _add("Edit Tax Profile", "Configure NIU, regime, VAT, and DSF settings", nav_ids.TAX_PROFILE,
+             ["tax profile", "NIU", "tax regime", "company tax identity"], required_permission="taxation.profile.manage")
+        _add("Generate VAT Calendar", "Create monthly VAT obligations for a year", nav_ids.TAX_COMPLIANCE,
+             ["generate obligations", "VAT calendar", "monthly VAT"], required_permission="taxation.obligations.manage")
+        _add("Generate CIT Installments", "Create quarterly CIT installment obligations for a year", nav_ids.TAX_COMPLIANCE,
+             ["CIT installments", "quarterly CIT", "corporate income tax", "IS installments"], required_permission="taxation.obligations.manage")
+        _add("Generate Withholding Calendar", "Create monthly withholding tax obligations for a year", nav_ids.TAX_COMPLIANCE,
+             ["WHT calendar", "withholding obligations", "IRPP retenue"], required_permission="taxation.obligations.manage")
+        _add("Generate Patente Obligation", "Create the annual Patente obligation for a year", nav_ids.TAX_COMPLIANCE,
+             ["patente", "business licence", "annual patente"], required_permission="taxation.obligations.manage")
+        _add("Generate TSR Calendar", "Create monthly TSR obligations for a year", nav_ids.TAX_COMPLIANCE,
+             ["TSR", "taxe special remuneration", "special remuneration tax"], required_permission="taxation.obligations.manage")
+        _add("Record Customs Duty", "Record a customs duty obligation", nav_ids.TAX_COMPLIANCE,
+             ["customs duty", "droits de douane", "import duty"], required_permission="taxation.obligations.manage")
+        _add("Draft VAT Return", "Draft a VAT return from posted invoices", nav_ids.TAX_COMPLIANCE,
+             ["VAT return", "draft return", "tax return"], required_permission="taxation.returns.manage")
+        _add("File Tax Return", "File a drafted tax return", nav_ids.TAX_COMPLIANCE,
+             ["file return", "submit return"], required_permission="taxation.returns.file")
+        _add("Settle VAT Return", "Post the VAT settlement journal for a filed return", nav_ids.TAX_COMPLIANCE,
+             ["settle return", "VAT settlement", "post settlement journal", "close VAT period"], required_permission="taxation.returns.settle")
+        _add("Record Tax Payment", "Record a payment against a filed return", nav_ids.TAX_COMPLIANCE,
+             ["tax payment", "OTP payment", "VAT payment"], required_permission="taxation.payments.manage")
+        _add("Export DSF", "Generate the annual DSF Excel working file", nav_ids.TAX_COMPLIANCE,
+             ["DSF", "DGI export", "annual filing"], required_permission="taxation.dsf.export")
+        _add("Export Tax Return PDF", "Render the selected tax return to a printable PDF", nav_ids.TAX_COMPLIANCE,
+             ["PDF return", "print return", "tax return PDF"], required_permission="taxation.returns.export_pdf")
 
         return actions
 

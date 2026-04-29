@@ -12,6 +12,7 @@ from seeker_accounting.modules.administration.services.permission_service import
 from seeker_accounting.modules.audit.dto.audit_event_dto import RecordAuditEventCommand
 from seeker_accounting.modules.audit.event_type_catalog import (
     FISCAL_PERIODS_GENERATED,
+    FISCAL_YEAR_CLOSED,
     FISCAL_YEAR_CREATED,
     MODULE_FISCAL,
 )
@@ -220,6 +221,67 @@ class FiscalCalendarService:
             fiscal_year = fiscal_year_repository.get_by_id(company_id, period.fiscal_year_id)
             year_code = fiscal_year.year_code if fiscal_year is not None else ""
             return self._to_fiscal_period_dto(period, year_code)
+
+    def close_year(
+        self,
+        company_id: int,
+        fiscal_year_id: int,
+        actor_user_id: int | None = None,
+    ) -> FiscalYearDTO:
+        """Close a fiscal year. All periods must be CLOSED or LOCKED first.
+
+        Sets the fiscal year status_code to CLOSED and is_active to False.
+        Raises ValidationError if any period is still OPEN, ConflictError if
+        the year is already CLOSED, NotFoundError if the year does not exist.
+        """
+        _ = actor_user_id  # accepted for parity with other workflow services; audit captures actor.
+        self._permission_service.require_permission("fiscal.years.close")
+        with self._unit_of_work_factory() as uow:
+            self._require_company_exists(uow.session, company_id)
+            fiscal_year_repository = self._require_fiscal_year_repository(uow.session)
+            fiscal_period_repository = self._require_fiscal_period_repository(uow.session)
+
+            fiscal_year = fiscal_year_repository.get_by_id(company_id, fiscal_year_id)
+            if fiscal_year is None:
+                raise NotFoundError(f"Fiscal year with id {fiscal_year_id} was not found.")
+            if fiscal_year.status_code == "CLOSED":
+                raise ConflictError("Fiscal year is already closed.")
+
+            periods = fiscal_period_repository.list_for_year(company_id, fiscal_year_id)
+            if not periods:
+                raise ValidationError(
+                    "Fiscal year has no periods. Generate periods before closing the year."
+                )
+            still_open = [p for p in periods if p.status_code not in ("CLOSED", "LOCKED")]
+            if still_open:
+                open_codes = ", ".join(p.period_code for p in still_open)
+                raise ValidationError(
+                    "All periods must be CLOSED or LOCKED before the fiscal year can be closed. "
+                    f"Still open: {open_codes}."
+                )
+
+            fiscal_year.status_code = "CLOSED"
+            fiscal_year.is_active = False
+            fiscal_year_repository.save(fiscal_year)
+
+            try:
+                uow.commit()
+            except IntegrityError as exc:
+                raise ValidationError("Fiscal year could not be closed.") from exc
+
+            self._record_audit(
+                company_id,
+                FISCAL_YEAR_CLOSED,
+                "FiscalYear",
+                fiscal_year.id,
+                f"Fiscal year '{fiscal_year.year_code}' closed.",
+            )
+            refreshed_periods = fiscal_period_repository.list_for_year(company_id, fiscal_year_id)
+            period_dtos = tuple(
+                self._to_fiscal_period_dto(period, fiscal_year.year_code)
+                for period in refreshed_periods
+            )
+            return self._to_fiscal_year_dto(fiscal_year, period_dtos)
 
     def _require_fiscal_year_repository(self, session: Session | None) -> FiscalYearRepository:
         if session is None:

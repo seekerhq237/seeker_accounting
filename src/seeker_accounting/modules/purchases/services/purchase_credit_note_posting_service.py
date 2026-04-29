@@ -31,6 +31,14 @@ from seeker_accounting.modules.purchases.dto.purchase_credit_note_dto import Pur
 from seeker_accounting.modules.purchases.repositories.purchase_credit_note_repository import (
     PurchaseCreditNoteRepository,
 )
+from seeker_accounting.modules.taxation.models.posted_tax_line import (
+    DIRECTION_PURCHASE,
+    SOURCE_PURCHASE_CREDIT_NOTE,
+)
+from seeker_accounting.modules.taxation.services.tax_fact_service import (
+    TaxFactInput,
+    TaxFactService,
+)
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
@@ -63,10 +71,12 @@ class PurchaseCreditNotePostingService:
         company_repository_factory: CompanyRepositoryFactory,
         numbering_service: NumberingService,
         permission_service: PermissionService,
+        tax_fact_service: TaxFactService,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
+        self._tax_fact_service = tax_fact_service
         self._credit_note_repository_factory = credit_note_repository_factory
         self._journal_entry_repository_factory = journal_entry_repository_factory
         self._account_repository_factory = account_repository_factory
@@ -224,6 +234,69 @@ class PurchaseCreditNotePostingService:
             for jl in journal_lines:
                 jl.journal_entry_id = journal_entry.id
             uow.session.add_all(journal_lines)
+
+            # --- Record immutable tax facts (Slice T11 / T12) ---
+            # Credit notes write SIGNED-NEGATIVE base/tax so that
+            # SUM(...) over the period yields the correct net.
+            # Prefer per-line tax-detail snapshot rows (Slice T12) for
+            # multi-tax-per-line support; fall back to the parent line
+            # for legacy credit notes.
+            tax_facts: list[TaxFactInput] = []
+            for cn_line in cn.lines:
+                detail_rows = list(cn_line.tax_details or ())
+                if detail_rows:
+                    for detail in detail_rows:
+                        if (
+                            detail.tax_code_id is None
+                            and detail.tax_amount == Decimal("0.00")
+                        ):
+                            continue
+                        if detail.is_recoverable is not None:
+                            line_is_recoverable: bool | None = detail.is_recoverable
+                        elif detail.tax_code is not None:
+                            line_is_recoverable = detail.tax_code.is_recoverable
+                        else:
+                            line_is_recoverable = None
+                        tax_facts.append(
+                            TaxFactInput(
+                                tax_code_id=detail.tax_code_id,
+                                taxable_base=-detail.taxable_base,
+                                tax_amount=-detail.tax_amount,
+                                is_recoverable=line_is_recoverable,
+                                source_line_id=cn_line.id,
+                            )
+                        )
+                    continue
+                if cn_line.tax_code_id is None and cn_line.line_tax_amount == Decimal("0.00"):
+                    continue
+                tax_code_obj = cn_line.tax_code
+                if tax_code_obj is None:
+                    line_is_recoverable = None
+                else:
+                    line_is_recoverable = tax_code_obj.is_recoverable
+                tax_facts.append(
+                    TaxFactInput(
+                        tax_code_id=cn_line.tax_code_id,
+                        taxable_base=-cn_line.line_subtotal_amount,
+                        tax_amount=-cn_line.line_tax_amount,
+                        is_recoverable=line_is_recoverable,
+                        source_line_id=cn_line.id,
+                    )
+                )
+            if tax_facts:
+                posted_at_value = datetime.utcnow()
+                self._tax_fact_service.record_facts_in_session(
+                    uow.session,
+                    company_id=company_id,
+                    fiscal_period_id=fiscal_period.id,
+                    direction=DIRECTION_PURCHASE,
+                    source_document_type=SOURCE_PURCHASE_CREDIT_NOTE,
+                    source_document_id=cn.id,
+                    journal_entry_id=journal_entry.id,
+                    posted_at=posted_at_value,
+                    posted_by_user_id=actor_id,
+                    line_facts=tax_facts,
+                )
 
             # --- Assign credit note number and update status ---
             cn.credit_number = f"PCN-{cn.id:06d}"

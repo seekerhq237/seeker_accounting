@@ -147,9 +147,19 @@ class TaxCodesPage(RibbonHostMixin, QWidget):
 
         self._table = QTableWidget(card)
         self._table.setObjectName("TaxCodesTable")
-        self._table.setColumnCount(8)
+        self._table.setColumnCount(9)
         self._table.setHorizontalHeaderLabels(
-            ("Code", "Name", "Tax Type", "Method", "Rate", "Effective From", "Effective To", "Status")
+            (
+                "Code",
+                "Name",
+                "Tax Type",
+                "Method",
+                "Rate",
+                "Box",
+                "Effective From",
+                "Effective To",
+                "Status",
+            )
         )
         configure_compact_table(self._table)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -254,6 +264,7 @@ class TaxCodesPage(RibbonHostMixin, QWidget):
                 tax_code.tax_type_code,
                 tax_code.calculation_method_code,
                 self._format_rate(tax_code.rate_percent),
+                tax_code.return_box_code or "—",
                 self._format_date(tax_code.effective_from),
                 self._format_date(tax_code.effective_to),
                 "Active" if tax_code.is_active else "Inactive",
@@ -262,7 +273,7 @@ class TaxCodesPage(RibbonHostMixin, QWidget):
                 item = QTableWidgetItem(value)
                 if column_index == 0:
                     item.setData(Qt.ItemDataRole.UserRole, tax_code.id)
-                if column_index in {4, 5, 6, 7}:
+                if column_index in {4, 5, 6, 7, 8}:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row_index, column_index, item)
 
@@ -277,6 +288,7 @@ class TaxCodesPage(RibbonHostMixin, QWidget):
         header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(8, header.ResizeMode.ResizeToContents)
         self._table.setSortingEnabled(True)
 
         count = len(self._tax_codes)

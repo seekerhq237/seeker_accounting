@@ -94,6 +94,7 @@ FISCAL_PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
     _permission("fiscal.periods.close", "Close Fiscal Periods", "fiscal", "Close fiscal periods to block normal posting."),
     _permission("fiscal.periods.reopen", "Reopen Fiscal Periods", "fiscal", "Reopen previously closed fiscal periods."),
     _permission("fiscal.periods.lock", "Lock Fiscal Periods", "fiscal", "Lock fiscal periods to prevent further operational changes."),
+    _permission("fiscal.years.close", "Close Fiscal Years", "fiscal", "Close a fiscal year once all its periods are closed or locked."),
 )
 
 JOURNAL_PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
@@ -440,6 +441,25 @@ PAYROLL_PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = tuple(
     for code, name, description in ALL_PAYROLL_PERMISSIONS
 )
 
+TAXATION_PERMISSION_DEFINITIONS: tuple[PermissionDefinition, ...] = (
+    _permission("taxation.profile.view", "View Tax Profile", "taxation", "View the company's tax-compliance profile (NIU, regime, VAT liability, DSF settings)."),
+    _permission("taxation.profile.manage", "Manage Tax Profile", "taxation", "Create or update the company's tax-compliance profile."),
+    _permission("taxation.obligations.view", "View Tax Obligations", "taxation", "View the tax compliance calendar (VAT, CIT, payroll obligations)."),
+    _permission("taxation.obligations.manage", "Manage Tax Obligations", "taxation", "Create, generate, or cancel tax obligations on the compliance calendar."),
+    _permission("taxation.returns.view", "View Tax Returns", "taxation", "View tax returns and their box-level breakdown."),
+    _permission("taxation.returns.manage", "Manage Tax Returns", "taxation", "Draft and update tax returns from posted source documents."),
+    _permission("taxation.returns.file", "File Tax Returns", "taxation", "File a tax return and lock it as a submitted record."),
+    _permission("taxation.returns.settle", "Settle Tax Returns", "taxation", "Post the settlement journal entry that transfers the period's output and recoverable input VAT into the VAT payable / credit carry-forward account."),
+    _permission("taxation.payments.view", "View Tax Payments", "taxation", "View tax payments recorded against returns."),
+    _permission("taxation.payments.manage", "Manage Tax Payments", "taxation", "Record tax payments against tax returns."),
+    _permission("taxation.dsf.export", "Export DSF", "taxation", "Generate the annual DSF Excel export from posted tax data."),
+    _permission("taxation.withholding.view", "View Withholding Certificates", "taxation", "View the withholding-tax certificate register (inbound and outbound)."),
+    _permission("taxation.withholding.manage", "Manage Withholding Certificates", "taxation", "Record, update, or void entries in the withholding-tax certificate register."),
+    _permission("taxation.dashboard.view", "View Tax Dashboard", "taxation", "View the consolidated tax compliance dashboard (obligations, returns, payments, withholding totals)."),
+    _permission("taxation.audit.view", "View Tax Audit Trail", "taxation", "View the chronological audit trail of taxation events scoped to the current company."),
+    _permission("taxation.returns.export_pdf", "Export Tax Return PDF", "taxation", "Render a filed tax return as a printable PDF document."),
+)
+
 ALL_SYSTEM_PERMISSIONS: tuple[PermissionDefinition, ...] = (
     COMPANY_PERMISSION_DEFINITIONS
     + CHART_PERMISSION_DEFINITIONS
@@ -454,6 +474,7 @@ ALL_SYSTEM_PERMISSIONS: tuple[PermissionDefinition, ...] = (
     + INVENTORY_PERMISSION_DEFINITIONS
     + ASSET_PERMISSION_DEFINITIONS
     + PAYROLL_PERMISSION_DEFINITIONS
+    + TAXATION_PERMISSION_DEFINITIONS
     + CONTRACT_PERMISSION_DEFINITIONS
     + JOB_COSTING_PERMISSION_DEFINITIONS
     + BUDGET_PERMISSION_DEFINITIONS

@@ -13,6 +13,11 @@ class TaxCodeListItemDTO:
     tax_type_code: str
     calculation_method_code: str
     rate_percent: Decimal | None
+    has_cac: bool
+    base_rate_percent: Decimal | None
+    cac_rate_percent: Decimal | None
+    exemption_kind: str | None
+    return_box_code: str | None
     effective_from: date
     effective_to: date | None
     is_active: bool
@@ -28,6 +33,11 @@ class TaxCodeDTO:
     calculation_method_code: str
     rate_percent: Decimal | None
     is_recoverable: bool | None
+    has_cac: bool
+    base_rate_percent: Decimal | None
+    cac_rate_percent: Decimal | None
+    exemption_kind: str | None
+    return_box_code: str | None
     effective_from: date
     effective_to: date | None
     is_active: bool
@@ -44,6 +54,11 @@ class CreateTaxCodeCommand:
     effective_from: date
     rate_percent: Decimal | None = None
     is_recoverable: bool | None = None
+    has_cac: bool = False
+    base_rate_percent: Decimal | None = None
+    cac_rate_percent: Decimal | None = None
+    exemption_kind: str | None = None
+    return_box_code: str | None = None
     effective_to: date | None = None
 
 
@@ -56,4 +71,9 @@ class UpdateTaxCodeCommand:
     effective_from: date
     rate_percent: Decimal | None = None
     is_recoverable: bool | None = None
+    has_cac: bool = False
+    base_rate_percent: Decimal | None = None
+    cac_rate_percent: Decimal | None = None
+    exemption_kind: str | None = None
+    return_box_code: str | None = None
     effective_to: date | None = None

@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 
 from seeker_accounting.app.context.app_context import AppContext
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
+from seeker_accounting.modules.accounting.reference_data.models.tax_code import TaxCode
+from seeker_accounting.modules.accounting.reference_data.services.tax_calculation_service import (
+    TaxCalculationService,
+)
 from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.audit import event_type_catalog
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
@@ -22,6 +26,7 @@ from seeker_accounting.modules.purchases.dto.purchase_credit_note_dto import (
 )
 from seeker_accounting.modules.purchases.models.purchase_credit_note import PurchaseCreditNote
 from seeker_accounting.modules.purchases.models.purchase_credit_note_line import PurchaseCreditNoteLine
+from seeker_accounting.modules.purchases.models.purchase_credit_note_line_tax import PurchaseCreditNoteLineTax
 from seeker_accounting.modules.purchases.repositories.purchase_credit_note_line_repository import (
     PurchaseCreditNoteLineRepository,
 )
@@ -92,7 +97,7 @@ class PurchaseCreditNoteService:
             self._require_company(uow.session, cmd.company_id)
             self._require_supplier(uow.session, cmd.company_id, cmd.supplier_id)
 
-            lines = self._validate_and_build_lines(cmd.lines)
+            lines = self._validate_and_build_lines(uow.session, cmd.lines)
             subtotal, tax_total, grand_total = self._compute_totals(lines)
 
             cn = PurchaseCreditNote(
@@ -151,7 +156,7 @@ class PurchaseCreditNoteService:
 
             self._require_supplier(uow.session, cmd.company_id, cmd.supplier_id)
 
-            lines = self._validate_and_build_lines(cmd.lines)
+            lines = self._validate_and_build_lines(uow.session, cmd.lines)
             subtotal, tax_total, grand_total = self._compute_totals(lines)
 
             cn.supplier_id = cmd.supplier_id
@@ -227,6 +232,7 @@ class PurchaseCreditNoteService:
 
     @staticmethod
     def _validate_and_build_lines(
+        session: Session,
         line_cmds: list[PurchaseCreditNoteLineCommand],
     ) -> list[PurchaseCreditNoteLine]:
         if not line_cmds:
@@ -239,24 +245,55 @@ class PurchaseCreditNoteService:
             if subtotal < Decimal("0"):
                 raise ValidationError(f"Line {idx}: subtotal amount cannot be negative.")
 
-            lines.append(
-                PurchaseCreditNoteLine(
-                    purchase_credit_note_id=0,
-                    line_number=idx,
-                    description=lc.description,
-                    quantity=lc.quantity,
-                    unit_cost=lc.unit_cost,
-                    expense_account_id=lc.expense_account_id,
-                    tax_code_id=lc.tax_code_id,
-                    line_subtotal_amount=subtotal,
-                    line_tax_amount=Decimal("0.00"),
-                    line_total_amount=subtotal,
-                    contract_id=lc.contract_id,
-                    project_id=lc.project_id,
-                    project_job_id=lc.project_job_id,
-                    project_cost_code_id=lc.project_cost_code_id,
-                )
+            # Resolve tax code and compute the line tax at draft time.
+            # Purchase credit notes are tax-exclusive at draft (no header
+            # is_tax_inclusive flag today); the posting service inverts
+            # the sign and routes recoverable vs non-recoverable VAT.
+            tax_code: TaxCode | None = None
+            if lc.tax_code_id is not None:
+                tax_code = session.get(TaxCode, lc.tax_code_id)
+                if tax_code is None:
+                    raise ValidationError(
+                        f"Line {idx}: tax code {lc.tax_code_id} not found."
+                    )
+            breakdown = TaxCalculationService.calculate_line_tax(
+                subtotal, tax_code, is_tax_inclusive=False
             )
+            line_tax_amount = breakdown.tax_amount
+            line_total_amount = breakdown.gross_amount
+            line_is_recoverable: bool | None = None
+            if tax_code is not None and tax_code.is_recoverable is not None:
+                line_is_recoverable = bool(tax_code.is_recoverable)
+
+            credit_line = PurchaseCreditNoteLine(
+                purchase_credit_note_id=0,
+                line_number=idx,
+                description=lc.description,
+                quantity=lc.quantity,
+                unit_cost=lc.unit_cost,
+                expense_account_id=lc.expense_account_id,
+                tax_code_id=lc.tax_code_id,
+                line_subtotal_amount=subtotal,
+                line_tax_amount=line_tax_amount,
+                line_total_amount=line_total_amount,
+                contract_id=lc.contract_id,
+                project_id=lc.project_id,
+                project_job_id=lc.project_job_id,
+                project_cost_code_id=lc.project_cost_code_id,
+            )
+            # Snapshot tax-detail row (Slice T12). Captures the
+            # recoverable flag at draft so the posting service routes
+            # non-deductible VAT correctly even if the tax code's
+            # recoverable flag changes between draft and post.
+            credit_line.tax_details = [
+                PurchaseCreditNoteLineTax(
+                    tax_code_id=lc.tax_code_id,
+                    taxable_base=subtotal,
+                    tax_amount=line_tax_amount,
+                    is_recoverable=line_is_recoverable,
+                )
+            ]
+            lines.append(credit_line)
         return lines
 
     @staticmethod

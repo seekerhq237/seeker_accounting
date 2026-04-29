@@ -82,6 +82,7 @@ class SalesInvoiceDetailDTO:
     posted_by_user_id: int | None
     created_at: datetime
     updated_at: datetime
+    is_tax_inclusive: bool
     totals: SalesInvoiceTotalsDTO
     lines: tuple[SalesInvoiceLineDTO, ...]
     contract_id: int | None = None

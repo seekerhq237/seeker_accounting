@@ -26,6 +26,12 @@ NAVIGATION_REQUIRED_PERMISSIONS: dict[str, tuple[str, ...]] = {
     nav_ids.SUPPLIERS: ("suppliers.view",),
     nav_ids.PAYMENT_TERMS: ("reference.payment_terms.view",),
     nav_ids.TAX_CODES: ("reference.tax_codes.view",),
+    nav_ids.TAX_PROFILE: ("taxation.profile.view",),
+    nav_ids.TAX_COMPLIANCE: (
+        "taxation.obligations.view",
+        "taxation.returns.view",
+        "taxation.payments.view",
+    ),
     nav_ids.DOCUMENT_SEQUENCES: ("reference.document_sequences.view",),
     nav_ids.ACCOUNT_ROLE_MAPPINGS: (
         "reference.account_role_mappings.view",

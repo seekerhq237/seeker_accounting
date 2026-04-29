@@ -43,6 +43,16 @@ _CALCULATION_METHOD_CODES: tuple[str, ...] = (
 )
 
 
+_EXEMPTION_KIND_CHOICES: tuple[tuple[str, str | None], ...] = (
+    ("Not specified", None),
+    ("None / taxable", "NONE"),
+    ("Export (zero-rated)", "EXPORT"),
+    ("Exempt", "EXEMPT"),
+    ("State-borne", "STATE_BORNE"),
+    ("Out of scope", "OUT_OF_SCOPE"),
+)
+
+
 class TaxCodeDialog(BaseDialog):
     def __init__(
         self,
@@ -79,6 +89,8 @@ class TaxCodeDialog(BaseDialog):
         self.body_layout.addWidget(self._error_label)
 
         self.body_layout.addWidget(self._build_definition_section())
+        self.body_layout.addWidget(self._build_cac_split_section())
+        self.body_layout.addWidget(self._build_return_classification_section())
         self.body_layout.addWidget(self._build_effective_dates_section())
         self.body_layout.addStretch(1)
 
@@ -105,8 +117,10 @@ class TaxCodeDialog(BaseDialog):
         self._populate_recoverable_combo()
         self._calculation_method_combo.currentTextChanged.connect(self._sync_rate_placeholder)
         self._has_effective_to_checkbox.toggled.connect(self._sync_effective_to_state)
+        self._has_cac_checkbox.toggled.connect(self._sync_cac_state)
         self._sync_rate_placeholder()
         self._sync_effective_to_state()
+        self._sync_cac_state()
 
         if self._tax_code_id is not None:
             self._load_tax_code()
@@ -207,6 +221,85 @@ class TaxCodeDialog(BaseDialog):
         layout.addLayout(grid)
         return card
 
+    def _build_cac_split_section(self) -> QWidget:
+        card = QFrame(self)
+        card.setObjectName("DialogSectionCard")
+        card.setProperty("card", True)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(12)
+
+        title = QLabel("CAC Split", card)
+        title.setObjectName("DialogSectionTitle")
+        layout.addWidget(title)
+
+        summary = QLabel(
+            "Enable for Cameroon VAT codes that combine a base rate with the additional Communal Centimes (CAC). "
+            "Example: standard VAT 19.25% = base 17.5% with CAC 10% of base.",
+            card,
+        )
+        summary.setObjectName("DialogSectionSummary")
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        self._has_cac_checkbox = QCheckBox("Tax code carries an additional CAC charge", card)
+        layout.addWidget(self._has_cac_checkbox)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+
+        self._base_rate_edit = QLineEdit(card)
+        self._base_rate_edit.setPlaceholderText("17.5000")
+        grid.addWidget(create_field_block("Base Rate (%)", self._base_rate_edit), 0, 0)
+
+        self._cac_rate_edit = QLineEdit(card)
+        self._cac_rate_edit.setPlaceholderText("10.0000")
+        grid.addWidget(create_field_block("CAC Rate (% of base)", self._cac_rate_edit), 0, 1)
+
+        layout.addLayout(grid)
+        return card
+
+    def _build_return_classification_section(self) -> QWidget:
+        card = QFrame(self)
+        card.setObjectName("DialogSectionCard")
+        card.setProperty("card", True)
+
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 16, 18, 18)
+        layout.setSpacing(12)
+
+        title = QLabel("Return Classification", card)
+        title.setObjectName("DialogSectionTitle")
+        layout.addWidget(title)
+
+        summary = QLabel(
+            "Map the tax code to the correct DGI return line and qualifier so monthly returns can be aggregated automatically.",
+            card,
+        )
+        summary.setObjectName("DialogSectionSummary")
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        grid = QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12)
+        grid.setVerticalSpacing(12)
+
+        self._exemption_kind_combo = QComboBox(card)
+        for label, code in _EXEMPTION_KIND_CHOICES:
+            self._exemption_kind_combo.addItem(label, code)
+        grid.addWidget(create_field_block("Exemption Kind", self._exemption_kind_combo), 0, 0)
+
+        self._return_box_code_edit = QLineEdit(card)
+        self._return_box_code_edit.setPlaceholderText("L17")
+        grid.addWidget(create_field_block("Return Box Code", self._return_box_code_edit), 0, 1)
+
+        layout.addLayout(grid)
+        return card
+
     def _build_effective_dates_section(self) -> QWidget:
         card = QFrame(self)
         card.setObjectName("DialogSectionCard")
@@ -219,7 +312,6 @@ class TaxCodeDialog(BaseDialog):
         title = QLabel("Effective Dates", card)
         title.setObjectName("DialogSectionTitle")
         layout.addWidget(title)
-
         summary = QLabel(
             "Use an effective start date for each tax definition. Add an end date only when the code should stop being used.",
             card,
@@ -292,6 +384,16 @@ class TaxCodeDialog(BaseDialog):
         self._rate_percent_edit.setText("" if tax_code.rate_percent is None else str(tax_code.rate_percent))
         recoverable_index = self._recoverable_combo.findData(tax_code.is_recoverable)
         self._recoverable_combo.setCurrentIndex(recoverable_index if recoverable_index >= 0 else 0)
+        self._has_cac_checkbox.setChecked(bool(tax_code.has_cac))
+        self._base_rate_edit.setText(
+            "" if tax_code.base_rate_percent is None else str(tax_code.base_rate_percent)
+        )
+        self._cac_rate_edit.setText(
+            "" if tax_code.cac_rate_percent is None else str(tax_code.cac_rate_percent)
+        )
+        exemption_index = self._exemption_kind_combo.findData(tax_code.exemption_kind)
+        self._exemption_kind_combo.setCurrentIndex(exemption_index if exemption_index >= 0 else 0)
+        self._return_box_code_edit.setText(tax_code.return_box_code or "")
         self._effective_from_edit.setDate(self._to_qdate(tax_code.effective_from))
         if tax_code.effective_to is None:
             self._has_effective_to_checkbox.setChecked(False)
@@ -325,6 +427,25 @@ class TaxCodeDialog(BaseDialog):
         except InvalidOperation as exc:
             raise ValidationError("Rate percent must be a valid number.") from exc
 
+    def _parse_optional_decimal(self, edit: QLineEdit, label: str) -> Decimal | None:
+        raw_value = edit.text().strip()
+        if not raw_value:
+            return None
+        try:
+            return Decimal(raw_value)
+        except InvalidOperation as exc:
+            raise ValidationError(f"{label} must be a valid number.") from exc
+
+    def _selected_exemption_kind(self) -> str | None:
+        value = self._exemption_kind_combo.currentData()
+        if isinstance(value, str) and value:
+            return value
+        return None
+
+    def _selected_return_box_code(self) -> str | None:
+        text = self._return_box_code_edit.text().strip()
+        return text or None
+
     def _sync_rate_placeholder(self) -> None:
         calculation_method_code = self._selected_code(self._calculation_method_combo)
         if calculation_method_code == "PERCENTAGE":
@@ -334,6 +455,14 @@ class TaxCodeDialog(BaseDialog):
 
     def _sync_effective_to_state(self) -> None:
         self._effective_to_edit.setEnabled(self._has_effective_to_checkbox.isChecked())
+
+    def _sync_cac_state(self) -> None:
+        enabled = self._has_cac_checkbox.isChecked()
+        self._base_rate_edit.setEnabled(enabled)
+        self._cac_rate_edit.setEnabled(enabled)
+        if not enabled:
+            self._base_rate_edit.clear()
+            self._cac_rate_edit.clear()
 
     def _set_error(self, message: str | None) -> None:
         if not message:
@@ -385,6 +514,22 @@ class TaxCodeDialog(BaseDialog):
             self._rate_percent_edit.setFocus(Qt.FocusReason.OtherFocusReason)
             return
 
+        has_cac = self._has_cac_checkbox.isChecked()
+        try:
+            base_rate = self._parse_optional_decimal(self._base_rate_edit, "Base rate")
+        except ValidationError as exc:
+            self._set_error(str(exc))
+            self._base_rate_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+            return
+        try:
+            cac_rate = self._parse_optional_decimal(self._cac_rate_edit, "CAC rate")
+        except ValidationError as exc:
+            self._set_error(str(exc))
+            self._cac_rate_edit.setFocus(Qt.FocusReason.OtherFocusReason)
+            return
+        exemption_kind = self._selected_exemption_kind()
+        return_box_code = self._selected_return_box_code()
+
         if self._tax_code_id is None:
             command = CreateTaxCodeCommand(
                 code=code,
@@ -393,6 +538,11 @@ class TaxCodeDialog(BaseDialog):
                 calculation_method_code=calculation_method_code,
                 rate_percent=rate_percent,
                 is_recoverable=self._selected_recoverable(),
+                has_cac=has_cac,
+                base_rate_percent=base_rate,
+                cac_rate_percent=cac_rate,
+                exemption_kind=exemption_kind,
+                return_box_code=return_box_code,
                 effective_from=effective_from,
                 effective_to=effective_to,
             )
@@ -408,6 +558,11 @@ class TaxCodeDialog(BaseDialog):
                 calculation_method_code=calculation_method_code,
                 rate_percent=rate_percent,
                 is_recoverable=self._selected_recoverable(),
+                has_cac=has_cac,
+                base_rate_percent=base_rate,
+                cac_rate_percent=cac_rate,
+                exemption_kind=exemption_kind,
+                return_box_code=return_box_code,
                 effective_from=effective_from,
                 effective_to=effective_to,
             )
