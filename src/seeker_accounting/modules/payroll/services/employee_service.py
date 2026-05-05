@@ -14,6 +14,8 @@ from seeker_accounting.modules.payroll.dto.employee_dto import (
     CreateEmployeeCommand,
     EmployeeDetailDTO,
     EmployeeListItemDTO,
+    RehireEmployeeCommand,
+    TerminateEmployeeCommand,
     UpdateEmployeeCommand,
 )
 from seeker_accounting.modules.payroll.models.employee import Employee
@@ -165,6 +167,92 @@ class EmployeeService:
             row = self._employee_repository_factory(uow.session).get_by_id(company_id, employee_id)
             from seeker_accounting.modules.audit.event_type_catalog import EMPLOYEE_UPDATED
             self._record_audit(company_id, EMPLOYEE_UPDATED, "Employee", emp.id, f"Updated employee id={employee_id}")
+            return self._to_detail_dto(row)  # type: ignore[arg-type]
+
+    def terminate_employee(
+        self,
+        company_id: int,
+        employee_id: int,
+        command: TerminateEmployeeCommand,
+    ) -> EmployeeDetailDTO:
+        """Mark the employee as terminated effective ``command.termination_date``.
+
+        Sets ``is_active = False`` and ``termination_date``.  Raises
+        :class:`ValidationError` if the employee is already inactive.
+        """
+        reason = (command.reason or "").strip()
+        if not reason:
+            raise ValidationError("A termination reason is required.")
+        if command.termination_date is None:
+            raise ValidationError("Termination date is required.")
+
+        with self._unit_of_work_factory() as uow:
+            repo = self._employee_repository_factory(uow.session)
+            emp = repo.get_by_id(company_id, employee_id)
+            if emp is None:
+                raise NotFoundError(f"Employee {employee_id} not found.")
+            if not emp.is_active:
+                raise ValidationError(
+                    f"Employee '{emp.display_name}' is already inactive / terminated."
+                )
+            emp.is_active = False
+            emp.termination_date = command.termination_date
+            emp.updated_at = datetime.utcnow()
+            repo.save(emp)
+            uow.commit()
+            row = self._employee_repository_factory(uow.session).get_by_id(company_id, employee_id)
+            from seeker_accounting.modules.audit.event_type_catalog import EMPLOYEE_DEACTIVATED
+            self._record_audit(
+                company_id,
+                EMPLOYEE_DEACTIVATED,
+                "Employee",
+                emp.id,
+                f"Terminated employee id={employee_id}; reason={reason}; "
+                f"effective={command.termination_date.isoformat()}",
+            )
+            return self._to_detail_dto(row)  # type: ignore[arg-type]
+
+    def rehire_employee(
+        self,
+        company_id: int,
+        employee_id: int,
+        command: RehireEmployeeCommand,
+    ) -> EmployeeDetailDTO:
+        """Reactivate a terminated employee.
+
+        Sets ``is_active = True`` and ``hire_date`` to ``command.new_hire_date``.
+        If ``command.clear_termination_date`` is ``True`` (default) the
+        ``termination_date`` is also cleared.  Raises :class:`ValidationError`
+        if the employee is already active.
+        """
+        if command.new_hire_date is None:
+            raise ValidationError("New hire date is required for rehire.")
+
+        with self._unit_of_work_factory() as uow:
+            repo = self._employee_repository_factory(uow.session)
+            emp = repo.get_by_id(company_id, employee_id)
+            if emp is None:
+                raise NotFoundError(f"Employee {employee_id} not found.")
+            if emp.is_active:
+                raise ValidationError(
+                    f"Employee '{emp.display_name}' is already active."
+                )
+            emp.is_active = True
+            emp.hire_date = command.new_hire_date
+            if command.clear_termination_date:
+                emp.termination_date = None
+            emp.updated_at = datetime.utcnow()
+            repo.save(emp)
+            uow.commit()
+            row = self._employee_repository_factory(uow.session).get_by_id(company_id, employee_id)
+            from seeker_accounting.modules.audit.event_type_catalog import EMPLOYEE_UPDATED
+            self._record_audit(
+                company_id,
+                EMPLOYEE_UPDATED,
+                "Employee",
+                emp.id,
+                f"Rehired employee id={employee_id}; new hire date={command.new_hire_date.isoformat()}",
+            )
             return self._to_detail_dto(row)  # type: ignore[arg-type]
 
     # ── Helpers ───────────────────────────────────────────────────────────────

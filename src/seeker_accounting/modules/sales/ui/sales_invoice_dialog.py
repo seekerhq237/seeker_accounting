@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
@@ -48,11 +49,12 @@ class SalesInvoiceDialog(QDialog):
         self._company_id = company_id
         self._invoice_id = invoice_id
         self._saved_invoice: SalesInvoiceDetailDTO | None = None
+        self._customer_withholds_vat: dict[int, bool] = {}  # T37
 
         is_edit = invoice_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Sales Invoice - {company_name}")
         self.setModal(True)
-        self.resize(1040, 720)
+        apply_window_size(self, "modules.sales.ui.sales.invoice.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -195,6 +197,12 @@ class SalesInvoiceDialog(QDialog):
         self._notes_input.setPlaceholderText("Notes")
         self._workspace.add_metadata_full_row(8, "Notes", self._notes_input)
 
+        self._tax_point_date_edit = QDateEdit(strip)
+        self._tax_point_date_edit.setCalendarPopup(True)
+        self._tax_point_date_edit.setDate(date.today())
+        self._workspace.add_metadata_pair(10, "Tax Point Date", self._tax_point_date_edit)
+        self._tax_point_date_edit.setVisible(False)
+
     def _build_lines_section(self) -> QWidget:
         self._lines_grid = SalesInvoiceLinesGrid(self._service_registry, self._company_id, self)
         return self._lines_grid
@@ -232,6 +240,24 @@ class SalesInvoiceDialog(QDialog):
         dock_layout.addWidget(separator)
 
         self._total_value = add_row("Total", "TotalsGrandTotal")
+
+        # T37: withheld VAT row — shown only when the selected customer withholds VAT
+        self._withheld_vat_row = QFrame(dock)
+        _wvat_layout = QHBoxLayout(self._withheld_vat_row)
+        _wvat_layout.setContentsMargins(0, 0, 0, 0)
+        _wvat_layout.setSpacing(6)
+        _wvat_lbl = QLabel("Withheld VAT", self._withheld_vat_row)
+        _wvat_lbl.setObjectName("MetaLabel")
+        _wvat_layout.addWidget(_wvat_lbl)
+        _wvat_layout.addStretch(1)
+        self._withheld_vat_input = QLineEdit(self._withheld_vat_row)
+        self._withheld_vat_input.setPlaceholderText("0.00")
+        self._withheld_vat_input.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._withheld_vat_input.setFixedWidth(100)
+        _wvat_layout.addWidget(self._withheld_vat_input)
+        dock_layout.addWidget(self._withheld_vat_row)
+        self._withheld_vat_row.setVisible(False)
+
         dock_layout.addStretch(1)
 
     def _build_action_rail(self, is_edit: bool) -> None:
@@ -259,6 +285,7 @@ class SalesInvoiceDialog(QDialog):
             customers = self._service_registry.customer_service.list_customers(
                 self._company_id, active_only=True
             )
+            self._customer_withholds_vat = {c.id: c.withholds_vat for c in customers}
             self._customer_combo.set_items(
                 [(f"{c.customer_code} - {c.display_name}", c.id) for c in customers],
                 placeholder="-- Select customer --",
@@ -294,6 +321,7 @@ class SalesInvoiceDialog(QDialog):
                 self._currency_combo.set_current_value(base_currency_code)
 
             self._customer_combo.value_changed.connect(self._on_data_changed)
+            self._customer_combo.value_changed.connect(self._on_customer_changed)
             self._contract_combo.value_changed.connect(self._on_data_changed)
             self._project_combo.value_changed.connect(self._on_data_changed)
             self._invoice_date_edit.dateChanged.connect(self._on_data_changed)
@@ -304,8 +332,20 @@ class SalesInvoiceDialog(QDialog):
             self._notes_input.textChanged.connect(self._on_data_changed)
             self._lines_grid.lines_changed.connect(self._on_data_changed)
             self._on_currency_changed(self._currency_combo.current_value())
-        except Exception as exc:
+
+            # Show tax_point_date field only if company uses tax-point scheme
+            try:
+                tp = self._service_registry.company_tax_profile_service.get_or_default(self._company_id)
+                if tp.vat_uses_tax_point:
+                    self._show_tax_point_row(True)
+            except Exception:
+                pass
+        except AppError as exc:
             self._show_error(f"Failed to load reference data: {exc}")
+
+        except Exception:
+            _log.exception("Unexpected error")
+            self._show_error("An unexpected error occurred. See application log for details.")
 
     def _base_currency_code(self) -> str | None:
         try:
@@ -332,6 +372,9 @@ class SalesInvoiceDialog(QDialog):
         self._invoice_date_edit.setDate(detail.invoice_date)
         self._due_date_edit.setDate(detail.due_date)
 
+        if detail.tax_point_date is not None:
+            self._tax_point_date_edit.setDate(detail.tax_point_date)
+
         self._currency_combo.set_current_value(detail.currency_code)
 
         if detail.exchange_rate is not None:
@@ -340,6 +383,10 @@ class SalesInvoiceDialog(QDialog):
         self._reference_input.setText(detail.reference_number or "")
         self._notes_input.setPlainText(detail.notes or "")
         self._lines_grid.set_lines(detail.lines)
+
+        # T37: withheld VAT
+        if detail.withheld_vat_amount and detail.withheld_vat_amount != Decimal("0"):
+            self._withheld_vat_input.setText(str(detail.withheld_vat_amount))
 
         self._on_currency_changed(self._currency_combo.current_value())
         self._update_totals()
@@ -352,6 +399,13 @@ class SalesInvoiceDialog(QDialog):
     def _on_data_changed(self, *_args: object) -> None:
         self._update_totals()
         self._refresh_identity()
+
+    def _on_customer_changed(self, customer_id: object) -> None:
+        """T37: show/hide withheld VAT row based on customer flag."""
+        withholds = bool(self._customer_withholds_vat.get(customer_id, False))
+        self._withheld_vat_row.setVisible(withholds)
+        if not withholds:
+            self._withheld_vat_input.clear()
 
     def _on_currency_changed(self, _value: object) -> None:
         current_currency = self._currency_combo.current_value()
@@ -432,6 +486,15 @@ class SalesInvoiceDialog(QDialog):
             self._show_error("At least one invoice line is required.")
             return
 
+        # T37: withheld VAT amount
+        withheld_vat_amount: Decimal | None = None
+        if self._withheld_vat_row.isVisible() and self._withheld_vat_input.text().strip():
+            try:
+                withheld_vat_amount = Decimal(self._withheld_vat_input.text().replace(",", "").strip())
+            except InvalidOperation:
+                self._show_error("Invalid withheld VAT amount")
+                return
+
         try:
             if self._invoice_id is None:
                 cmd = CreateSalesInvoiceCommand(
@@ -444,7 +507,9 @@ class SalesInvoiceDialog(QDialog):
                     notes=notes,
                     contract_id=contract_id,
                     project_id=project_id,
+                    tax_point_date=self._tax_point_date_edit.date().toPython() if self._tax_point_date_edit.isVisible() else None,
                     lines=tuple(line_commands),
+                    withheld_vat_amount=withheld_vat_amount,
                 )
                 self._saved_invoice = self._service_registry.sales_invoice_service.create_draft_invoice(
                     self._company_id, cmd
@@ -460,7 +525,9 @@ class SalesInvoiceDialog(QDialog):
                     notes=notes,
                     contract_id=contract_id,
                     project_id=project_id,
+                    tax_point_date=self._tax_point_date_edit.date().toPython() if self._tax_point_date_edit.isVisible() else None,
                     lines=tuple(line_commands),
+                    withheld_vat_amount=withheld_vat_amount,
                 )
                 self._saved_invoice = self._service_registry.sales_invoice_service.update_draft_invoice(
                     self._company_id, self._invoice_id, cmd_update
@@ -472,3 +539,14 @@ class SalesInvoiceDialog(QDialog):
     def _show_error(self, message: str) -> None:
         self._error_label.setText(message)
         self._error_label.show()
+
+    def _show_tax_point_row(self, visible: bool) -> None:
+        """Show or hide the Tax Point Date field and its label in the metadata grid."""
+        grid = self._workspace.metadata_grid
+        # row 10 with 2 columns → grid_row=5, pair_index=0 → label_col=0, value_col=1
+        for col in (0, 1):
+            item = grid.itemAtPosition(5, col)
+            if item is not None:
+                w = item.widget()
+                if w is not None:
+                    w.setVisible(visible)

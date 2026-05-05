@@ -10,6 +10,7 @@ from seeker_accounting.modules.inventory.models.inventory_document import Invent
 from seeker_accounting.modules.inventory.models.inventory_document_line import InventoryDocumentLine
 from seeker_accounting.modules.inventory.models.inventory_location import InventoryLocation
 from seeker_accounting.modules.inventory.models.item import Item
+from seeker_accounting.modules.inventory.models.unit_of_measure import UnitOfMeasure
 from seeker_accounting.modules.reporting.dto.stock_valuation_report_dto import (
     StockValuationReportFilterDTO,
 )
@@ -43,7 +44,7 @@ class StockValuationReportRepository:
                 Item.id.label("item_id"),
                 Item.item_code,
                 Item.item_name,
-                Item.unit_of_measure_code,
+                UnitOfMeasure.code.label("unit_of_measure_code"),
                 Item.inventory_cost_method_code,
                 func.coalesce(func.sum(signed_quantity), 0).label("quantity_on_hand"),
                 func.coalesce(func.sum(signed_value), 0).label("total_value"),
@@ -57,12 +58,13 @@ class StockValuationReportRepository:
                 InventoryDocument,
                 InventoryDocument.id == InventoryDocumentLine.inventory_document_id,
             )
+            .join(UnitOfMeasure, UnitOfMeasure.id == Item.unit_of_measure_id)
             .where(*self._base_conditions(filter_dto))
             .group_by(
                 Item.id,
                 Item.item_code,
                 Item.item_name,
-                Item.unit_of_measure_code,
+                UnitOfMeasure.code,
                 Item.inventory_cost_method_code,
             )
             .order_by(Item.item_code.asc())

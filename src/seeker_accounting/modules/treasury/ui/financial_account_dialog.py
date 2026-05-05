@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtWidgets import (
@@ -44,7 +45,7 @@ class FinancialAccountDialog(QDialog):
         is_edit = account_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Financial Account — {company_name}")
         self.setModal(True)
-        self.resize(600, 450)
+        apply_window_size(self, "modules.treasury.ui.financial.account.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

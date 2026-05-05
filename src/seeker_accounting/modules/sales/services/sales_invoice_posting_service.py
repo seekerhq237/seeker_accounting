@@ -42,12 +42,17 @@ from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, 
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
 from seeker_accounting.modules.administration.services.permission_service import PermissionService
+from seeker_accounting.modules.taxation.repositories.vat_period_lock_repository import (
+    VatPeriodLockRepository,
+)
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
+    from seeker_accounting.modules.inventory.services.cogs_sync_service import CogsSyncService
 
 AccountRepositoryFactory = Callable[[Session], AccountRepository]
 FiscalPeriodRepositoryFactory = Callable[[Session], FiscalPeriodRepository]
+VatPeriodLockRepositoryFactory = Callable[[Session], VatPeriodLockRepository]
 JournalEntryRepositoryFactory = Callable[[Session], JournalEntryRepository]
 CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
 SalesInvoiceRepositoryFactory = Callable[[Session], SalesInvoiceRepository]
@@ -75,10 +80,13 @@ class SalesInvoicePostingService:
         permission_service: PermissionService,
         tax_fact_service: TaxFactService,
         audit_service: AuditService | None = None,
+        cogs_sync_service: CogsSyncService | None = None,
+        vat_period_lock_repository_factory: VatPeriodLockRepositoryFactory | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
         self._tax_fact_service = tax_fact_service
+        self._vat_period_lock_repository_factory = vat_period_lock_repository_factory
         self._sales_invoice_repository_factory = sales_invoice_repository_factory
         self._journal_entry_repository_factory = journal_entry_repository_factory
         self._account_repository_factory = account_repository_factory
@@ -90,6 +98,7 @@ class SalesInvoicePostingService:
         self._numbering_service = numbering_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._cogs_sync_service = cogs_sync_service
 
     def post_invoice(
         self,
@@ -126,6 +135,16 @@ class SalesInvoicePostingService:
             if fiscal_period.status_code != "OPEN":
                 raise ValidationError("Invoice can only be posted into an open fiscal period.")
 
+            # --- T43: VAT period lock check ---
+            if self._vat_period_lock_repository_factory is not None:
+                tax_point = invoice.tax_point_date or invoice.invoice_date
+                vat_lock_repo = self._vat_period_lock_repository_factory(uow.session)
+                if vat_lock_repo.is_locked(company_id, tax_point):
+                    raise ValidationError(
+                        "VAT period has been filed; backdating is prohibited. "
+                        "Amend the return instead."
+                    )
+
             # --- AR control account ---
             ar_mapping = role_mapping_repo.get_by_role_code(company_id, "ar_control")
             if ar_mapping is None:
@@ -158,12 +177,18 @@ class SalesInvoicePostingService:
             line_number += 1
 
             # Credit revenue accounts from lines
-            revenue_credits: dict[int, Decimal] = {}
+            revenue_credits: dict[tuple[int, int | None, int | None, int | None, int | None], Decimal] = {}
             tax_credits: dict[int, Decimal] = {}
 
             for inv_line in invoice.lines:
-                revenue_credits[inv_line.revenue_account_id] = (
-                    revenue_credits.get(inv_line.revenue_account_id, Decimal("0.00"))
+                revenue_key = self._dimensioned_account_key(
+                    inv_line.revenue_account_id,
+                    line=inv_line,
+                    header_contract_id=invoice.contract_id,
+                    header_project_id=invoice.project_id,
+                )
+                revenue_credits[revenue_key] = (
+                    revenue_credits.get(revenue_key, Decimal("0.00"))
                     + inv_line.line_subtotal_amount
                 )
                 if inv_line.tax_code_id is not None and inv_line.line_tax_amount > Decimal("0.00"):
@@ -179,7 +204,8 @@ class SalesInvoicePostingService:
                         + inv_line.line_tax_amount
                     )
 
-            for rev_account_id, amount in revenue_credits.items():
+            for revenue_key, amount in revenue_credits.items():
+                rev_account_id, contract_id, project_id, project_job_id, project_cost_code_id = revenue_key
                 journal_lines.append(
                     JournalEntryLine(
                         journal_entry_id=0,
@@ -188,6 +214,10 @@ class SalesInvoicePostingService:
                         line_description=f"Revenue - Invoice {invoice.invoice_number}",
                         debit_amount=Decimal("0.00"),
                         credit_amount=amount,
+                        contract_id=contract_id,
+                        project_id=project_id,
+                        project_job_id=project_job_id,
+                        project_cost_code_id=project_cost_code_id,
                     )
                 )
                 line_number += 1
@@ -290,11 +320,24 @@ class SalesInvoicePostingService:
                     posted_at=posted_at_value,
                     posted_by_user_id=actor_id,
                     line_facts=tax_facts,
+                    tax_point_date=invoice.tax_point_date or invoice.invoice_date,
                 )
 
+            # --- COGS stock issue (P2 / Slice 3.2) ---
+            if self._cogs_sync_service is not None:
+                cogs_je_lines = self._cogs_sync_service.build_cogs_lines_for_invoice(
+                    uow.session,
+                    company_id=company_id,
+                    invoice=invoice,
+                    journal_entry_id=journal_entry.id,
+                    next_line_number=line_number,
+                    posting_date=invoice.invoice_date,
+                )
+                if cogs_je_lines:
+                    uow.session.add_all(cogs_je_lines)
+
             # --- Assign invoice number and update status ---
-            invoice.invoice_number = self._numbering_service.issue_next_number(
-                uow.session,
+            invoice.invoice_number = self._numbering_service.issue_next_number(                uow.session,
                 company_id=company_id,
                 document_type_code=self.DOCUMENT_TYPE_CODE,
             )
@@ -332,6 +375,28 @@ class SalesInvoicePostingService:
                 payment_status_code=invoice.payment_status_code,
                 open_balance_amount=open_balance,
             )
+
+    # ------------------------------------------------------------------
+    # Dimension helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _dimensioned_account_key(
+        account_id: int,
+        *,
+        line: object,
+        header_contract_id: int | None,
+        header_project_id: int | None,
+    ) -> tuple[int, int | None, int | None, int | None, int | None]:
+        contract_id = getattr(line, "contract_id", None) or header_contract_id
+        project_id = getattr(line, "project_id", None) or header_project_id
+        return (
+            account_id,
+            contract_id,
+            project_id,
+            getattr(line, "project_job_id", None),
+            getattr(line, "project_cost_code_id", None),
+        )
 
     # ------------------------------------------------------------------
     # Repository factory helpers

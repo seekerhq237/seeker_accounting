@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QDialog,
@@ -20,8 +21,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,7 +41,7 @@ from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, 
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 _log = logging.getLogger(__name__)
 
@@ -80,7 +79,7 @@ class ProjectCommitmentFormDialog(BaseDialog):
         title = "New Commitment" if commitment_id is None else "Edit Commitment"
         super().__init__(title, parent, help_key="dialog.project_commitment")
         self.setObjectName("ProjectCommitmentFormDialog")
-        self.resize(640, 560)
+        apply_window_size(self, "modules.job.costing.ui.project.commitment.dialog.0")
 
         intro = QLabel(f"Commitment for project {project_code}.", self)
         intro.setObjectName("PageSummary")
@@ -406,7 +405,7 @@ class ProjectCommitmentsDialog(BaseDialog):
         self._commitments: list[ProjectCommitmentListItemDTO] = []
 
         self.setObjectName("ProjectCommitmentsDialog")
-        self.resize(1020, 560)
+        apply_window_size(self, "modules.job.costing.ui.project.commitment.dialog.1")
 
         self.body_layout.addWidget(self._build_toolbar())
         self.body_layout.addWidget(self._build_table_card(), 1)
@@ -486,16 +485,31 @@ class ProjectCommitmentsDialog(BaseDialog):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(12)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("ProjectCommitmentsTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
-            ("Number", "Type", "Date", "Currency", "Total Amount", "Supplier", "Reference", "Status")
+        self._model = QStandardItemModel(0, 8, card)
+        self._model.setHorizontalHeaderLabels(
+            ["Number", "Type", "Date", "Currency", "Total Amount", "Supplier", "Reference", "Status"]
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(lambda *_: self._open_edit())
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="number", title="Number"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="currency", title="Currency"),
+                DataTableColumn(key="total_amount", title="Total Amount"),
+                DataTableColumn(key="supplier", title="Supplier"),
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._table.selection_changed.connect(self._update_action_state)
+        self._table.view().doubleClicked.connect(lambda *_: self._open_edit())
+        apply_status_chip_to_column(self._table.view(), 7)
         layout.addWidget(self._table)
         return card
 
@@ -503,64 +517,44 @@ class ProjectCommitmentsDialog(BaseDialog):
     # Data
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _reload(self) -> None:
         try:
             self._commitments = self._service_registry.project_commitment_service.list_commitments(
                 self._project_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Commitments", str(exc))
+
+        except Exception:
+            _log.exception("Commitments")
+            show_error(self, "Commitments", "An unexpected error occurred. See application log for details.")
             self._commitments = []
 
         self._populate_table()
         self._update_action_state()
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for c in self._commitments:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-
-            num_item = QTableWidgetItem(c.commitment_number)
-            num_item.setData(Qt.ItemDataRole.UserRole, c.id)
-            self._table.setItem(row, 0, num_item)
-
-            type_item = QTableWidgetItem(c.commitment_type_code)
-            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 1, type_item)
-
-            self._table.setItem(row, 2, QTableWidgetItem(str(c.commitment_date)))
-
-            currency_item = QTableWidgetItem(c.currency_code)
-            currency_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 3, currency_item)
-
-            amount_item = QTableWidgetItem(f"{c.total_amount:,.2f}")
-            amount_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            self._table.setItem(row, 4, amount_item)
-
-            self._table.setItem(row, 5, QTableWidgetItem(c.supplier_name or ""))
-            self._table.setItem(row, 6, QTableWidgetItem(c.reference_number or ""))
-
-            status_item = QTableWidgetItem(c.status_code)
-            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 7, status_item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(c.commitment_number, user_data=c.id),
+                self._make_item(c.commitment_type_code),
+                self._make_item(str(c.commitment_date)),
+                self._make_item(c.currency_code),
+                self._make_item(f"{c.total_amount:,.2f}"),
+                self._make_item(c.supplier_name or ""),
+                self._make_item(c.reference_number or ""),
+                self._make_item(c.status_code),
+            ])
 
         count = len(self._commitments)
         self._count_label.setText(
@@ -568,13 +562,13 @@ class ProjectCommitmentsDialog(BaseDialog):
         )
 
     def _selected_commitment(self) -> ProjectCommitmentListItemDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
-        if item is None:
+        id_item = self._model.item(rows[0], 0)
+        if id_item is None:
             return None
-        commitment_id = item.data(Qt.ItemDataRole.UserRole)
+        commitment_id = id_item.data(Qt.ItemDataRole.UserRole)
         for c in self._commitments:
             if c.id == commitment_id:
                 return c

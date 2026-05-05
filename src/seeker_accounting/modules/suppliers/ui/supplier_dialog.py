@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -52,7 +53,7 @@ class SupplierDialog(BaseDialog):
         title = "New Supplier" if supplier_id is None else "Edit Supplier"
         super().__init__(title, parent, help_key="dialog.supplier")
         self.setObjectName("SupplierDialog")
-        self.resize(780, 620)
+        apply_window_size(self, "modules.suppliers.ui.supplier.dialog.0")
 
         intro_label = QLabel(
             "Capture the supplier once so bills, payments, and statements stay consistent.",

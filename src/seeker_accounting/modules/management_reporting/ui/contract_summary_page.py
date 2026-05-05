@@ -10,9 +10,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -20,11 +19,11 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
@@ -39,8 +38,8 @@ from seeker_accounting.modules.management_reporting.ui.variance_chart_widgets im
     TrendPoint,
 )
 from seeker_accounting.platform.exceptions import NotFoundError
+from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _ZERO = Decimal(0)
 
@@ -140,35 +139,12 @@ class ContractSummaryPage(QWidget):
     def _build_content_stack(self) -> QWidget:
         self._stack = QStackedWidget(self)
         self._detail_surface = self._build_detail_surface()
-        self._empty_state = self._build_empty_state("Select a contract to view its summary.")
-        self._no_company_state = self._build_empty_state(
-            "Select an active company first.",
-            title="No Active Company",
-        )
+        self._empty_state = build_empty_state("management_reporting.contract_summary.no_selection", parent=self)
+        self._no_company_state = build_empty_state("management_reporting.no_company", parent=self)
         self._stack.addWidget(self._detail_surface)
         self._stack.addWidget(self._empty_state)
         self._stack.addWidget(self._no_company_state)
         return self._stack
-
-    def _build_empty_state(self, msg: str, title: str = "No Data") -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        t = QLabel(title, card)
-        t.setObjectName("EmptyStateTitle")
-        layout.addWidget(t)
-
-        s = QLabel(msg, card)
-        s.setObjectName("PageSummary")
-        s.setWordWrap(True)
-        layout.addWidget(s)
-
-        layout.addStretch(1)
-        return card
 
     # ------------------------------------------------------------------
     # Detail surface (scrollable)
@@ -289,22 +265,27 @@ class ContractSummaryPage(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(10)
 
-        self._rollup_table = QTableWidget(card)
-        self._rollup_table.setObjectName("ContractRollupTable")
-        self._rollup_table.setColumnCount(9)
-        self._rollup_table.setHorizontalHeaderLabels((
-            "Project",
-            "Revenue",
-            "Actual Cost",
-            "Commitments",
-            "Budget",
-            "Exposure",
-            "Remaining",
-            "Margin",
-            "Margin %",
-        ))
-        configure_compact_table(self._rollup_table)
-        self._rollup_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._rollup_model = QStandardItemModel(0, 9, card)
+        self._rollup_model.setHorizontalHeaderLabels([
+            "Project", "Revenue", "Actual Cost", "Commitments",
+            "Budget", "Exposure", "Remaining", "Margin", "Margin %",
+        ])
+        self._rollup_table = DataTable(
+            columns=(
+                DataTableColumn(key="project", title="Project"),
+                DataTableColumn(key="revenue", title="Revenue"),
+                DataTableColumn(key="actual_cost", title="Actual Cost"),
+                DataTableColumn(key="commitments", title="Commitments"),
+                DataTableColumn(key="budget", title="Budget"),
+                DataTableColumn(key="exposure", title="Exposure"),
+                DataTableColumn(key="remaining", title="Remaining"),
+                DataTableColumn(key="margin", title="Margin"),
+                DataTableColumn(key="margin_pct", title="Margin %"),
+            ),
+            show_search=False,
+            parent=card,
+        )
+        self._rollup_table.set_model(self._rollup_model)
         layout.addWidget(self._rollup_table)
         return card
 
@@ -435,6 +416,16 @@ class ContractSummaryPage(QWidget):
 
         h["total_margin_pct"].setText(_fmt_pct(s.total_margin_percent))
 
+    @staticmethod
+    def _make_item(text: str, *, right_align: bool = False, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if right_align:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_rollup(self) -> None:
         s = self._summary
         if s is None:
@@ -443,48 +434,29 @@ class ContractSummaryPage(QWidget):
         palette = self._service_registry.theme_manager.current_palette
         items = s.project_rollup_items
 
-        self._rollup_table.setSortingEnabled(False)
-        self._rollup_table.setRowCount(0)
+        self._rollup_model.removeRows(0, self._rollup_model.rowCount())
 
         for item in items:
-            row = self._rollup_table.rowCount()
-            self._rollup_table.insertRow(row)
+            margin_item = self._make_item(_fmt(item.margin_amount), right_align=True)
+            if item.margin_amount >= 0:
+                margin_item.setForeground(QBrush(QColor(palette.success)))
+            else:
+                margin_item.setForeground(QBrush(QColor(palette.danger)))
 
-            values = (
-                f"{item.project_code} — {item.project_name}",
-                _fmt(item.billed_revenue_amount),
-                _fmt(item.actual_cost_amount),
-                _fmt(item.approved_commitment_amount),
-                _fmt(item.current_budget_amount),
-                _fmt(item.total_exposure_amount),
-                _fmt(item.remaining_budget_after_commitments_amount),
-                _fmt(item.margin_amount),
-                _fmt_pct(item.margin_percent),
-            )
+            pct_item = self._make_item(_fmt_pct(item.margin_percent))
+            pct_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            for col, val in enumerate(values):
-                cell = QTableWidgetItem(val)
-                if col == 0:
-                    cell.setData(Qt.ItemDataRole.UserRole, item.project_id)
-                if col in {1, 2, 3, 4, 5, 6, 7}:
-                    cell.setTextAlignment(
-                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
-                if col == 8:
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if col == 7:
-                    if item.margin_amount >= 0:
-                        cell.setForeground(QColor(palette.success))
-                    else:
-                        cell.setForeground(QColor(palette.danger))
-                self._rollup_table.setItem(row, col, cell)
-
-        self._rollup_table.resizeColumnsToContents()
-        header = self._rollup_table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
-        for c in range(1, 9):
-            header.setSectionResizeMode(c, header.ResizeMode.ResizeToContents)
-        self._rollup_table.setSortingEnabled(True)
+            self._rollup_model.appendRow([
+                self._make_item(f"{item.project_code} — {item.project_name}", user_data=item.project_id),
+                self._make_item(_fmt(item.billed_revenue_amount), right_align=True),
+                self._make_item(_fmt(item.actual_cost_amount), right_align=True),
+                self._make_item(_fmt(item.approved_commitment_amount), right_align=True),
+                self._make_item(_fmt(item.current_budget_amount), right_align=True),
+                self._make_item(_fmt(item.total_exposure_amount), right_align=True),
+                self._make_item(_fmt(item.remaining_budget_after_commitments_amount), right_align=True),
+                margin_item,
+                pct_item,
+            ])
 
         n = len(items)
         self._rollup_count.setText(f"{n} project{'s' if n != 1 else ''}")
@@ -498,5 +470,5 @@ class ContractSummaryPage(QWidget):
         for lbl in self._header_labels.values():
             lbl.setText("—")
             lbl.setStyleSheet("")
-        self._rollup_table.setRowCount(0)
+        self._rollup_model.removeRows(0, self._rollup_model.rowCount())
         self._rollup_count.setText("")

@@ -7,8 +7,8 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QFrame,
@@ -17,14 +17,15 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 if TYPE_CHECKING:
     from seeker_accounting.app.dependency.service_registry import ServiceRegistry
@@ -33,22 +34,15 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
-_COLUMN_HEADERS = (
-    "Timestamp",
-    "Event Type",
-    "Module",
-    "Entity Type",
-    "Entity ID",
-    "Description",
-    "Actor",
+AUDIT_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="timestamp", title="Timestamp"),
+    DataTableColumn(key="event_type", title="Event Type"),
+    DataTableColumn(key="module", title="Module"),
+    DataTableColumn(key="entity_type", title="Entity Type"),
+    DataTableColumn(key="entity_id", title="Entity ID"),
+    DataTableColumn(key="description", title="Description"),
+    DataTableColumn(key="actor", title="Actor"),
 )
-_COL_TIMESTAMP = 0
-_COL_EVENT_TYPE = 1
-_COL_MODULE = 2
-_COL_ENTITY_TYPE = 3
-_COL_ENTITY_ID = 4
-_COL_DESCRIPTION = 5
-_COL_ACTOR = 6
 
 _PAGE_SIZE = 200
 
@@ -77,7 +71,8 @@ class AuditLogPage(QWidget):
         self._service_registry.active_company_context.active_company_changed.connect(
             self._handle_company_changed
         )
-        self._search_edit.textChanged.connect(self._apply_client_filter)
+        self._search_edit.textChanged.connect(self._table.set_search_text)
+        self._search_edit.textChanged.connect(self._update_record_count_label)
 
         self.reload_audit_events()
 
@@ -168,14 +163,20 @@ class AuditLogPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # ── Table ──
-        self._table = QTableWidget(card)
-        self._table.setObjectName("AuditLogTable")
-        self._table.setColumnCount(len(_COLUMN_HEADERS))
-        self._table.setHorizontalHeaderLabels(_COLUMN_HEADERS)
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._audit_log_model = QStandardItemModel(0, len(AUDIT_COLUMNS), self)
+        self._audit_log_model.setHorizontalHeaderLabels([c.title for c in AUDIT_COLUMNS])
+
+        self._table = DataTable(
+            columns=AUDIT_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No audit events match the current filters.",
+            parent=card,
+        )
+        self._table.set_model(self._audit_log_model)
         layout.addWidget(self._table)
 
         # ── Pagination ──
@@ -273,8 +274,12 @@ class AuditLogPage(QWidget):
                 limit=_PAGE_SIZE,
                 offset=self._offset,
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Audit Log", f"Failed to load audit events: {exc}")
+
+        except Exception:
+            _log.exception("Audit Log")
+            show_error(self, "Audit Log", "An unexpected error occurred. See application log for details.")
             self._events = []
 
         # Populate the module combo if not yet done
@@ -308,46 +313,38 @@ class AuditLogPage(QWidget):
                 self._module_combo.setCurrentIndex(idx)
         self._module_combo.blockSignals(False)
 
+    @staticmethod
+    def _make_item(text: str, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._audit_log_model.removeRows(0, self._audit_log_model.rowCount())
 
         for event in self._events:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-
             ts_str = event.created_at.strftime("%Y-%m-%d %H:%M:%S") if event.created_at else ""
             actor = event.actor_display_name or (f"User #{event.actor_user_id}" if event.actor_user_id else "System")
+            entity_id_str = str(event.entity_id) if event.entity_id else ""
 
-            values = (
-                ts_str,
-                event.event_type_code,
-                event.module_code,
-                event.entity_type,
-                str(event.entity_id) if event.entity_id else "",
-                event.description,
-                actor,
+            entity_id_item = self._make_item(entity_id_str)
+            entity_id_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+            self._audit_log_model.appendRow(
+                [
+                    self._make_item(ts_str, user_data=event.id),
+                    self._make_item(event.event_type_code),
+                    self._make_item(event.module_code),
+                    self._make_item(event.entity_type),
+                    entity_id_item,
+                    self._make_item(event.description),
+                    self._make_item(actor),
+                ]
             )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == _COL_TIMESTAMP:
-                    item.setData(Qt.ItemDataRole.UserRole, event.id)
-                if col == _COL_ENTITY_ID:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self._table.setItem(row, col, item)
 
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(_COL_TIMESTAMP, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(_COL_EVENT_TYPE, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(_COL_MODULE, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(_COL_ENTITY_TYPE, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(_COL_ENTITY_ID, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(_COL_DESCRIPTION, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(_COL_ACTOR, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
-
-        self._record_count_label.setText(f"{len(self._events)} events")
+        self._update_record_count_label()
 
     # ── Pagination ────────────────────────────────────────────────────
 
@@ -367,23 +364,15 @@ class AuditLogPage(QWidget):
 
     # ── Client-side search ────────────────────────────────────────────
 
-    def _apply_client_filter(self) -> None:
-        query = self._search_edit.text().strip().lower()
-        visible = 0
-        for row in range(self._table.rowCount()):
-            matches = not query or any(
-                query in (self._table.item(row, col).text().lower() if self._table.item(row, col) else "")
-                for col in range(self._table.columnCount())
-            )
-            self._table.setRowHidden(row, not matches)
-            if matches:
-                visible += 1
-
+    def _update_record_count_label(self, *_args) -> None:
         total = len(self._events)
+        query = self._search_edit.text().strip()
         if query:
+            proxy = self._table.view().model()
+            visible = proxy.rowCount() if proxy is not None else total
             self._record_count_label.setText(f"{visible} shown of {total} events")
         else:
-            self._record_count_label.setText(f"{total} events")
+            self._record_count_label.setText(f"{total} event(s)")
 
     # ── Signal handlers ───────────────────────────────────────────────
 

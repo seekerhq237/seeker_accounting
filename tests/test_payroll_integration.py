@@ -37,6 +37,8 @@ from decimal import Decimal, ROUND_HALF_UP, ROUND_DOWN
 
 import pytest
 
+from seeker_accounting.modules.payroll.engines.engine_types import quantize_xaf
+
 
 # ── Lightweight ORM stubs ─────────────────────────────────────────────────────
 # These mimic the attributes read by PayrollCalculationService._build_context()
@@ -343,7 +345,7 @@ def _ref_irpp_monthly(monthly_net_imposable: Decimal, number_of_parts: Decimal =
         irpp_per_part += taxable_in_bracket * rate
 
     irpp_annual = irpp_per_part * number_of_parts
-    irpp_monthly = (irpp_annual / 12).quantize(_D("0.0001"), rounding=ROUND_HALF_UP)
+    irpp_monthly = quantize_xaf(irpp_annual / 12)
     return irpp_monthly
 
 
@@ -500,8 +502,7 @@ class TestBaseSalaryOnly:
 
         irpp = _line_by_code(result, "IRPP")
         cac = _line_by_code(result, "CAC")
-        # Engine quantizes CAC to 4dp
-        expected_cac = (irpp * _D("0.10")).quantize(_D("0.0001"))
+        expected_cac = quantize_xaf(irpp * _D("0.10"))
         assert cac == expected_cac, f"CAC for salary={salary}: {cac} != {expected_cac}"
 
     @pytest.mark.parametrize("salary", [
@@ -607,20 +608,21 @@ class TestWithAllowances:
         cnps = _ref_cnps(salary)
         assert _line_by_code(result, "EMPLOYEE_CNPS") == cnps
 
-        # CFC and FNE are on gross
-        assert _line_by_code(result, "CFC_HLF") == gross * _D("0.01")
-        assert _line_by_code(result, "FNE_EMPLOYEE") == gross * _D("0.01")
+        # CFC and FNE are on taxable gross only (base salary) — C2 fix: non-taxable
+        # allowances (housing, transport) are excluded from CFC/FNE-Sal base.
+        assert _line_by_code(result, "CFC_HLF") == quantize_xaf(salary * _D("0.01"))
+        assert _line_by_code(result, "FNE_EMPLOYEE") == quantize_xaf(salary * _D("0.01"))
 
         # IRPP: taxable_gross = only taxable earnings = base salary
-        cfc = _ref_cfc(gross)
-        fne = _ref_fne_employee(gross)
+        cfc = quantize_xaf(salary * _D("0.01"))  # CFC on taxable base (not gross)
+        fne = quantize_xaf(salary * _D("0.01"))  # FNE-sal on taxable base (not gross)
         taxable_base = _ref_taxable_base(salary, cnps, cfc, fne)
         expected_irpp = _ref_irpp_monthly(taxable_base)
         assert _line_by_code(result, "IRPP") == expected_irpp
 
-        # Employer contributions on gross
-        assert _line_by_code(result, "FNE") == gross * _D("0.025")
-        assert _line_by_code(result, "ACCIDENT_RISK_EMPLOYER") == gross * _D("0.0175")
+        # Employer contributions: FNE on gross; AF and Accident Risk on pensionable base (C1 fix)
+        assert _line_by_code(result, "FNE") == quantize_xaf(gross * _D("0.025"))
+        assert _line_by_code(result, "ACCIDENT_RISK_EMPLOYER") == quantize_xaf(salary * _D("0.0175"))
 
     def test_1m_with_large_allowances(self):
         salary = _D("1000000")
@@ -639,9 +641,9 @@ class TestWithAllowances:
         assert _line_by_code(result, "EMPLOYEE_CNPS") == _D("31500")
         assert _line_by_code(result, "EMPLOYER_CNPS") == _D("31500")
 
-        # CFC/FNE on total gross
-        assert _line_by_code(result, "CFC_HLF") == gross * _D("0.01")
-        assert _line_by_code(result, "FNE_EMPLOYEE") == gross * _D("0.01")
+        # CFC/FNE on taxable gross only (pensionable base = base salary; allowances are non-taxable)
+        assert _line_by_code(result, "CFC_HLF") == quantize_xaf(salary * _D("0.01"))
+        assert _line_by_code(result, "FNE_EMPLOYEE") == quantize_xaf(salary * _D("0.01"))
 
         # AF capped at 52,500 (gross > 750K)
         assert _line_by_code(result, "EMPLOYER_AF") == _D("52500")
@@ -662,9 +664,9 @@ class TestWithAllowances:
         # No CNPS (nothing pensionable)
         assert _line_by_code(result, "EMPLOYEE_CNPS") == _D("0")
 
-        # CFC/FNE on gross (50K)
-        assert _line_by_code(result, "CFC_HLF") == _D("500")
-        assert _line_by_code(result, "FNE_EMPLOYEE") == _D("500")
+        # CFC/FNE: housing is non-taxable — taxable_gross = 0, so no CFC/FNE lines produced
+        assert _line_by_code(result, "CFC_HLF") == _D("0")
+        assert _line_by_code(result, "FNE_EMPLOYEE") == _D("0")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -732,9 +734,9 @@ class TestQuotientFamilial:
         cac_2 = _line_by_code(r2, "CAC")
         assert cac_2 < cac_1
 
-        # CAC = 10% of IRPP quantized to 4dp
-        assert cac_1 == (_line_by_code(r1, "IRPP") * _D("0.10")).quantize(_D("0.0001"))
-        assert cac_2 == (_line_by_code(r2, "IRPP") * _D("0.10")).quantize(_D("0.0001"))
+        # CAC = 10% of IRPP quantized to integer XAF
+        assert cac_1 == quantize_xaf(_line_by_code(r1, "IRPP") * _D("0.10"))
+        assert cac_2 == quantize_xaf(_line_by_code(r2, "IRPP") * _D("0.10"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -801,16 +803,17 @@ class TestOvertimePipeline:
         result = _svc.calculate(profile, assignments, batches, rule_sets, 2024, 6)
 
         assert result.error_message is None
-        gross = salary + ot_amount
+        # Engine rounds OT amount to XAF — gross reflects quantized amount
+        ot_xaf = quantize_xaf(ot_amount)
+        gross = salary + ot_xaf
         assert result.gross_earnings == gross
 
-        # OT line should match direct amount
+        # OT line should match direct amount rounded to XAF
         actual_ot = _line_by_code(result, "OVERTIME_DAY_T1")
-        assert actual_ot == ot_amount.quantize(_D("0.0001"))
+        assert actual_ot == ot_xaf
 
         # CNPS should be on full pensionable gross (base + OT)
-        # Engine quantizes CNPS to 4dp internally
-        expected_cnps = _ref_cnps(gross).quantize(_D("0.0001"))
+        expected_cnps = quantize_xaf(min(gross * _D("0.042"), _D("31500")))
         assert _line_by_code(result, "EMPLOYEE_CNPS") == expected_cnps
 
         # Net reconciliation
@@ -836,13 +839,17 @@ class TestOvertimePipeline:
         result = _svc.calculate(profile, assignments, batches, rule_sets, 2024, 6)
 
         assert result.error_message is None
-        expected_gross = salary + ot_t1 + ot_t2 + ot_night
+        # Engine rounds each OT amount to XAF before accumulating into gross
+        ot_t1_xaf = quantize_xaf(ot_t1)
+        ot_t2_xaf = quantize_xaf(ot_t2)
+        ot_night_xaf = quantize_xaf(ot_night)
+        expected_gross = salary + ot_t1_xaf + ot_t2_xaf + ot_night_xaf
         assert result.gross_earnings == expected_gross
 
-        # Each OT tier produced its line
-        assert _line_by_code(result, "OVERTIME_DAY_T1") == ot_t1.quantize(_D("0.0001"))
-        assert _line_by_code(result, "OVERTIME_DAY_T2") == ot_t2.quantize(_D("0.0001"))
-        assert _line_by_code(result, "OVERTIME_NIGHT") == ot_night.quantize(_D("0.0001"))
+        # Each OT tier produced its line (rounded to XAF)
+        assert _line_by_code(result, "OVERTIME_DAY_T1") == ot_t1_xaf
+        assert _line_by_code(result, "OVERTIME_DAY_T2") == ot_t2_xaf
+        assert _line_by_code(result, "OVERTIME_NIGHT") == ot_night_xaf
 
         # T2 > T1 (higher premium rate, same hours)
         assert _line_by_code(result, "OVERTIME_DAY_T2") > _line_by_code(result, "OVERTIME_DAY_T1")
@@ -877,11 +884,13 @@ class TestEdgeCases:
         assert _line_by_code(result, "EMPLOYER_CNPS") == _D("31500")
 
     def test_just_below_cnps_ceiling(self):
-        salary = _D("749999")
+        # 749999 × 0.042 = 31499.958 which rounds to 31500 (ROUND_HALF_UP) —
+        # use a salary where the result is genuinely below the cap.
+        salary = _D("749900")  # 749900 × 0.042 = 31495.8 → rounds to 31496
         profile, assignments, batches, rule_sets = _build_standard_employee(salary)
         result = _svc.calculate(profile, assignments, batches, rule_sets, 2024, 6)
 
-        expected = salary * _D("0.042")
+        expected = quantize_xaf(salary * _D("0.042"))
         assert _line_by_code(result, "EMPLOYEE_CNPS") == expected
         assert expected < _D("31500")
 
@@ -993,8 +1002,9 @@ class TestFullPayslipVerification:
 
         # ── Employee deductions ──
         cnps = _ref_cnps(pensionable_gross)
-        cfc = _ref_cfc(gross)
-        fne_emp = _ref_fne_employee(gross)
+        # C2 fix: CFC and FNE-Sal are on taxable_gross (base salary only), not total gross
+        cfc = quantize_xaf(salary * _D("0.01"))
+        fne_emp = quantize_xaf(salary * _D("0.01"))
 
         assert _line_by_code(result, "EMPLOYEE_CNPS") == cnps
         assert _line_by_code(result, "CFC_HLF") == cfc
@@ -1009,8 +1019,8 @@ class TestFullPayslipVerification:
             f"taxable_base={taxable_base}"
         )
 
-        # ── CAC ── (engine quantizes to 4dp)
-        cac = (irpp * _D("0.10")).quantize(_D("0.0001"))
+        # ── CAC ── (engine quantizes to integer XAF via quantize_xaf)
+        cac = quantize_xaf(irpp * _D("0.10"))
         assert _line_by_code(result, "CAC") == cac
 
         # ── CRTV ──
@@ -1020,10 +1030,11 @@ class TestFullPayslipVerification:
         assert _line_by_code(result, "TDL") == _ref_tdl(gross)
 
         # ── Employer contributions ──
+        # FNE-patronale is on gross; AF and Accident Risk are on pensionable base (C1 fix)
         assert _line_by_code(result, "EMPLOYER_CNPS") == _ref_cnps(pensionable_gross)
-        assert _line_by_code(result, "FNE") == gross * _D("0.025")
-        assert _line_by_code(result, "ACCIDENT_RISK_EMPLOYER") == gross * _D("0.0175")
-        assert _line_by_code(result, "EMPLOYER_AF") == min(gross * _D("0.07"), _D("52500"))
+        assert _line_by_code(result, "FNE") == quantize_xaf(gross * _D("0.025"))
+        assert _line_by_code(result, "ACCIDENT_RISK_EMPLOYER") == quantize_xaf(pensionable_gross * _D("0.0175"))
+        assert _line_by_code(result, "EMPLOYER_AF") == min(quantize_xaf(pensionable_gross * _D("0.07")), _D("52500"))
 
         # ── Net payable reconciliation ── (use engine aggregates to avoid precision drift)
         expected_net = result.total_earnings - result.total_employee_deductions - result.total_taxes

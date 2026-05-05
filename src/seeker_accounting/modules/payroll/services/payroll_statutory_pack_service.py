@@ -29,11 +29,19 @@ from seeker_accounting.modules.payroll.dto.payroll_statutory_pack_dto import (
 )
 from seeker_accounting.modules.payroll.payroll_permissions import PAYROLL_PACK_APPLY
 from seeker_accounting.modules.payroll.models.company_payroll_setting import CompanyPayrollSetting
+from seeker_accounting.modules.payroll.models.payroll_authority import PayrollAuthority
 from seeker_accounting.modules.payroll.models.payroll_component import PayrollComponent
+from seeker_accounting.modules.payroll.models.payroll_component_authority_map import (
+    PayrollComponentAuthorityMap,
+)
 from seeker_accounting.modules.payroll.models.payroll_rule_bracket import PayrollRuleBracket
 from seeker_accounting.modules.payroll.models.payroll_rule_set import PayrollRuleSet
 from seeker_accounting.modules.payroll.repositories.company_payroll_setting_repository import (
     CompanyPayrollSettingRepository,
+)
+from seeker_accounting.modules.payroll.repositories.payroll_authority_repository import (
+    PayrollAuthorityRepository,
+    PayrollComponentAuthorityMapRepository,
 )
 from seeker_accounting.modules.payroll.repositories.payroll_component_repository import (
     PayrollComponentRepository,
@@ -48,6 +56,10 @@ CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
 CompanyPayrollSettingRepositoryFactory = Callable[[Session], CompanyPayrollSettingRepository]
 PayrollComponentRepositoryFactory = Callable[[Session], PayrollComponentRepository]
 PayrollRuleSetRepositoryFactory = Callable[[Session], PayrollRuleSetRepository]
+PayrollAuthorityRepositoryFactory = Callable[[Session], PayrollAuthorityRepository]
+PayrollComponentAuthorityMapRepositoryFactory = Callable[
+    [Session], PayrollComponentAuthorityMapRepository
+]
 
 # ── Available packs registry ──────────────────────────────────────────────────
 # Each entry maps pack_code → (pack_module, summary)
@@ -79,6 +91,10 @@ class PayrollStatutoryPackService:
         rule_set_repository_factory: PayrollRuleSetRepositoryFactory,
         permission_service: PermissionService,
         audit_service: AuditService,
+        authority_repository_factory: PayrollAuthorityRepositoryFactory | None = None,
+        component_authority_map_repository_factory: (
+            PayrollComponentAuthorityMapRepositoryFactory | None
+        ) = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._company_repository_factory = company_repository_factory
@@ -87,6 +103,13 @@ class PayrollStatutoryPackService:
         self._rule_set_repository_factory = rule_set_repository_factory
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._authority_repository_factory = (
+            authority_repository_factory or PayrollAuthorityRepository
+        )
+        self._component_authority_map_repository_factory = (
+            component_authority_map_repository_factory
+            or PayrollComponentAuthorityMapRepository
+        )
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -123,11 +146,17 @@ class PayrollStatutoryPackService:
             rule_sets_created = 0
             rule_sets_skipped = 0
             brackets_created = 0
+            authorities_created = 0
+            authorities_skipped = 0
+            mappings_created = 0
+            mappings_skipped = 0
 
             # ── Dispatch to pack data ─────────────────────────────────────────
             if pack_code == _cmr.PACK_CODE:
                 component_seeds = _cmr.COMPONENT_SEEDS
                 rule_set_seeds = _cmr.RULE_SET_SEEDS
+                authority_seeds = _cmr.AUTHORITY_SEEDS
+                mapping_seeds = _cmr.COMPONENT_AUTHORITY_MAP_SEEDS
                 effective_from = _cmr.PACK_EFFECTIVE_FROM
                 version_code = _cmr.PACK_CODE
             else:
@@ -191,6 +220,79 @@ class PayrollStatutoryPackService:
                     rule_set.brackets.append(bracket)
                     brackets_created += 1
 
+            # ── Authorities ───────────────────────────────────────────────────
+            authority_repo = self._authority_repository_factory(uow.session)
+            map_repo = self._component_authority_map_repository_factory(uow.session)
+            authorities_by_code: dict[str, PayrollAuthority] = {}
+            for (
+                auth_code,
+                auth_name,
+                jurisdiction,
+                cadence,
+                deadline_day,
+                deadline_rule,
+                notes,
+            ) in authority_seeds:
+                existing = authority_repo.get_by_code(company_id, auth_code)
+                if existing is not None:
+                    authorities_by_code[auth_code] = existing
+                    authorities_skipped += 1
+                    continue
+                authority = PayrollAuthority(
+                    company_id=company_id,
+                    code=auth_code,
+                    name=auth_name,
+                    jurisdiction_code=jurisdiction,
+                    filing_cadence_code=cadence,
+                    deadline_rule_code=deadline_rule,
+                    deadline_day=deadline_day,
+                    gl_liability_account_id=None,
+                    notes=notes,
+                    is_active=True,
+                )
+                authority_repo.save(authority)
+                authorities_by_code[auth_code] = authority
+                authorities_created += 1
+            uow.session.flush()
+
+            # ── Component → authority mappings ────────────────────────────────
+            from decimal import Decimal as _Dec
+
+            for (
+                comp_code,
+                auth_code,
+                side,
+                line_kind,
+                fraction_str,
+            ) in mapping_seeds:
+                component = comp_repo.get_by_code(company_id, comp_code)
+                if component is None:
+                    # Component not in this pack (or filtered out); skip silently.
+                    continue
+                authority = authorities_by_code.get(auth_code)
+                if authority is None:
+                    # Authority not declared in this pack manifest; skip silently.
+                    continue
+                existing_map = map_repo.find(
+                    company_id,
+                    component_id=component.id,
+                    authority_id=authority.id,
+                    side=side,
+                )
+                if existing_map is not None:
+                    mappings_skipped += 1
+                    continue
+                mapping = PayrollComponentAuthorityMap(
+                    company_id=company_id,
+                    component_id=component.id,
+                    authority_id=authority.id,
+                    side=side,
+                    line_kind=line_kind,
+                    fraction=_Dec(fraction_str),
+                )
+                map_repo.save(mapping)
+                mappings_created += 1
+
             # ── Update statutory_pack_version_code in settings ────────────────
             settings_row = settings_repo.get_by_company(company_id)
             previous_pack_code = (
@@ -234,6 +336,10 @@ class PayrollStatutoryPackService:
                             "rule_sets_created": rule_sets_created,
                             "rule_sets_skipped": rule_sets_skipped,
                             "brackets_created": brackets_created,
+                            "authorities_created": authorities_created,
+                            "authorities_skipped": authorities_skipped,
+                            "mappings_created": mappings_created,
+                            "mappings_skipped": mappings_skipped,
                             "settings_action": settings_action,
                             "previous_pack_code": previous_pack_code,
                             "new_pack_code": version_code,
@@ -255,6 +361,8 @@ class PayrollStatutoryPackService:
             f"Components: {components_created} created, {components_skipped} already present.",
             f"Rule sets: {rule_sets_created} created, {rule_sets_skipped} already present.",
             f"Brackets: {brackets_created} created.",
+            f"Authorities: {authorities_created} created, {authorities_skipped} already present.",
+            f"Mappings: {mappings_created} created, {mappings_skipped} already present.",
         ]
         msg_parts.append(f"Settings: {settings_action}.")
         if superseded_previous_pack_code:
@@ -275,6 +383,10 @@ class PayrollStatutoryPackService:
             brackets_created=brackets_created,
             settings_updated=settings_updated,
             settings_action=settings_action,
+            authorities_created=authorities_created,
+            authorities_skipped=authorities_skipped,
+            mappings_created=mappings_created,
+            mappings_skipped=mappings_skipped,
             superseded_previous_pack_code=superseded_previous_pack_code,
             message=" ".join(msg_parts),
         )

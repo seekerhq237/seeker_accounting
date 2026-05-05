@@ -1,14 +1,11 @@
 """Step 2 — Preview per-asset depreciation lines."""
 from __future__ import annotations
 
-from PySide6.QtWidgets import (
-    QHeaderView,
-    QLabel,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from decimal import Decimal
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from seeker_accounting.modules.wizards.depreciation_run import state_keys as K
 from seeker_accounting.platform.wizards import (
@@ -16,6 +13,16 @@ from seeker_accounting.platform.wizards import (
     WizardContext,
     WizardState,
     WizardStep,
+)
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+
+
+_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="asset_number", title="Asset #", min_width=100),
+    DataTableColumn(key="asset_name", title="Asset", min_width=200),
+    DataTableColumn(key="depreciation", title="Depreciation", is_numeric=True, min_width=120),
+    DataTableColumn(key="accumulated", title="Accum. After", is_numeric=True, min_width=120),
+    DataTableColumn(key="nbv", title="NBV After", is_numeric=True, min_width=120),
 )
 
 
@@ -27,7 +34,26 @@ class PreviewStep(WizardStep):
     def __init__(self) -> None:
         super().__init__()
         self._summary: QLabel | None = None
-        self._table: QTableWidget | None = None
+        self._table: DataTable | None = None
+        self._model: QStandardItemModel | None = None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
 
     def build_widget(self, parent: QWidget | None = None) -> QWidget:
         root = QWidget(parent)
@@ -39,23 +65,22 @@ class PreviewStep(WizardStep):
         self._summary.setStyleSheet("color: #2E3848; font-size: 12px; font-weight: 600;")
         outer.addWidget(self._summary)
 
-        self._table = QTableWidget(0, 5, root)
-        self._table.setHorizontalHeaderLabels(
-            ["Asset #", "Asset", "Depreciation", "Accum. After", "NBV After"]
+        self._model = QStandardItemModel(0, len(_COLUMNS), root)
+        self._model.setHorizontalHeaderLabels([c.title for c in _COLUMNS])
+        self._table = DataTable(
+            columns=_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=root,
         )
-        self._table.verticalHeader().setVisible(False)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        h = self._table.horizontalHeader()
-        h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        self._table.set_model(self._model)
         outer.addWidget(self._table, 1)
         return root
 
     def load(self, context: WizardContext, state: WizardState) -> None:
-        if self._table is None or self._summary is None:
+        if self._model is None or self._summary is None:
             return
         run_id = state.get(K.KEY_RUN_ID)
         if not isinstance(run_id, int):
@@ -69,18 +94,15 @@ class PreviewStep(WizardStep):
             f"Run {run.run_number or '(draft)'}  \u00b7  {run.asset_count} asset(s)  "
             f"\u00b7  Total: {run.total_depreciation:,.2f}"
         )
-        self._table.setRowCount(len(run.lines))
-        for i, line in enumerate(run.lines):
-            self._table.setItem(i, 0, QTableWidgetItem(line.asset_number))
-            self._table.setItem(i, 1, QTableWidgetItem(line.asset_name))
-            for col, value in (
-                (2, line.depreciation_amount),
-                (3, line.accumulated_depreciation_after),
-                (4, line.net_book_value_after),
-            ):
-                item = QTableWidgetItem(f"{value:,.2f}")
-                item.setTextAlignment(0x0002 | 0x0080)
-                self._table.setItem(i, col, item)
+        self._model.removeRows(0, self._model.rowCount())
+        for line in run.lines:
+            self._model.appendRow([
+                self._make_item(line.asset_number),
+                self._make_item(line.asset_name),
+                self._make_numeric(line.depreciation_amount),
+                self._make_numeric(line.accumulated_depreciation_after),
+                self._make_numeric(line.net_book_value_after),
+            ])
         state[K.KEY_ASSET_COUNT] = run.asset_count
         state[K.KEY_TOTAL_DEPRECIATION] = str(run.total_depreciation)
 

@@ -48,7 +48,7 @@ class ComponentAssignmentDialog(QDialog):
         self._employee_id = employee_id
         self._existing = existing
 
-        self.setWindowTitle("Edit Component Assignment" if existing else "Assign Component")
+        self.setWindowTitle("Edit component assignment" if existing else "Assign payroll component")
         self.setMinimumWidth(400)
         self.setModal(True)
 
@@ -63,7 +63,7 @@ class ComponentAssignmentDialog(QDialog):
         self._component_combo = QComboBox()
         self._component_ids: list[int] = []
         self._load_components()
-        form.addRow("Component:", self._component_combo)
+        form.addRow("Payroll component:", self._component_combo)
 
         self._override_amount = QLineEdit()
         self._override_amount.setPlaceholderText("Leave blank to use component default")
@@ -141,7 +141,7 @@ class ComponentAssignmentDialog(QDialog):
     def _on_accept(self) -> None:
         component_id = self._component_combo.currentData()
         if component_id is None:
-            show_error(self, "Component Assignment", "Please select a payroll component.")
+            show_error(self, "Component assignment", "Please select a payroll component.")
             return
 
         override_amount: Decimal | None = None
@@ -150,7 +150,7 @@ class ComponentAssignmentDialog(QDialog):
             try:
                 override_amount = Decimal(raw_amt)
             except InvalidOperation:
-                show_error(self, "Component Assignment", "Override amount must be a valid number.")
+                show_error(self, "Component assignment", "Override amount must be a valid number.")
                 return
 
         override_rate: Decimal | None = None
@@ -159,7 +159,7 @@ class ComponentAssignmentDialog(QDialog):
             try:
                 override_rate = Decimal(raw_rate)
             except InvalidOperation:
-                show_error(self, "Component Assignment", "Override rate must be a valid decimal (e.g. 0.042).")
+                show_error(self, "Component assignment", "Override rate must be a valid decimal (e.g. 0.042).")
                 return
 
         effective_from = self._effective_from.date().toPython()
@@ -199,7 +199,7 @@ class ComponentAssignmentDialog(QDialog):
                 )
             self.accept()
         except (ValidationError, ConflictError, NotFoundError) as exc:
-            show_error(self, "Component Assignment", str(exc))
+            show_error(self, "Component assignment", str(exc))
 
 
 def _today() -> "QDate":

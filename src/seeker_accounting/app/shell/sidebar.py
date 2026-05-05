@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.context.active_company_context import ActiveCompanyContext
+from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.app.navigation.navigation_service import NavigationService
 from seeker_accounting.app.security.permission_map import can_access_navigation
 from seeker_accounting.app.shell.sidebar_icon_provider import SidebarIconProvider
@@ -32,6 +33,10 @@ from seeker_accounting.app.shell.shell_models import (
     SidebarModule,
 )
 from seeker_accounting.modules.administration.services.permission_service import PermissionService
+from seeker_accounting.platform.feature_flags import (
+    FLAG_PAYROLL_WORKBENCH,
+    FeatureFlagService,
+)
 from seeker_accounting.modules.companies.services.company_logo_service import CompanyLogoService
 from seeker_accounting.shared.services.sidebar_preferences_service import SidebarPreferencesService
 from seeker_accounting.shared.ui.styles.theme_manager import ThemeManager
@@ -42,6 +47,20 @@ from seeker_accounting.shared.utils.text import coalesce_text
 # Centralized top-level module icons are rendered by SidebarIconProvider.
 
 _sizes = DEFAULT_TOKENS.sizes
+
+
+# Legacy payroll nav ids that are absorbed into the workbench when the
+# Phase 2 IA reset flag is enabled. They are hidden from the sidebar
+# but remain reachable from deep links, the command palette, and the
+# workbench's embedded panes.
+_LEGACY_PAYROLL_NAV_IDS: frozenset[str] = frozenset(
+    {
+        nav_ids.PAYROLL_SETUP,
+        nav_ids.PAYROLL_CALCULATION,
+        nav_ids.PAYROLL_OPERATIONS,
+        nav_ids.PAYROLL_ACCOUNTING,
+    }
+)
 
 
 class ShellSidebar(QFrame):
@@ -56,6 +75,7 @@ class ShellSidebar(QFrame):
         permission_service: PermissionService,
         company_logo_service: CompanyLogoService,
         theme_manager: ThemeManager,
+        feature_flag_service: FeatureFlagService | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -64,6 +84,7 @@ class ShellSidebar(QFrame):
         self._permission_service = permission_service
         self._company_logo_service = company_logo_service
         self._theme_manager = theme_manager
+        self._feature_flag_service = feature_flag_service or FeatureFlagService()
         self._sidebar_icon_provider = SidebarIconProvider(theme_manager)
         self._prefs = SidebarPreferencesService()
         self._show_navigation_filter = False
@@ -395,6 +416,29 @@ class ShellSidebar(QFrame):
 
     # ── Module rows ───────────────────────────────────────────────────────
 
+    def _is_nav_id_feature_enabled(self, nav_id: str) -> bool:
+        """Return True when this nav_id is allowed by feature flags.
+
+        The default is "enabled". Specific preview nav ids are gated by
+        feature flags so the legacy IA stays untouched until the user
+        opts into the new shell.
+
+        When the payroll workbench flag is **enabled**, the four legacy
+        payroll children (Setup / Calculation / Operations /
+        Accounting) are also suppressed in the sidebar — the workbench
+        now hosts every legacy surface internally (Phase 2.S8). The
+        legacy code paths are not removed; they remain reachable from
+        deep links, the command palette, and the embedded panes within
+        the workbench.
+        """
+        if nav_id == nav_ids.PAYROLL_WORKBENCH:
+            return self._feature_flag_service.is_enabled(FLAG_PAYROLL_WORKBENCH)
+        if nav_id in _LEGACY_PAYROLL_NAV_IDS and self._feature_flag_service.is_enabled(
+            FLAG_PAYROLL_WORKBENCH
+        ):
+            return False
+        return True
+
     def _build_modules(self) -> None:
         if self._show_auxiliary_sections:
             fav_section = self._build_favorites_section()
@@ -412,6 +456,7 @@ class ShellSidebar(QFrame):
                 child
                 for child in module.children
                 if can_access_navigation(self._permission_service, child.nav_id)
+                and self._is_nav_id_feature_enabled(child.nav_id)
             )
             if not visible_children:
                 continue

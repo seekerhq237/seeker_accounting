@@ -4,10 +4,16 @@ import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from sqlalchemy import func, select
+
+from seeker_accounting.modules.accounting.chart_of_accounts.models.account import Account
 from seeker_accounting.modules.accounting.fiscal_periods.services.fiscal_calendar_service import (
     FiscalCalendarService,
 )
+from seeker_accounting.modules.accounting.fiscal_periods.models.fiscal_period import FiscalPeriod
 from seeker_accounting.modules.accounting.journals.services.journal_service import JournalService
+from seeker_accounting.modules.accounting.reference_data.models.document_sequence import DocumentSequence
+from seeker_accounting.modules.customers.models.customer import Customer
 from seeker_accounting.modules.dashboard.dto.dashboard_dto import (
     DashboardAgingSnapshotDTO,
     DashboardAttentionItemDTO,
@@ -18,10 +24,14 @@ from seeker_accounting.modules.dashboard.dto.dashboard_dto import (
     DashboardKpiDeltaDTO,
     DashboardKpiDTO,
     DashboardRecentActivityItemDTO,
+    DashboardSetupChecklistDTO,
+    DashboardSetupChecklistItemDTO,
 )
+from seeker_accounting.modules.inventory.models.item import Item
 from seeker_accounting.modules.inventory.services.inventory_valuation_service import (
     InventoryValuationService,
 )
+from seeker_accounting.modules.payroll.models.employee import Employee
 from seeker_accounting.modules.purchases.services.purchase_bill_service import PurchaseBillService
 from seeker_accounting.modules.reporting.dto.operational_report_filter_dto import (
     OperationalReportFilterDTO,
@@ -30,12 +40,19 @@ from seeker_accounting.modules.reporting.services.ap_aging_report_service import
 from seeker_accounting.modules.reporting.services.ar_aging_report_service import ARAgingReportService
 from seeker_accounting.modules.reporting.services.treasury_report_service import TreasuryReportService
 from seeker_accounting.modules.sales.services.sales_invoice_service import SalesInvoiceService
+from seeker_accounting.modules.suppliers.models.supplier import Supplier
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.platform.validation import PredicateRule, ValidationEngine
 
 _log = logging.getLogger(__name__)
 
 _MAX_RECENT_ACTIVITY = 15
+
+
+def _count_company_rows(session, model: type, company_id: int) -> int:
+    stmt = select(func.count()).select_from(model).where(model.company_id == company_id)
+    return int(session.scalar(stmt) or 0)
 
 
 class DashboardService:
@@ -66,8 +83,20 @@ class DashboardService:
         self._fiscal_calendar_service = fiscal_calendar_service
         self._unit_of_work_factory = unit_of_work_factory
         self._inventory_valuation_service = inventory_valuation_service
+        self._validation_engine = ValidationEngine()
 
     def get_dashboard_data(self, company_id: int, currency_code: str) -> DashboardDataDTO:
+        self._validation_engine.validate_or_raise(
+            {"company_id": company_id},
+            (
+                PredicateRule(
+                    "dashboard.company_id",
+                    "A valid company is required for the dashboard.",
+                    lambda target: int(target.get("company_id") or 0) > 0,
+                    field="company_id",
+                ),
+            ),
+        )
         today = date.today()
 
         # Resolve current fiscal period for date range
@@ -81,6 +110,7 @@ class DashboardService:
         ar_aging = self._load_ar_aging(company_id, today)
         ap_aging = self._load_ap_aging(company_id, today)
         cash_liquidity = self._load_cash_liquidity(company_id, period_start, period_end, period_label)
+        setup_checklist = self._load_setup_checklist(company_id)
 
         return DashboardDataDTO(
             kpis=kpis,
@@ -90,10 +120,88 @@ class DashboardService:
             ar_aging=ar_aging,
             ap_aging=ap_aging,
             cash_liquidity=cash_liquidity,
+            setup_checklist=setup_checklist,
             as_of_date=today,
             loaded_at=datetime.now(),
             period_label=period_label,
         )
+
+    # ------------------------------------------------------------------
+    # First-run setup checklist
+    # ------------------------------------------------------------------
+
+    def _load_setup_checklist(self, company_id: int) -> DashboardSetupChecklistDTO:
+        counts = self._load_setup_counts(company_id)
+        return self._build_setup_checklist_from_counts(counts)
+
+    def _load_setup_counts(self, company_id: int) -> dict[str, int]:
+        if self._unit_of_work_factory is None:
+            return {}
+        try:
+            with self._unit_of_work_factory() as uow:
+                session = uow.session
+                return {
+                    "fiscal_periods": _count_company_rows(session, FiscalPeriod, company_id),
+                    "accounts": _count_company_rows(session, Account, company_id),
+                    "document_sequences": _count_company_rows(session, DocumentSequence, company_id),
+                    "customers": _count_company_rows(session, Customer, company_id),
+                    "suppliers": _count_company_rows(session, Supplier, company_id),
+                    "items": _count_company_rows(session, Item, company_id),
+                    "employees": _count_company_rows(session, Employee, company_id),
+                }
+        except Exception:
+            _log.warning("Dashboard: setup checklist unavailable", exc_info=True)
+            return {}
+
+    @staticmethod
+    def _build_setup_checklist_from_counts(counts: dict[str, int]) -> DashboardSetupChecklistDTO:
+        customer_supplier_count = counts.get("customers", 0) + counts.get("suppliers", 0)
+        items = (
+            DashboardSetupChecklistItemDTO(
+                key="fiscal_periods",
+                label="Fiscal calendar",
+                detail="Create fiscal years and periods before posting.",
+                is_complete=counts.get("fiscal_periods", 0) > 0,
+                nav_id=nav_ids.FISCAL_PERIODS,
+            ),
+            DashboardSetupChecklistItemDTO(
+                key="chart_of_accounts",
+                label="Chart of accounts",
+                detail="Load or customize the OHADA-ready account structure.",
+                is_complete=counts.get("accounts", 0) > 0,
+                nav_id=nav_ids.CHART_OF_ACCOUNTS,
+            ),
+            DashboardSetupChecklistItemDTO(
+                key="document_sequences",
+                label="Document numbering",
+                detail="Configure numbering for journals and operational documents.",
+                is_complete=counts.get("document_sequences", 0) > 0,
+                nav_id=nav_ids.DOCUMENT_SEQUENCES,
+            ),
+            DashboardSetupChecklistItemDTO(
+                key="business_partners",
+                label="Customers or suppliers",
+                detail="Add at least one trading partner for receivables or payables workflows.",
+                is_complete=customer_supplier_count > 0,
+                nav_id=nav_ids.CUSTOMERS,
+            ),
+            DashboardSetupChecklistItemDTO(
+                key="items",
+                label="Items and services",
+                detail="Add sellable, purchasable, or stockable items for documents and inventory.",
+                is_complete=counts.get("items", 0) > 0,
+                nav_id=nav_ids.ITEMS,
+            ),
+            DashboardSetupChecklistItemDTO(
+                key="payroll_employees",
+                label="Payroll employees",
+                detail="Create employees before payroll activation and monthly runs.",
+                is_complete=counts.get("employees", 0) > 0,
+                nav_id=nav_ids.PAYROLL_SETUP,
+                required=False,
+            ),
+        )
+        return DashboardSetupChecklistDTO(items=items)
 
     # ------------------------------------------------------------------
     # Period resolution

@@ -76,6 +76,7 @@ class BudgetApprovalService:
                     "Cannot submit a budget version with no lines. Add at least one budget line first."
                 )
 
+            from_status = version.status_code
             version.status_code = "submitted"
             version_repo = self._version_repository_factory(uow.session)
             version_repo.save(version)
@@ -85,6 +86,13 @@ class BudgetApprovalService:
             except IntegrityError as exc:
                 raise ValidationError("Budget version could not be submitted.") from exc
 
+            self._record_state_transition(
+                command.company_id,
+                version.id,
+                from_status,
+                "submitted",
+                "Submitted budget version.",
+            )
             return self._to_detail_dto(version)
 
     # ── Approve ───────────────────────────────────────────────────────
@@ -105,10 +113,13 @@ class BudgetApprovalService:
 
             # Supersede the currently approved version for this project, if any
             current_approved = version_repo.get_current_approved(version.project_id)
+            superseded_version_id: int | None = None
             if current_approved is not None and current_approved.id != version.id:
+                superseded_version_id = current_approved.id
                 current_approved.status_code = "superseded"
                 version_repo.save(current_approved)
 
+            from_status = version.status_code
             version.status_code = "approved"
             version.approved_at = datetime.now()
             version.approved_by_user_id = command.approved_by_user_id
@@ -127,6 +138,21 @@ class BudgetApprovalService:
                 version.id,
                 "Approved budget version",
             )
+            self._record_state_transition(
+                command.company_id,
+                version.id,
+                from_status,
+                "approved",
+                "Approved budget version.",
+            )
+            if superseded_version_id is not None:
+                self._record_state_transition(
+                    command.company_id,
+                    superseded_version_id,
+                    "approved",
+                    "superseded",
+                    "Superseded previous approved budget version.",
+                )
             return self._to_detail_dto(version)
 
     # ── Cancel ────────────────────────────────────────────────────────
@@ -143,6 +169,7 @@ class BudgetApprovalService:
                     "Only draft or submitted versions can be cancelled."
                 )
 
+            from_status = version.status_code
             version.status_code = "cancelled"
             version_repo = self._version_repository_factory(uow.session)
             version_repo.save(version)
@@ -152,6 +179,13 @@ class BudgetApprovalService:
             except IntegrityError as exc:
                 raise ValidationError("Budget version could not be cancelled.") from exc
 
+            self._record_state_transition(
+                command.company_id,
+                version.id,
+                from_status,
+                "cancelled",
+                "Cancelled budget version.",
+            )
             return self._to_detail_dto(version)
 
     # ── Clone ─────────────────────────────────────────────────────────
@@ -337,3 +371,27 @@ class BudgetApprovalService:
             )
         except Exception:
             pass  # Audit must not break business operations
+
+    def _record_state_transition(
+        self,
+        company_id: int,
+        version_id: int | None,
+        from_state: str | None,
+        to_state: str,
+        description: str,
+    ) -> None:
+        if self._audit_service is None:
+            return
+        from seeker_accounting.modules.audit.event_type_catalog import MODULE_BUDGETING
+        try:
+            self._audit_service.record_state_transition(
+                company_id,
+                module_code=MODULE_BUDGETING,
+                entity_type="ProjectBudgetVersion",
+                entity_id=version_id,
+                from_state=from_state,
+                to_state=to_state,
+                description=description,
+            )
+        except Exception:
+            pass

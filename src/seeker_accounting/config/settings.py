@@ -19,6 +19,7 @@ class AppSettings:
     runtime_paths: RuntimePaths
     database_url: str
     log_level: str
+    telemetry_enabled: bool = False
 
 
 def load_settings() -> AppSettings:
@@ -46,6 +47,7 @@ def load_settings() -> AppSettings:
         runtime_paths=runtime_paths,
         database_url=database_url,
         log_level=_get_env_value("SEEKER_LOG_LEVEL", file_env, constants.DEFAULT_LOG_LEVEL).upper(),
+        telemetry_enabled=_get_env_bool("SEEKER_TELEMETRY_ENABLED", file_env, False),
     )
 
 
@@ -54,6 +56,11 @@ def _get_env_value(name: str, file_env: dict[str, str], default: str) -> str:
     if value is not None:
         return value
     return file_env.get(name, default)
+
+
+def _get_env_bool(name: str, file_env: dict[str, str], default: bool) -> bool:
+    raw = _get_env_value(name, file_env, "true" if default else "false").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 def _load_project_env(env_path: Path) -> dict[str, str]:

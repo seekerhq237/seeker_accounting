@@ -3,16 +3,14 @@ from __future__ import annotations
 from datetime import date
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -32,9 +30,32 @@ from seeker_accounting.modules.accounting.fiscal_periods.ui.generate_periods_dia
 )
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.app.shell.ribbon import RibbonHostMixin
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+FISCAL_YEAR_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="year_code", title="Code"),
+    DataTableColumn(key="year_name", title="Name"),
+    DataTableColumn(key="start_date", title="Start"),
+    DataTableColumn(key="end_date", title="End"),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="is_active", title="Active"),
+)
+
+FISCAL_PERIOD_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="period_number", title="No", is_numeric=True),
+    DataTableColumn(key="period_code", title="Code"),
+    DataTableColumn(key="period_name", title="Name"),
+    DataTableColumn(key="start_date", title="Start"),
+    DataTableColumn(key="end_date", title="End"),
+    DataTableColumn(key="status", title="Status"),
+)
 
 
 class FiscalPeriodsPage(RibbonHostMixin, QWidget):
@@ -74,8 +95,8 @@ class FiscalPeriodsPage(RibbonHostMixin, QWidget):
         if active_company is None:
             self._fiscal_years = []
             self._periods = []
-            self._years_table.setRowCount(0)
-            self._periods_table.setRowCount(0)
+            self._years_model.removeRows(0, self._years_model.rowCount())
+            self._periods_model.removeRows(0, self._periods_model.rowCount())
             self._year_count_label.setText("Select a company")
             self._period_count_label.setText("")
             self._stack.setCurrentWidget(self._no_active_company_state)
@@ -90,8 +111,8 @@ class FiscalPeriodsPage(RibbonHostMixin, QWidget):
         except Exception as exc:
             self._fiscal_years = []
             self._periods = []
-            self._years_table.setRowCount(0)
-            self._periods_table.setRowCount(0)
+            self._years_model.removeRows(0, self._years_model.rowCount())
+            self._periods_model.removeRows(0, self._periods_model.rowCount())
             self._year_count_label.setText("Unable to load")
             self._period_count_label.setText("")
             self._stack.setCurrentWidget(self._empty_state)
@@ -194,13 +215,21 @@ class FiscalPeriodsPage(RibbonHostMixin, QWidget):
         top_row_layout.addWidget(self._year_count_label)
         layout.addWidget(top_row)
 
-        self._years_table = QTableWidget(card)
-        self._years_table.setObjectName("FiscalYearsTable")
-        self._years_table.setColumnCount(6)
-        self._years_table.setHorizontalHeaderLabels(("Code", "Name", "Start", "End", "Status", "Active"))
-        configure_compact_table(self._years_table)
-        self._years_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._years_table.itemSelectionChanged.connect(self._handle_year_selection_changed)
+        self._years_model = QStandardItemModel(0, len(FISCAL_YEAR_COLUMNS), self)
+        self._years_model.setHorizontalHeaderLabels([c.title for c in FISCAL_YEAR_COLUMNS])
+        self._years_table = DataTable(
+            columns=FISCAL_YEAR_COLUMNS,
+            show_search=True,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No fiscal years to display.",
+            parent=card,
+        )
+        self._years_table.set_model(self._years_model)
+        self._years_status_delegate = apply_status_chip_to_column(self._years_table.view(), 4)
+        self._years_table.selection_changed.connect(self._handle_year_selection_changed)
         layout.addWidget(self._years_table)
         return card
 
@@ -227,13 +256,21 @@ class FiscalPeriodsPage(RibbonHostMixin, QWidget):
         top_row_layout.addWidget(self._period_count_label)
         layout.addWidget(top_row)
 
-        self._periods_table = QTableWidget(card)
-        self._periods_table.setObjectName("FiscalPeriodsTable")
-        self._periods_table.setColumnCount(6)
-        self._periods_table.setHorizontalHeaderLabels(("No", "Code", "Name", "Start", "End", "Status"))
-        configure_compact_table(self._periods_table)
-        self._periods_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._periods_table.itemSelectionChanged.connect(self._update_action_state)
+        self._periods_model = QStandardItemModel(0, len(FISCAL_PERIOD_COLUMNS), self)
+        self._periods_model.setHorizontalHeaderLabels([c.title for c in FISCAL_PERIOD_COLUMNS])
+        self._periods_table = DataTable(
+            columns=FISCAL_PERIOD_COLUMNS,
+            show_search=True,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No fiscal periods to display.",
+            parent=card,
+        )
+        self._periods_table.set_model(self._periods_model)
+        self._periods_status_delegate = apply_status_chip_to_column(self._periods_table.view(), 5)
+        self._periods_table.selection_changed.connect(lambda _rows: self._update_action_state())
         layout.addWidget(self._periods_table)
         return card
 
@@ -319,135 +356,125 @@ class FiscalPeriodsPage(RibbonHostMixin, QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    @staticmethod
+    def _make_item(text, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_years_table(self) -> None:
-        self._years_table.setSortingEnabled(False)
-        self._years_table.setRowCount(0)
-
+        self._years_model.removeRows(0, self._years_model.rowCount())
         for fiscal_year in self._fiscal_years:
-            row_index = self._years_table.rowCount()
-            self._years_table.insertRow(row_index)
-            values = (
-                fiscal_year.year_code,
-                fiscal_year.year_name,
-                self._format_date(fiscal_year.start_date),
-                self._format_date(fiscal_year.end_date),
-                fiscal_year.status_code.title(),
-                "Yes" if fiscal_year.is_active else "No",
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, fiscal_year.id)
-                if column_index in {2, 3, 4, 5}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._years_table.setItem(row_index, column_index, item)
-
-        self._years_table.resizeColumnsToContents()
-        header = self._years_table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        self._years_table.setSortingEnabled(True)
+            items = [
+                self._make_item(fiscal_year.year_code, user_data=fiscal_year.id),
+                self._make_item(fiscal_year.year_name),
+                self._make_item(self._format_date(fiscal_year.start_date)),
+                self._make_item(self._format_date(fiscal_year.end_date)),
+                self._make_item(fiscal_year.status_code),
+                self._make_item("Yes" if fiscal_year.is_active else "No"),
+            ]
+            self._years_model.appendRow(items)
 
         count = len(self._fiscal_years)
         self._year_count_label.setText(f"{count} fiscal year" if count == 1 else f"{count} fiscal years")
 
     def _populate_periods_table(self, selected_fiscal_period_id: int | None = None) -> None:
-        self._periods_table.setSortingEnabled(False)
-        self._periods_table.setRowCount(0)
+        self._periods_model.removeRows(0, self._periods_model.rowCount())
 
         selected_year = self._selected_fiscal_year()
         visible_periods = [
             period for period in self._periods if selected_year is not None and period.fiscal_year_id == selected_year.id
         ]
+        # Stash visible periods so selected-row mapping is well-defined.
+        self._visible_periods: list[FiscalPeriodListItemDTO] = visible_periods
 
         for period in visible_periods:
-            row_index = self._periods_table.rowCount()
-            self._periods_table.insertRow(row_index)
-            values = (
-                str(period.period_number),
-                period.period_code,
-                period.period_name,
-                self._format_date(period.start_date),
-                self._format_date(period.end_date),
-                period.status_code.title(),
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, period.id)
-                if column_index in {0, 3, 4, 5}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._periods_table.setItem(row_index, column_index, item)
-
-        self._periods_table.resizeColumnsToContents()
-        header = self._periods_table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        self._periods_table.setSortingEnabled(True)
+            items = [
+                self._make_item(str(period.period_number), user_data=period.id),
+                self._make_item(period.period_code),
+                self._make_item(period.period_name),
+                self._make_item(self._format_date(period.start_date)),
+                self._make_item(self._format_date(period.end_date)),
+                self._make_item(period.status_code),
+            ]
+            self._periods_model.appendRow(items)
 
         count = len(visible_periods)
         self._period_count_label.setText(f"{count} period" if count == 1 else f"{count} periods")
         self._restore_period_selection(selected_fiscal_period_id)
 
     def _restore_year_selection(self, selected_fiscal_year_id: int | None) -> None:
-        if self._years_table.rowCount() == 0:
+        if not self._fiscal_years:
             return
         if selected_fiscal_year_id is None:
-            self._years_table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, y in enumerate(self._fiscal_years) if y.id == selected_fiscal_year_id),
+                0,
+            )
+        proxy = self._years_table.view().model()
+        if proxy is None:
             return
-        for row_index in range(self._years_table.rowCount()):
-            item = self._years_table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_fiscal_year_id:
-                self._years_table.selectRow(row_index)
-                return
-        self._years_table.selectRow(0)
+        src_index = self._years_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._years_table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._years_table.view().scrollTo(proxy_index)
 
     def _restore_period_selection(self, selected_fiscal_period_id: int | None) -> None:
-        if self._periods_table.rowCount() == 0:
+        if not self._visible_periods:
             return
         if selected_fiscal_period_id is None:
-            self._periods_table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, p in enumerate(self._visible_periods) if p.id == selected_fiscal_period_id),
+                0,
+            )
+        proxy = self._periods_table.view().model()
+        if proxy is None:
             return
-        for row_index in range(self._periods_table.rowCount()):
-            item = self._periods_table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_fiscal_period_id:
-                self._periods_table.selectRow(row_index)
-                return
-        self._periods_table.selectRow(0)
+        src_index = self._periods_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._periods_table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._periods_table.view().scrollTo(proxy_index)
 
     def _selected_fiscal_year(self) -> FiscalYearListItemDTO | None:
-        current_row = self._years_table.currentRow()
-        if current_row < 0:
+        rows = self._years_table.selected_rows()
+        if not rows:
             return None
-        item = self._years_table.item(current_row, 0)
-        if item is None:
+        row = rows[0]
+        if row < 0 or row >= len(self._fiscal_years):
             return None
-        fiscal_year_id = item.data(Qt.ItemDataRole.UserRole)
-        for fiscal_year in self._fiscal_years:
-            if fiscal_year.id == fiscal_year_id:
-                return fiscal_year
-        return None
+        return self._fiscal_years[row]
 
     def _selected_period(self) -> FiscalPeriodListItemDTO | None:
-        current_row = self._periods_table.currentRow()
-        if current_row < 0:
+        rows = self._periods_table.selected_rows()
+        if not rows:
             return None
-        item = self._periods_table.item(current_row, 0)
-        if item is None:
+        row = rows[0]
+        visible = getattr(self, "_visible_periods", [])
+        if row < 0 or row >= len(visible):
             return None
-        fiscal_period_id = item.data(Qt.ItemDataRole.UserRole)
-        for fiscal_period in self._periods:
-            if fiscal_period.id == fiscal_period_id:
-                return fiscal_period
-        return None
+        return visible[row]
 
     def _show_permission_denied(self, permission_code: str) -> None:
         show_error(
@@ -691,7 +718,7 @@ class FiscalPeriodsPage(RibbonHostMixin, QWidget):
     def _open_companies_workspace(self) -> None:
         self._service_registry.navigation_service.navigate(nav_ids.COMPANIES)
 
-    def _handle_year_selection_changed(self) -> None:
+    def _handle_year_selection_changed(self, *_args) -> None:
         self._populate_periods_table()
         self._update_action_state()
 

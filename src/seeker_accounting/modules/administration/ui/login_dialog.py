@@ -1,6 +1,7 @@
 """Login dialog with user-first authentication and scoped company selection."""
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 from dataclasses import dataclass
 
@@ -49,7 +50,7 @@ class LoginDialog(BaseDialog):
     ) -> None:
         super().__init__("Log In", parent, help_key="dialog.login")
         self.setObjectName("LoginDialog")
-        self.resize(420, 340)
+        apply_window_size(self, "modules.administration.ui.login.dialog.0")
 
         self._company_service = company_service
         self._user_auth_service = user_auth_service

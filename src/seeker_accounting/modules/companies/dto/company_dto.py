@@ -31,6 +31,7 @@ class CompanyPreferencesDTO:
     decimal_places: int
     tax_inclusive_default: bool
     allow_negative_stock: bool
+    enforce_inventory_segregation_of_duties: bool
     default_inventory_cost_method: str | None
     idle_timeout_minutes: int
     password_expiry_days: int

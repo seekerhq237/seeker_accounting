@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt, QRegularExpression
@@ -55,7 +56,7 @@ class CustomerDialog(BaseDialog):
         title = "New Customer" if customer_id is None else "Edit Customer"
         super().__init__(title, parent, help_key="dialog.customer")
         self.setObjectName("CustomerDialog")
-        self.resize(780, 620)
+        apply_window_size(self, "modules.customers.ui.customer.dialog.0")
 
         intro_label = QLabel(
             "Capture the customer once so invoices, receipts, and statements stay consistent.",

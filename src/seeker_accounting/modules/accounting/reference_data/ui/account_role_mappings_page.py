@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -24,10 +22,17 @@ from seeker_accounting.modules.accounting.reference_data.dto.account_role_mappin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.app.shell.ribbon import RibbonHostMixin
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.searchable_combo_box import SearchableComboBox
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+ROLE_MAPPING_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="role", title="Role"),
+    DataTableColumn(key="description", title="Description"),
+    DataTableColumn(key="mapped_account", title="Mapped Account"),
+)
 
 
 _RETURN_LABEL_BY_WORKFLOW: dict[str, str] = {
@@ -131,12 +136,22 @@ class AccountRoleMappingsPage(RibbonHostMixin, QWidget):
         top_row.addWidget(self._refresh_button)
         layout.addLayout(top_row)
 
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(3)
-        self._table.setHorizontalHeaderLabels(("Role", "Description", "Mapped Account"))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemDoubleClicked.connect(lambda *_: self._account_combo.setFocus())
+        self._mappings_model = QStandardItemModel(0, len(ROLE_MAPPING_COLUMNS), self)
+        self._mappings_model.setHorizontalHeaderLabels([c.title for c in ROLE_MAPPING_COLUMNS])
+
+        self._table = DataTable(
+            columns=ROLE_MAPPING_COLUMNS,
+            show_search=True,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No role mappings to display.",
+            parent=card,
+        )
+        self._table.set_model(self._mappings_model)
+        self._table.selection_changed.connect(lambda _rows: self._sync_editor_state())
+        self._table.row_activated.connect(lambda _row: self._account_combo.setFocus())
         layout.addWidget(self._table)
         return card
 
@@ -201,7 +216,6 @@ class AccountRoleMappingsPage(RibbonHostMixin, QWidget):
         self._save_button.clicked.connect(self._save_mapping)
         self._clear_button.clicked.connect(self._clear_mapping)
         self._refresh_button.clicked.connect(lambda: self.reload_mappings())
-        self._table.itemSelectionChanged.connect(self._sync_editor_state)
 
     # ------------------------------------------------------------------
     # Company context
@@ -221,7 +235,7 @@ class AccountRoleMappingsPage(RibbonHostMixin, QWidget):
         active = self._active_company()
         if active is None:
             self._mappings = []
-            self._table.setRowCount(0)
+            self._mappings_model.removeRows(0, self._mappings_model.rowCount())
             self._sync_editor_state()
             return
 
@@ -233,7 +247,7 @@ class AccountRoleMappingsPage(RibbonHostMixin, QWidget):
             )
         except Exception as exc:
             self._mappings = []
-            self._table.setRowCount(0)
+            self._mappings_model.removeRows(0, self._mappings_model.rowCount())
             self._set_error(f"Account role mappings could not be loaded.\n\n{exc}")
             return
 
@@ -265,63 +279,71 @@ class AccountRoleMappingsPage(RibbonHostMixin, QWidget):
     # Table population
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _make_item(text, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._mappings_model.removeRows(0, self._mappings_model.rowCount())
         role_options_by_code = {o.role_code: o for o in self._role_options}
 
         for mapping in self._mappings:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
             role_option = role_options_by_code.get(mapping.role_code)
             desc = role_option.description if role_option else ""
-
-            values = (
-                mapping.role_label,
-                desc,
+            mapped = (
                 f"{mapping.account_code}  {mapping.account_name}"
                 if mapping.account_id is not None
-                else "Unmapped",
+                else "Unmapped"
             )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, mapping.role_code)
-                self._table.setItem(row, col, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
+            items = [
+                self._make_item(mapping.role_label, user_data=mapping.role_code),
+                self._make_item(desc),
+                self._make_item(mapped),
+            ]
+            self._mappings_model.appendRow(items)
 
     def _restore_selection(self, selected_role_code: str | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._mappings:
             return
         if selected_role_code is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, m in enumerate(self._mappings) if m.role_code == selected_role_code),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_role_code:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._mappings_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     # ------------------------------------------------------------------
     # Editor sync
     # ------------------------------------------------------------------
 
     def _selected_mapping(self) -> AccountRoleMappingDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
-        if item is None:
+        row = rows[0]
+        if row < 0 or row >= len(self._mappings):
             return None
-        role_code = item.data(Qt.ItemDataRole.UserRole)
-        return next((m for m in self._mappings if m.role_code == role_code), None)
+        return self._mappings[row]
 
     def _sync_editor_state(self) -> None:
         mapping = self._selected_mapping()
@@ -465,12 +487,27 @@ class AccountRoleMappingsPage(RibbonHostMixin, QWidget):
 
     def _focus_role(self, role_code: str) -> None:
         """Select and scroll to the row for the given role_code."""
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == role_code:
-                self._table.selectRow(row)
-                self._table.scrollToItem(item)
-                return
+        target_idx = next(
+            (i for i, m in enumerate(self._mappings) if m.role_code == role_code),
+            None,
+        )
+        if target_idx is None:
+            return
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src_index = self._mappings_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _return_to_origin(self) -> None:
         if self._resume_context is None:

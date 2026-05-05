@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+import logging
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -10,8 +12,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -30,11 +30,37 @@ from seeker_accounting.modules.suppliers.dto.supplier_dto import SupplierListIte
 from seeker_accounting.modules.suppliers.ui.supplier_dialog import SupplierDialog
 from seeker_accounting.modules.suppliers.ui.supplier_group_dialog import SupplierGroupDialog
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
+from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
 from seeker_accounting.shared.ui.register import RegisterPage
+
+
+_log = logging.getLogger(__name__)
+
+
+SUPPLIER_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="supplier_code", title="Supplier Code"),
+    DataTableColumn(key="display_name", title="Display Name"),
+    DataTableColumn(key="group", title="Group"),
+    DataTableColumn(key="payment_term", title="Payment Term"),
+    DataTableColumn(key="status", title="Status"),
+)
+
+_STATUS_COLUMN_INDEX = 4
+
+
+# Ribbon command ids surfaced from this page.
+_CMD_NEW = "suppliers.new"
+_CMD_EDIT = "suppliers.edit"
+_CMD_DEACTIVATE = "suppliers.deactivate"
+_CMD_REFRESH = "suppliers.refresh"
+_CMD_EXPORT = "suppliers.export_list"
 
 
 class SuppliersPage(RibbonHostMixin, QWidget):
@@ -42,11 +68,15 @@ class SuppliersPage(RibbonHostMixin, QWidget):
         super().__init__(parent)
         self._service_registry = service_registry
         self._suppliers: list[SupplierListItemDTO] = []
-        self._total_count: int = 0
-        self._search_debounce = QTimer(self)
-        self._search_debounce.setSingleShot(True)
-        self._search_debounce.setInterval(250)
-        self._search_debounce.timeout.connect(lambda: self.reload_suppliers(reset_page=True))
+
+        # Per-command ribbon enablement. Mirrors the shell ribbon state.
+        self._command_enabled: dict[str, bool] = {
+            _CMD_NEW: False,
+            _CMD_EDIT: False,
+            _CMD_DEACTIVATE: False,
+            _CMD_REFRESH: True,
+            _CMD_EXPORT: False,
+        }
 
         self.setObjectName("SuppliersPage")
 
@@ -58,7 +88,6 @@ class SuppliersPage(RibbonHostMixin, QWidget):
 
         self._register = RegisterPage(self)
         self._populate_toolbar_strip(self._register)
-        self._populate_action_band(self._register)
         # Ribbon hosts the primary commands; hide the ActionBand band.
         self._register.action_band.hide()
         self._register.set_table_widget(self._build_content_stack())
@@ -67,62 +96,57 @@ class SuppliersPage(RibbonHostMixin, QWidget):
         self._service_registry.active_company_context.active_company_changed.connect(
             self._handle_active_company_changed
         )
-        self._search_edit.textChanged.connect(self._handle_search_text_changed)
+        self._search_edit.textChanged.connect(self._table.set_search_text)
+        self._search_edit.textChanged.connect(self._update_record_count_label)
 
         self.reload_suppliers()
 
-    def _handle_search_text_changed(self, _text: str) -> None:
-        self._search_debounce.start()
+    # ------------------------------------------------------------------
+    # Reload
+    # ------------------------------------------------------------------
 
     def reload_suppliers(
         self,
         selected_supplier_id: int | None = None,
         reset_page: bool = False,
     ) -> None:
+        _ = reset_page  # retained for backward compatibility
         active_company = self._active_company()
         self._sync_readiness(active_company)
 
         if active_company is None:
             self._suppliers = []
-            self._total_count = 0
-            self._table.setRowCount(0)
+            self._populate_table()
             self._record_count_label.setText("Select a company")
-            self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
             return
 
-        if reset_page:
-            self._pager.reset()
-
-        search_text = self._search_edit.text().strip() or None
         try:
-            page_result = self._service_registry.supplier_service.list_suppliers_page(
-                active_company.company_id,
-                active_only=False,
-                query=search_text,
-                page=self._pager.page,
-                page_size=self._pager.page_size,
+            self._suppliers = list(
+                self._service_registry.supplier_service.list_suppliers(
+                    active_company.company_id,
+                    active_only=False,
+                )
             )
         except Exception as exc:
             self._suppliers = []
-            self._total_count = 0
-            self._table.setRowCount(0)
+            self._populate_table()
             self._record_count_label.setText("Unable to load")
-            self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
             show_error(self, "Suppliers", f"Supplier data could not be loaded.\n\n{exc}")
             return
 
-        self._suppliers = list(page_result.items)
-        self._total_count = page_result.total_count
-        self._pager.apply_result(page_result)
         self._populate_table()
         self._sync_surface_state(active_company)
-        self._update_record_count_label(search_text)
+        self._update_record_count_label()
         self._restore_selection(selected_supplier_id)
         self._update_action_state()
+
+    # ------------------------------------------------------------------
+    # Toolbar strip
+    # ------------------------------------------------------------------
 
     def _populate_toolbar_strip(self, register: RegisterPage) -> None:
         strip_layout = register.toolbar_strip_layout
@@ -139,40 +163,9 @@ class SuppliersPage(RibbonHostMixin, QWidget):
         self._record_count_label.setObjectName("StatusRailText")
         strip_layout.addWidget(self._record_count_label)
 
-        self._refresh_button = QPushButton("Refresh", register.toolbar_strip)
-        self._refresh_button.setProperty("variant", "ghost")
-        self._refresh_button.clicked.connect(lambda: self.reload_suppliers())
-        strip_layout.addWidget(self._refresh_button)
-
-    def _populate_action_band(self, register: RegisterPage) -> None:
-        band_layout = register.action_band_layout
-
-        self._new_button = QPushButton("New Supplier", register.action_band)
-        self._new_button.setProperty("variant", "primary")
-        self._new_button.clicked.connect(self._open_create_dialog)
-        band_layout.addWidget(self._new_button)
-
-        self._edit_button = QPushButton("Edit Supplier", register.action_band)
-        self._edit_button.setProperty("variant", "secondary")
-        self._edit_button.clicked.connect(self._open_edit_dialog)
-        band_layout.addWidget(self._edit_button)
-
-        self._deactivate_button = QPushButton("Deactivate", register.action_band)
-        self._deactivate_button.setProperty("variant", "secondary")
-        self._deactivate_button.clicked.connect(self._deactivate_selected_supplier)
-        band_layout.addWidget(self._deactivate_button)
-
-        self._groups_button = QPushButton("Manage Groups", register.action_band)
-        self._groups_button.setProperty("variant", "secondary")
-        self._groups_button.clicked.connect(self._open_group_dialog)
-        band_layout.addWidget(self._groups_button)
-
-        band_layout.addStretch(1)
-
-        self._export_list_button = QPushButton("Export List", register.action_band)
-        self._export_list_button.setProperty("variant", "ghost")
-        self._export_list_button.clicked.connect(self._print_supplier_list)
-        band_layout.addWidget(self._export_list_button)
+    # ------------------------------------------------------------------
+    # Readiness card
+    # ------------------------------------------------------------------
 
     def _build_readiness_card(self) -> QWidget:
         self._readiness_card = QFrame(self)
@@ -208,6 +201,10 @@ class SuppliersPage(RibbonHostMixin, QWidget):
         layout.addWidget(self._fix_mapping_button)
         return self._readiness_card
 
+    # ------------------------------------------------------------------
+    # Content stack
+    # ------------------------------------------------------------------
+
     def _build_content_stack(self) -> QWidget:
         self._stack = QStackedWidget(self)
         self._table_surface = self._build_table_surface()
@@ -222,100 +219,47 @@ class SuppliersPage(RibbonHostMixin, QWidget):
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(0)
 
-        self._table = QTableWidget(container)
-        self._table.setObjectName("SuppliersTable")
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels(
-            ("Supplier Code", "Display Name", "Group", "Payment Term", "Status")
+        self._suppliers_model = QStandardItemModel(0, len(SUPPLIER_COLUMNS), self)
+        self._suppliers_model.setHorizontalHeaderLabels([c.title for c in SUPPLIER_COLUMNS])
+
+        self._table = DataTable(
+            columns=SUPPLIER_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text=(
+                "No suppliers yet. Use the ribbon's New Supplier to add one."
+            ),
+            parent=container,
         )
-        configure_dense_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        layout.addWidget(self._table, 1)
+        self._table.set_model(self._suppliers_model)
+        self._suppliers_status_delegate = apply_status_chip_to_column(
+            self._table.view(), _STATUS_COLUMN_INDEX
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
 
-        self._pager = Pager(container, default_page_size=100)
-        self._pager.page_changed.connect(lambda _p: self.reload_suppliers())
-        self._pager.page_size_changed.connect(lambda _s: self.reload_suppliers(reset_page=True))
-        layout.addWidget(self._pager)
+        layout.addWidget(self._table, 1)
         return container
 
     def _build_empty_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("No suppliers yet", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Create the first supplier for the active company once its master-data and AP control-account foundation are in place.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        create_button = QPushButton("Create Supplier", actions)
-        create_button.setProperty("variant", "primary")
-        create_button.clicked.connect(self._open_create_dialog)
-        actions_layout.addWidget(create_button, 0, Qt.AlignmentFlag.AlignLeft)
-
-        groups_button = QPushButton("Manage Groups", actions)
-        groups_button.setProperty("variant", "secondary")
-        groups_button.clicked.connect(self._open_group_dialog)
-        actions_layout.addWidget(groups_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("suppliers.empty", parent=self)
+        state.primary_clicked.connect(self._open_create_dialog)
+        state.secondary_clicked.connect(self._open_group_dialog)
+        return state
 
     def _build_no_active_company_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
+        state = build_empty_state("suppliers.no_company", parent=self)
+        state.primary_clicked.connect(self._open_companies_workspace)
+        return state
 
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("Select an active company first", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Suppliers are company-scoped. Choose the active company from the shell, or return to Companies if setup still needs to happen first.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        companies_button = QPushButton("Open Companies", actions)
-        companies_button.setProperty("variant", "secondary")
-        companies_button.clicked.connect(self._open_companies_workspace)
-        actions_layout.addWidget(companies_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+    # ------------------------------------------------------------------
+    # Context helpers
+    # ------------------------------------------------------------------
 
     def _active_company(self) -> ActiveCompanyDTO | None:
         return self._service_registry.company_context_service.get_active_company()
@@ -366,82 +310,90 @@ class SuppliersPage(RibbonHostMixin, QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    # ------------------------------------------------------------------
+    # Table population and search
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _make_item(text: str, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        # Bulk populate with paint updates and sorting suspended for speed.
-        self._table.setUpdatesEnabled(False)
-        self._table.setSortingEnabled(False)
-        try:
-            self._table.setRowCount(len(self._suppliers))
-            for row_index, supplier in enumerate(self._suppliers):
-                values = (
-                    supplier.supplier_code,
-                    supplier.display_name,
-                    supplier.supplier_group_name or "",
-                    supplier.payment_term_name or "",
-                    "Active" if supplier.is_active else "Inactive",
-                )
-                for column_index, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if column_index == 0:
-                        item.setData(Qt.ItemDataRole.UserRole, supplier.id)
-                    if column_index == 4:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self._table.setItem(row_index, column_index, item)
+        self._suppliers_model.removeRows(0, self._suppliers_model.rowCount())
+        for supplier in self._suppliers:
+            status_code = "active" if supplier.is_active else "inactive"
+            items = [
+                self._make_item(supplier.supplier_code, user_data=supplier.id),
+                self._make_item(supplier.display_name),
+                self._make_item(supplier.supplier_group_name or ""),
+                self._make_item(supplier.payment_term_name or ""),
+                self._make_item(status_code),
+            ]
+            self._suppliers_model.appendRow(items)
 
-            self._table.resizeColumnsToContents()
-            header = self._table.horizontalHeader()
-            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-            header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        finally:
-            self._table.setSortingEnabled(True)
-            self._table.setUpdatesEnabled(True)
-
-    def _update_record_count_label(self, search_text: str | None) -> None:
-        total = self._total_count
-        shown = len(self._suppliers)
-        if search_text:
-            self._record_count_label.setText(f"{shown} shown of {total} matches")
+    def _update_record_count_label(self, *_args: object) -> None:
+        total = len(self._suppliers)
+        query = self._search_edit.text().strip()
+        if query:
+            proxy_model = self._table.view().model()
+            visible = proxy_model.rowCount() if proxy_model is not None else total
+            self._record_count_label.setText(f"{visible} shown of {total} suppliers")
         else:
             self._record_count_label.setText(
                 f"{total} supplier" if total == 1 else f"{total} suppliers"
             )
 
     def _restore_selection(self, selected_supplier_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._suppliers:
             return
         if selected_supplier_id is None:
-            self._select_first_visible_row()
-            return
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_supplier_id:
-                if not self._table.isRowHidden(row_index):
-                    self._table.selectRow(row_index)
-                    return
-        self._select_first_visible_row()
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, s in enumerate(self._suppliers) if s.id == selected_supplier_id),
+                0,
+            )
 
-    def _select_first_visible_row(self) -> None:
-        for row_index in range(self._table.rowCount()):
-            if not self._table.isRowHidden(row_index):
-                self._table.selectRow(row_index)
-                return
-        self._table.clearSelection()
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src_index = self._suppliers_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_supplier(self) -> SupplierListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0 or self._table.isRowHidden(current_row):
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        supplier_id = item.data(Qt.ItemDataRole.UserRole)
-        for supplier in self._suppliers:
-            if supplier.id == supplier_id:
-                return supplier
+        idx = rows[0]
+        if 0 <= idx < len(self._suppliers):
+            return self._suppliers[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        supplier = self._selected_supplier()
+        if supplier is None:
+            return
+        self._service_registry.navigation_service.navigate(
+            nav_ids.SUPPLIER_DETAIL,
+            context={"supplier_id": supplier.id},
+        )
 
     def _show_permission_denied(self, permission_code: str) -> None:
         show_error(
@@ -450,59 +402,57 @@ class SuppliersPage(RibbonHostMixin, QWidget):
             self._service_registry.permission_service.build_denied_message(permission_code),
         )
 
+    def _set_command_enabled(self, command_id: str, enabled: bool) -> None:
+        self._command_enabled[command_id] = bool(enabled)
+
     def _update_action_state(self) -> None:
         active_company = self._active_company()
         selected_supplier = self._selected_supplier()
         has_active_company = active_company is not None
+        has_selection = selected_supplier is not None and has_active_company
         permission_service = self._service_registry.permission_service
 
-        self._new_button.setEnabled(
-            has_active_company and permission_service.has_permission("suppliers.create")
+        self._set_command_enabled(
+            _CMD_NEW,
+            has_active_company and permission_service.has_permission("suppliers.create"),
         )
-        self._edit_button.setEnabled(
-            selected_supplier is not None
-            and has_active_company
-            and permission_service.has_permission("suppliers.edit")
+        self._set_command_enabled(
+            _CMD_EDIT,
+            has_selection and permission_service.has_permission("suppliers.edit"),
         )
-        self._deactivate_button.setEnabled(
-            selected_supplier is not None
-            and has_active_company
+        self._set_command_enabled(
+            _CMD_DEACTIVATE,
+            has_selection
             and selected_supplier.is_active
-            and permission_service.has_permission("suppliers.deactivate")
+            and permission_service.has_permission("suppliers.deactivate"),
         )
-        self._groups_button.setEnabled(
-            has_active_company
-            and permission_service.has_any_permission(
-                (
-                    "suppliers.groups.view",
-                    "suppliers.groups.create",
-                    "suppliers.groups.edit",
-                    "suppliers.groups.deactivate",
-                )
-            )
+        self._set_command_enabled(_CMD_REFRESH, True)
+        self._set_command_enabled(
+            _CMD_EXPORT,
+            has_active_company and bool(self._suppliers),
         )
-        self._export_list_button.setEnabled(has_active_company and bool(self._suppliers))
+
         self._notify_ribbon_state_changed()
 
-    # ── IRibbonHost ───────────────────────────────────────────────────
+    # ------------------------------------------------------------------
+    # IRibbonHost
+    # ------------------------------------------------------------------
 
     def _ribbon_commands(self):
         return {
-            "suppliers.new": self._open_create_dialog,
-            "suppliers.edit": self._open_edit_dialog,
-            "suppliers.deactivate": self._deactivate_selected_supplier,
-            "suppliers.refresh": self.reload_suppliers,
-            "suppliers.export_list": self._print_supplier_list,
+            _CMD_NEW: self._open_create_dialog,
+            _CMD_EDIT: self._open_edit_dialog,
+            _CMD_DEACTIVATE: self._deactivate_selected_supplier,
+            _CMD_REFRESH: self.reload_suppliers,
+            _CMD_EXPORT: self._print_supplier_list,
         }
 
     def ribbon_state(self):
-        return {
-            "suppliers.new": self._new_button.isEnabled(),
-            "suppliers.edit": self._edit_button.isEnabled(),
-            "suppliers.deactivate": self._deactivate_button.isEnabled(),
-            "suppliers.refresh": True,
-            "suppliers.export_list": self._export_list_button.isEnabled(),
-        }
+        return dict(self._command_enabled)
+
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("suppliers.create"):
@@ -617,15 +567,6 @@ class SuppliersPage(RibbonHostMixin, QWidget):
     def _open_companies_workspace(self) -> None:
         self._service_registry.navigation_service.navigate(nav_ids.COMPANIES)
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
-        supplier = self._selected_supplier()
-        if supplier is None:
-            return
-        self._service_registry.navigation_service.navigate(
-            nav_ids.SUPPLIER_DETAIL,
-            context={"supplier_id": supplier.id},
-        )
-
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:
         _ = company_id, company_name
         self.reload_suppliers()
@@ -649,5 +590,6 @@ class SuppliersPage(RibbonHostMixin, QWidget):
                 active_company.company_id, self._suppliers, result,
             )
             result.open_file()
-        except Exception as exc:
-            show_error(self, "Suppliers", f"Export failed.\n\n{exc}")
+        except Exception:
+            _log.exception("Suppliers")
+            show_error(self, "Suppliers", "An unexpected error occurred. See application log for details.")

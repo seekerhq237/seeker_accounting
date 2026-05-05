@@ -15,7 +15,15 @@ class InventoryCostLayer(Base):
     __tablename__ = "inventory_cost_layers"
     __table_args__ = (
         Index("ix_inventory_cost_layers_company_id_item_id", "company_id", "item_id"),
+        Index(
+            "ix_inventory_cost_layers_company_item_location_batch",
+            "company_id",
+            "item_id",
+            "location_id",
+            "batch_id",
+        ),
         Index("ix_inventory_cost_layers_item_id", "item_id"),
+        Index("ix_inventory_cost_layers_batch_id", "batch_id"),
         Index("ix_inventory_cost_layers_document_line_id", "inventory_document_line_id"),
     )
 
@@ -35,6 +43,16 @@ class InventoryCostLayer(Base):
         ForeignKey("inventory_document_lines.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    location_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("inventory_locations.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    batch_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("item_batches.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     layer_date: Mapped[date] = mapped_column(Date(), nullable=False)
     quantity_in: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     quantity_remaining: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
@@ -43,4 +61,6 @@ class InventoryCostLayer(Base):
 
     company: Mapped["Company"] = relationship("Company")
     item: Mapped["Item"] = relationship("Item")
+    location: Mapped["InventoryLocation | None"] = relationship("InventoryLocation")
+    batch: Mapped["ItemBatch | None"] = relationship("ItemBatch")
     inventory_document_line: Mapped["InventoryDocumentLine"] = relationship("InventoryDocumentLine")

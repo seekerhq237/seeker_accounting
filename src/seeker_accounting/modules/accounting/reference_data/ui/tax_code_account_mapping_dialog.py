@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialogButtonBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -27,7 +26,7 @@ from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
 from seeker_accounting.shared.ui.message_boxes import show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 
 class TaxCodeAccountMappingDialog(BaseDialog):
@@ -45,7 +44,7 @@ class TaxCodeAccountMappingDialog(BaseDialog):
 
         super().__init__("Tax Code Account Mappings", parent, help_key="dialog.tax_code_account_mapping")
         self.setObjectName("TaxCodeAccountMappingDialog")
-        self.resize(980, 620)
+        apply_window_size(self, "modules.accounting.reference.data.ui.tax.code.account.mapping.dialog.0")
 
         intro_label = QLabel(
             "Bind tax codes to real chart accounts so later sales, purchases, and tax settlement workflows have disciplined account references.",
@@ -74,7 +73,7 @@ class TaxCodeAccountMappingDialog(BaseDialog):
         self._save_button.clicked.connect(self._save_mapping)
         self._clear_button.clicked.connect(self._clear_mapping)
         self._refresh_button.clicked.connect(self.reload_mappings)
-        self._table.itemSelectionChanged.connect(self._sync_editor_state)
+        self._table.selection_changed.connect(lambda _rows: self._sync_editor_state())
 
         self._load_reference_data()
         self.reload_mappings()
@@ -103,14 +102,28 @@ class TaxCodeAccountMappingDialog(BaseDialog):
         title.setObjectName("DialogSectionTitle")
         layout.addWidget(title)
 
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(
-            ("Code", "Name", "Sales", "Purchase", "Tax Liability", "Tax Asset")
+        self._model = QStandardItemModel(0, 6, card)
+        self._model.setHorizontalHeaderLabels(
+            ["Code", "Name", "Sales", "Purchase", "Tax Liability", "Tax Asset"]
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemDoubleClicked.connect(lambda *_args: self._sales_account_combo.setFocus())
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="sales", title="Sales"),
+                DataTableColumn(key="purchase", title="Purchase"),
+                DataTableColumn(key="liability", title="Tax Liability"),
+                DataTableColumn(key="asset", title="Tax Asset"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(lambda *_: self._sales_account_combo.setFocus())
         layout.addWidget(self._table)
         return card
 
@@ -206,7 +219,7 @@ class TaxCodeAccountMappingDialog(BaseDialog):
             )
         except Exception as exc:
             self._mappings = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._set_error(f"Tax code account mappings could not be loaded.\n\n{exc}")
             self._sync_editor_state()
             return
@@ -216,63 +229,57 @@ class TaxCodeAccountMappingDialog(BaseDialog):
         self._restore_selection(selected_tax_code_id)
         self._sync_editor_state()
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-
+        self._model.removeRows(0, self._model.rowCount())
         for mapping in self._mappings:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-
-            values = (
-                mapping.tax_code_code,
-                mapping.tax_code_name,
-                self._account_label(mapping.sales_account_code, mapping.sales_account_name),
-                self._account_label(mapping.purchase_account_code, mapping.purchase_account_name),
-                self._account_label(mapping.tax_liability_account_code, mapping.tax_liability_account_name),
-                self._account_label(mapping.tax_asset_account_code, mapping.tax_asset_account_name),
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, mapping.tax_code_id)
-                self._table.setItem(row_index, column_index, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, header.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(mapping.tax_code_code, user_data=mapping.tax_code_id),
+                self._make_item(mapping.tax_code_name),
+                self._make_item(self._account_label(mapping.sales_account_code, mapping.sales_account_name)),
+                self._make_item(self._account_label(mapping.purchase_account_code, mapping.purchase_account_name)),
+                self._make_item(self._account_label(mapping.tax_liability_account_code, mapping.tax_liability_account_name)),
+                self._make_item(self._account_label(mapping.tax_asset_account_code, mapping.tax_asset_account_name)),
+            ])
 
     def _restore_selection(self, selected_tax_code_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._mappings:
             return
         if selected_tax_code_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, m in enumerate(self._mappings) if m.tax_code_id == selected_tax_code_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_tax_code_id:
-                self._table.selectRow(row_index)
-                return
-        self._table.selectRow(0)
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_mapping(self) -> TaxCodeAccountMappingDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
+        row = rows[0]
+        if row < 0 or row >= len(self._mappings):
             return None
-        tax_code_id = item.data(Qt.ItemDataRole.UserRole)
-        for mapping in self._mappings:
-            if mapping.tax_code_id == tax_code_id:
-                return mapping
-        return None
+        return self._mappings[row]
 
     def _sync_editor_state(self) -> None:
         mapping = self._selected_mapping()

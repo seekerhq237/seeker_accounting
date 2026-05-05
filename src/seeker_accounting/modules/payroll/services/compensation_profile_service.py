@@ -68,7 +68,7 @@ class CompensationProfileService:
             repo = self._profile_repo_factory(uow.session)
             profile = repo.get_by_id(company_id, profile_id)
             if profile is None:
-                raise NotFoundError("Compensation profile not found.")
+                raise NotFoundError("Compensation not found.")
             return self._to_detail_dto(profile)
 
     # ── Commands ──────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ class CompensationProfileService:
             repo = self._profile_repo_factory(uow.session)
             if repo.check_duplicate(company_id, cmd.employee_id, cmd.effective_from):
                 raise ConflictError(
-                    "A compensation profile with this effective date already exists for this employee."
+                    "Compensation with this effective date already exists for this employee."
                 )
 
             profile = EmployeeCompensationProfile(
@@ -103,7 +103,7 @@ class CompensationProfileService:
             uow.commit()
             uow.session.refresh(profile)
             from seeker_accounting.modules.audit.event_type_catalog import COMPENSATION_PROFILE_CREATED
-            self._record_audit(company_id, COMPENSATION_PROFILE_CREATED, "EmployeeCompensationProfile", profile.id, f"Created compensation profile for employee id={cmd.employee_id}")
+            self._record_audit(company_id, COMPENSATION_PROFILE_CREATED, "EmployeeCompensationProfile", profile.id, f"Created compensation for employee id={cmd.employee_id}")
             return self._to_detail_dto(profile)
 
     def update_profile(
@@ -114,10 +114,10 @@ class CompensationProfileService:
             repo = self._profile_repo_factory(uow.session)
             profile = repo.get_by_id(company_id, profile_id)
             if profile is None:
-                raise NotFoundError("Compensation profile not found.")
+                raise NotFoundError("Compensation not found.")
             if repo.check_duplicate(company_id, profile.employee_id, cmd.effective_from, exclude_id=profile_id):
                 raise ConflictError(
-                    "Another compensation profile with this effective date already exists for this employee."
+                    "Another compensation record with this effective date already exists for this employee."
                 )
 
             profile.profile_name = cmd.profile_name.strip()
@@ -131,7 +131,7 @@ class CompensationProfileService:
             uow.commit()
             uow.session.refresh(profile)
             from seeker_accounting.modules.audit.event_type_catalog import COMPENSATION_PROFILE_UPDATED
-            self._record_audit(company_id, COMPENSATION_PROFILE_UPDATED, "EmployeeCompensationProfile", profile.id, f"Updated compensation profile id={profile_id}")
+            self._record_audit(company_id, COMPENSATION_PROFILE_UPDATED, "EmployeeCompensationProfile", profile.id, f"Updated compensation id={profile_id}")
             return self._to_detail_dto(profile)
 
     def toggle_profile_active(self, company_id: int, profile_id: int) -> None:
@@ -139,11 +139,11 @@ class CompensationProfileService:
             repo = self._profile_repo_factory(uow.session)
             profile = repo.get_by_id(company_id, profile_id)
             if profile is None:
-                raise NotFoundError("Compensation profile not found.")
+                raise NotFoundError("Compensation not found.")
             profile.is_active = not profile.is_active
             uow.commit()
             from seeker_accounting.modules.audit.event_type_catalog import COMPENSATION_PROFILE_UPDATED
-            self._record_audit(company_id, COMPENSATION_PROFILE_UPDATED, "EmployeeCompensationProfile", profile_id, f"Toggled active status for profile id={profile_id}")
+            self._record_audit(company_id, COMPENSATION_PROFILE_UPDATED, "EmployeeCompensationProfile", profile_id, f"Toggled active status for compensation id={profile_id}")
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

@@ -45,6 +45,10 @@ from seeker_accounting.platform.numbering.numbering_service import NumberingServ
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
 
+from seeker_accounting.modules.taxation.repositories.vat_period_lock_repository import (
+    VatPeriodLockRepository,
+)
+
 AccountRepositoryFactory = Callable[[Session], AccountRepository]
 FiscalPeriodRepositoryFactory = Callable[[Session], FiscalPeriodRepository]
 JournalEntryRepositoryFactory = Callable[[Session], JournalEntryRepository]
@@ -52,6 +56,7 @@ CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
 SalesCreditNoteRepositoryFactory = Callable[[Session], SalesCreditNoteRepository]
 AccountRoleMappingRepositoryFactory = Callable[[Session], AccountRoleMappingRepository]
 TaxCodeAccountMappingRepositoryFactory = Callable[[Session], TaxCodeAccountMappingRepository]
+VatPeriodLockRepositoryFactory = Callable[[Session], VatPeriodLockRepository]
 
 
 class SalesCreditNotePostingService:
@@ -72,10 +77,12 @@ class SalesCreditNotePostingService:
         permission_service: PermissionService,
         tax_fact_service: TaxFactService,
         audit_service: AuditService | None = None,
+        vat_period_lock_repository_factory: VatPeriodLockRepositoryFactory | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
         self._tax_fact_service = tax_fact_service
+        self._vat_period_lock_repository_factory = vat_period_lock_repository_factory
         self._credit_note_repository_factory = credit_note_repository_factory
         self._journal_entry_repository_factory = journal_entry_repository_factory
         self._account_repository_factory = account_repository_factory
@@ -121,6 +128,16 @@ class SalesCreditNotePostingService:
             if fiscal_period.status_code != "OPEN":
                 raise ValidationError("Credit note can only be posted into an open fiscal period.")
 
+            # --- T43: VAT period lock check ---
+            if self._vat_period_lock_repository_factory is not None:
+                tax_point = cn.tax_point_date or cn.credit_date
+                vat_lock_repo = self._vat_period_lock_repository_factory(uow.session)
+                if vat_lock_repo.is_locked(company_id, tax_point):
+                    raise ValidationError(
+                        "VAT period has been filed; backdating is prohibited. "
+                        "Amend the return instead."
+                    )
+
             # --- AR control account ---
             ar_mapping = role_mapping_repo.get_by_role_code(company_id, "ar_control")
             if ar_mapping is None:
@@ -155,12 +172,18 @@ class SalesCreditNotePostingService:
             line_number += 1
 
             # Debit revenue accounts (reduces revenue)
-            revenue_debits: dict[int, Decimal] = {}
+            revenue_debits: dict[tuple[int, int | None, int | None, int | None, int | None], Decimal] = {}
             tax_debits: dict[int, Decimal] = {}
 
             for cn_line in cn.lines:
-                revenue_debits[cn_line.revenue_account_id] = (
-                    revenue_debits.get(cn_line.revenue_account_id, Decimal("0.00"))
+                revenue_key = self._dimensioned_account_key(
+                    cn_line.revenue_account_id,
+                    line=cn_line,
+                    header_contract_id=cn.contract_id,
+                    header_project_id=cn.project_id,
+                )
+                revenue_debits[revenue_key] = (
+                    revenue_debits.get(revenue_key, Decimal("0.00"))
                     + cn_line.line_subtotal_amount
                 )
                 if cn_line.tax_code_id is not None and cn_line.line_tax_amount > Decimal("0.00"):
@@ -176,7 +199,8 @@ class SalesCreditNotePostingService:
                         + cn_line.line_tax_amount
                     )
 
-            for rev_account_id, amount in revenue_debits.items():
+            for revenue_key, amount in revenue_debits.items():
+                rev_account_id, contract_id, project_id, project_job_id, project_cost_code_id = revenue_key
                 journal_lines.append(
                     JournalEntryLine(
                         journal_entry_id=0,
@@ -185,6 +209,10 @@ class SalesCreditNotePostingService:
                         line_description=f"Revenue reduction - Credit note {cn.credit_number}",
                         debit_amount=amount,
                         credit_amount=Decimal("0.00"),
+                        contract_id=contract_id,
+                        project_id=project_id,
+                        project_job_id=project_job_id,
+                        project_cost_code_id=project_cost_code_id,
                     )
                 )
                 line_number += 1
@@ -283,6 +311,7 @@ class SalesCreditNotePostingService:
                     posted_at=posted_at_value,
                     posted_by_user_id=actor_id,
                     line_facts=tax_facts,
+                    tax_point_date=cn.tax_point_date or cn.credit_date,
                 )
 
             # --- Assign credit note number and update status ---
@@ -312,6 +341,24 @@ class SalesCreditNotePostingService:
                 journal_entry_id=journal_entry.id,
                 status_code=cn.status_code,
             )
+
+    @staticmethod
+    def _dimensioned_account_key(
+        account_id: int,
+        *,
+        line: object,
+        header_contract_id: int | None,
+        header_project_id: int | None,
+    ) -> tuple[int, int | None, int | None, int | None, int | None]:
+        contract_id = getattr(line, "contract_id", None) or header_contract_id
+        project_id = getattr(line, "project_id", None) or header_project_id
+        return (
+            account_id,
+            contract_id,
+            project_id,
+            getattr(line, "project_job_id", None),
+            getattr(line, "project_cost_code_id", None),
+        )
 
     def _require_company(self, session: Session, company_id: int) -> None:
         repo = self._company_repository_factory(session)

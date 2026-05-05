@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable
 from sqlalchemy.orm import Session
 
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
+from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.fixed_assets.dto.asset_commands import CreateAssetCommand, UpdateAssetCommand
 from seeker_accounting.modules.fixed_assets.dto.asset_dto import AssetDetailDTO, AssetListItemDTO
@@ -51,6 +52,7 @@ class AssetService:
         asset_category_repository_factory: AssetCategoryRepositoryFactory,
         company_repository_factory: CompanyRepositoryFactory,
         supplier_repository_factory: SupplierRepositoryFactory,
+        permission_service: PermissionService,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -58,6 +60,7 @@ class AssetService:
         self._asset_category_repository_factory = asset_category_repository_factory
         self._company_repository_factory = company_repository_factory
         self._supplier_repository_factory = supplier_repository_factory
+        self._permission_service = permission_service
         self._audit_service = audit_service
 
     def list_assets(
@@ -83,6 +86,7 @@ class AssetService:
             return self._to_detail_dto(asset)
 
     def create_asset(self, company_id: int, command: CreateAssetCommand) -> AssetDetailDTO:
+        self._permission_service.require_permission("assets.master.create")
         with self._unit_of_work_factory() as uow:
             self._require_company(uow.session, company_id)
             self._validate_asset_fields(command.asset_number, command.asset_name,
@@ -133,6 +137,7 @@ class AssetService:
     def update_asset(
         self, company_id: int, asset_id: int, command: UpdateAssetCommand
     ) -> AssetDetailDTO:
+        self._permission_service.require_permission("assets.master.edit")
         with self._unit_of_work_factory() as uow:
             asset_repo = self._asset_repository_factory(uow.session)
             asset = asset_repo.get_by_id(company_id, asset_id)

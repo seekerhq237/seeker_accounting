@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDateEdit,
     QFrame,
@@ -12,8 +15,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -41,10 +42,13 @@ from seeker_accounting.modules.reporting.ui.widgets.reporting_empty_state import
 )
 from seeker_accounting.shared.ui.message_boxes import show_error
 from seeker_accounting.shared.ui.searchable_combo_box import SearchableComboBox
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.platform.exceptions import ValidationError
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class TreasuryReportWindow(QFrame):
@@ -218,11 +222,28 @@ class TreasuryReportWindow(QFrame):
         title = QLabel("Account Summary", panel)
         title.setObjectName("InfoCardTitle")
         layout.addWidget(title)
-        self._accounts_table = QTableWidget(panel)
-        self._accounts_table.setColumnCount(7)
-        self._accounts_table.setHorizontalHeaderLabels(["Account", "Type", "Opening", "Inflow", "Outflow", "Closing", "Moves"])
-        configure_compact_table(self._accounts_table)
-        self._accounts_table.cellDoubleClicked.connect(self._on_account_double_clicked)
+        self._accounts_table = DataTable(
+            columns=(
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="opening", title="Opening"),
+                DataTableColumn(key="inflow", title="Inflow"),
+                DataTableColumn(key="outflow", title="Outflow"),
+                DataTableColumn(key="closing", title="Closing"),
+                DataTableColumn(key="moves", title="Moves"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._accounts_model = QStandardItemModel(0, 7, panel)
+        self._accounts_model.setHorizontalHeaderLabels(
+            ["Account", "Type", "Opening", "Inflow", "Outflow", "Closing", "Moves"]
+        )
+        self._accounts_table.set_model(self._accounts_model)
+        self._accounts_table.view().doubleClicked.connect(self._on_account_double_clicked)
         layout.addWidget(self._accounts_table, 1)
         return panel
 
@@ -233,13 +254,30 @@ class TreasuryReportWindow(QFrame):
         title = QLabel("Movements", panel)
         title.setObjectName("InfoCardTitle")
         layout.addWidget(title)
-        self._movements_table = QTableWidget(panel)
-        self._movements_table.setColumnCount(9)
-        self._movements_table.setHorizontalHeaderLabels(
+        self._movements_table = DataTable(
+            columns=(
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="document", title="Document"),
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="inflow", title="Inflow"),
+                DataTableColumn(key="outflow", title="Outflow"),
+                DataTableColumn(key="balance", title="Balance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._movements_model = QStandardItemModel(0, 9, panel)
+        self._movements_model.setHorizontalHeaderLabels(
             ["Date", "Account", "Type", "Document", "Reference", "Description", "Inflow", "Outflow", "Balance"]
         )
-        configure_compact_table(self._movements_table)
-        self._movements_table.cellDoubleClicked.connect(self._on_movement_double_clicked)
+        self._movements_table.set_model(self._movements_model)
+        self._movements_table.view().doubleClicked.connect(self._on_movement_double_clicked)
         layout.addWidget(self._movements_table, 1)
         return panel
 
@@ -265,8 +303,8 @@ class TreasuryReportWindow(QFrame):
         company_id = self._current_filter.company_id
         if not isinstance(company_id, int) or company_id <= 0:
             self._current_report = None
-            self._accounts_table.setRowCount(0)
-            self._movements_table.setRowCount(0)
+            self._accounts_model.removeRows(0, self._accounts_model.rowCount())
+            self._movements_model.removeRows(0, self._movements_model.rowCount())
             self._update_summary(
                 TreasuryReportDTO(
                     company_id=0,
@@ -282,14 +320,18 @@ class TreasuryReportWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "Cash / Bank Reports", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Cash / Bank Reports", str(exc))
+            return
+        except Exception:
+            _log.exception("Cash / Bank Reports")
+            show_error(self, "Cash / Bank Reports", "An unexpected error occurred. See application log for details.")
             return
         self._current_report = report
         self._update_summary(report)
         if not report.has_activity:
-            self._accounts_table.setRowCount(0)
-            self._movements_table.setRowCount(0)
+            self._accounts_model.removeRows(0, self._accounts_model.rowCount())
+            self._movements_model.removeRows(0, self._movements_model.rowCount())
             self._stack.setCurrentIndex(2)
             return
         self._bind_account_rows(report)
@@ -303,37 +345,51 @@ class TreasuryReportWindow(QFrame):
         self._summary_values["closing"].setText(self._fmt(report.total_closing))
 
     def _bind_account_rows(self, report: TreasuryReportDTO) -> None:
-        self._accounts_table.setRowCount(len(report.account_rows))
-        for row_index, row in enumerate(report.account_rows):
-            account_item = QTableWidgetItem(f"{row.account_code} - {row.account_name}")
-            account_item.setData(Qt.ItemDataRole.UserRole, row.financial_account_id)
-            self._accounts_table.setItem(row_index, 0, account_item)
-            self._accounts_table.setItem(row_index, 1, QTableWidgetItem(row.account_type_code.replace("_", " ").title()))
-            self._set_amount(self._accounts_table, row_index, 2, row.opening_balance)
-            self._set_amount(self._accounts_table, row_index, 3, row.inflow_amount)
-            self._set_amount(self._accounts_table, row_index, 4, row.outflow_amount)
-            self._set_amount(self._accounts_table, row_index, 5, row.closing_balance)
-            self._accounts_table.setItem(row_index, 6, QTableWidgetItem(str(row.movement_count)))
+        self._accounts_model.removeRows(0, self._accounts_model.rowCount())
+        for row in report.account_rows:
+            account_item = self._make_item(f"{row.account_code} - {row.account_name}")
+            account_item.setData(row.financial_account_id, Qt.ItemDataRole.UserRole)
+            self._accounts_model.appendRow([
+                account_item,
+                self._make_item(row.account_type_code.replace("_", " ").title()),
+                self._make_amount_item(self._fmt(row.opening_balance)),
+                self._make_amount_item(self._fmt(row.inflow_amount)),
+                self._make_amount_item(self._fmt(row.outflow_amount)),
+                self._make_amount_item(self._fmt(row.closing_balance)),
+                self._make_item(str(row.movement_count)),
+            ])
 
     def _bind_movement_rows(self, report: TreasuryReportDTO) -> None:
-        self._movements_table.setRowCount(len(report.movement_rows))
-        for row_index, row in enumerate(report.movement_rows):
-            date_item = QTableWidgetItem(row.transaction_date.strftime("%Y-%m-%d"))
-            date_item.setData(Qt.ItemDataRole.UserRole, row.journal_entry_id)
-            self._movements_table.setItem(row_index, 0, date_item)
-            self._movements_table.setItem(row_index, 1, QTableWidgetItem(f"{row.account_code} - {row.account_name}"))
-            self._movements_table.setItem(row_index, 2, QTableWidgetItem(row.movement_type_label))
-            self._movements_table.setItem(row_index, 3, QTableWidgetItem(row.document_number))
-            self._movements_table.setItem(row_index, 4, QTableWidgetItem(row.reference_text or "-"))
-            self._movements_table.setItem(row_index, 5, QTableWidgetItem(row.description or "-"))
-            self._set_amount(self._movements_table, row_index, 6, row.inflow_amount)
-            self._set_amount(self._movements_table, row_index, 7, row.outflow_amount)
-            self._set_amount(self._movements_table, row_index, 8, row.running_balance)
+        self._movements_model.removeRows(0, self._movements_model.rowCount())
+        for row in report.movement_rows:
+            date_item = self._make_item(row.transaction_date.strftime("%Y-%m-%d"))
+            date_item.setData(row.journal_entry_id, Qt.ItemDataRole.UserRole)
+            self._movements_model.appendRow([
+                date_item,
+                self._make_item(f"{row.account_code} - {row.account_name}"),
+                self._make_item(row.movement_type_label),
+                self._make_item(row.document_number),
+                self._make_item(row.reference_text or "-"),
+                self._make_item(row.description or "-"),
+                self._make_amount_item(self._fmt(row.inflow_amount)),
+                self._make_amount_item(self._fmt(row.outflow_amount)),
+                self._make_amount_item(self._fmt(row.running_balance)),
+            ])
 
-    def _set_amount(self, table: QTableWidget, row_index: int, column_index: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_amount_item(text: str) -> QStandardItem:
+        item = QStandardItem(text)
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_index, column_index, item)
+        return item
 
     def _on_refresh(self) -> None:
         self._current_filter = OperationalReportFilterDTO(
@@ -354,8 +410,13 @@ class TreasuryReportWindow(QFrame):
         )
         ReportPrintPreviewDialog.show_preview(preview, parent=self)
 
-    def _on_account_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        account_item = self._accounts_table.item(row, 0)
+    def _on_account_double_clicked(self, index) -> None:
+        proxy = self._accounts_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        account_item = self._accounts_model.item(row, 0)
         if account_item is None:
             return
         account_id = account_item.data(Qt.ItemDataRole.UserRole)
@@ -363,8 +424,13 @@ class TreasuryReportWindow(QFrame):
             self._account_combo.set_current_value(account_id)
             self._on_refresh()
 
-    def _on_movement_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        date_item = self._movements_table.item(row, 0)
+    def _on_movement_double_clicked(self, index) -> None:
+        proxy = self._movements_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        date_item = self._movements_model.item(row, 0)
         if date_item is None:
             return
         journal_entry_id = date_item.data(Qt.ItemDataRole.UserRole)

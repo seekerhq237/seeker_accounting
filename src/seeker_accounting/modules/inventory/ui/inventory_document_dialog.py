@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
@@ -53,7 +54,7 @@ class InventoryDocumentDialog(QDialog):
         is_edit = document_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Inventory Document - {company_name}")
         self.setModal(True)
-        self.resize(1020, 720)
+        apply_window_size(self, "modules.inventory.ui.inventory.document.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
@@ -248,8 +249,12 @@ class InventoryDocumentDialog(QDialog):
             self._reference_input.textChanged.connect(self._on_data_changed)
             self._notes_input.textChanged.connect(self._on_data_changed)
             self._lines_grid.lines_changed.connect(self._on_data_changed)
-        except Exception as exc:
+        except AppError as exc:
             self._show_error(f"Failed to load reference data: {exc}")
+
+        except Exception:
+            _log.exception("Unexpected error")
+            self._show_error("An unexpected error occurred. See application log for details.")
 
     def _load_document(self) -> None:
         if self._document_id is None:

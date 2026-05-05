@@ -10,14 +10,12 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -31,10 +29,10 @@ from seeker_accounting.modules.reporting.dto.stock_movement_report_dto import (
     StockMovementReportFilterDTO,
 )
 from seeker_accounting.platform.exceptions import NotFoundError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.entity_detail.entity_detail_page import EntityDetailPage
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBarItem
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
 
@@ -50,6 +48,18 @@ _DOC_TYPE_LABELS = {
 
 _DECIMAL_FMT = "{:,.4f}"
 _CURRENCY_FMT = "{:,.0f}"
+
+
+MOVEMENT_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="date", title="Date"),
+    DataTableColumn(key="document_number", title="Document #"),
+    DataTableColumn(key="type", title="Type"),
+    DataTableColumn(key="location", title="Location"),
+    DataTableColumn(key="qty_in", title="Qty In"),
+    DataTableColumn(key="qty_out", title="Qty Out"),
+    DataTableColumn(key="running_qty", title="Running Qty"),
+    DataTableColumn(key="line_amount", title="Line Amount"),
+)
 
 
 def _fmt_qty(value: Decimal | None) -> str:
@@ -198,24 +208,20 @@ class ItemDetailPage(EntityDetailPage):
         layout.addWidget(summary_row)
 
         # Movements table
-        self._movements_table = QTableWidget(container)
-        self._movements_table.setObjectName("DashboardActivityTable")
-        self._movements_table.setColumnCount(8)
-        self._movements_table.setHorizontalHeaderLabels((
-            "Date", "Document #", "Type", "Location",
-            "Qty In", "Qty Out", "Running Qty", "Line Amount",
-        ))
-        configure_compact_table(self._movements_table)
+        self._movements_model = QStandardItemModel(0, len(MOVEMENT_COLUMNS), self)
+        self._movements_model.setHorizontalHeaderLabels([c.title for c in MOVEMENT_COLUMNS])
 
-        hdr = self._movements_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        self._movements_table = DataTable(
+            columns=MOVEMENT_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No stock movements for this item in the last 180 days.",
+            parent=container,
+        )
+        self._movements_table.set_model(self._movements_model)
 
         self._movements_empty = QLabel("No stock movements for this item in the last 180 days.", container)
         self._movements_empty.setObjectName("DashboardEmptyLabel")
@@ -256,8 +262,12 @@ class ItemDetailPage(EntityDetailPage):
             show_error(self, "Item Detail", "Item not found.")
             self._navigate_back()
             return
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Item Detail", f"Failed to load item: {exc}")
+            return
+        except Exception:
+            _log.exception("Item Detail")
+            show_error(self, "Item Detail", "An unexpected error occurred. See application log for details.")
             return
 
         # Load stock position (best-effort — only relevant for stock items)
@@ -397,6 +407,22 @@ class ItemDetailPage(EntityDetailPage):
         self._info_revenue_account.setText(_acct(item.revenue_account_id))
         self._info_created.setText(item.created_at.strftime("%d %b %Y %H:%M"))
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
     def _populate_movements_tab(self) -> None:
         today = date.today()
         date_from = today - timedelta(days=_MOVEMENT_LOOKBACK_DAYS)
@@ -405,8 +431,7 @@ class ItemDetailPage(EntityDetailPage):
         )
 
         table = self._movements_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._movements_model.removeRows(0, self._movements_model.rowCount())
 
         mv = self._movements
         if mv is None or not mv.rows:
@@ -431,41 +456,30 @@ class ItemDetailPage(EntityDetailPage):
             closing_qty = mv.opening_quantity + mv.inward_quantity - mv.outward_quantity
         self._mv_closing.setText(f"{_fmt_qty(closing_qty)} {uom}".strip())
 
-        for row_idx, line in enumerate(mv.rows):
-            table.insertRow(row_idx)
+        def _right_aligned(text: str) -> QStandardItem:
+            it = QStandardItem(text)
+            it.setEditable(False)
+            it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return it
 
-            date_cell = QTableWidgetItem(line.document_date.strftime("%d %b %Y"))
-            date_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row_idx, 0, date_cell)
-
-            table.setItem(row_idx, 1, QTableWidgetItem(line.document_number or "—"))
-
+        for line in mv.rows:
             type_text = _DOC_TYPE_LABELS.get(line.document_type_code, line.document_type_code.replace("_", " ").title())
-            table.setItem(row_idx, 2, QTableWidgetItem(type_text))
-
             loc_text = line.location_name or line.location_code or "—"
-            table.setItem(row_idx, 3, QTableWidgetItem(loc_text))
-
             inward_text = _fmt_qty(line.inward_quantity) if line.inward_quantity else "—"
-            inward_cell = QTableWidgetItem(inward_text)
-            inward_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 4, inward_cell)
-
             outward_text = _fmt_qty(line.outward_quantity) if line.outward_quantity else "—"
-            outward_cell = QTableWidgetItem(outward_text)
-            outward_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 5, outward_cell)
-
-            running_cell = QTableWidgetItem(_fmt_qty(line.running_quantity))
-            running_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 6, running_cell)
-
+            running_text = _fmt_qty(line.running_quantity)
             amount_text = _fmt_amount(line.line_amount) if line.line_amount is not None else "—"
-            amount_cell = QTableWidgetItem(amount_text)
-            amount_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 7, amount_cell)
 
-        table.setSortingEnabled(True)
+            self._movements_model.appendRow([
+                self._make_item(line.document_date.strftime("%d %b %Y")),
+                self._make_item(line.document_number or "—"),
+                self._make_item(type_text),
+                self._make_item(loc_text),
+                _right_aligned(inward_text),
+                _right_aligned(outward_text),
+                _right_aligned(running_text),
+                _right_aligned(amount_text),
+            ])
 
     # ── Actions ───────────────────────────────────────────────────────
 

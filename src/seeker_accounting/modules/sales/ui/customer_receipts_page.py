@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -14,24 +16,28 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.sales.dto.customer_receipt_dto import CustomerReceiptListItemDTO
 from seeker_accounting.modules.sales.ui.customer_receipt_dialog import CustomerReceiptDialog
 from seeker_accounting.app.navigation.workflow_resume_service import ResumeTokenPayload
 from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.register import RegisterPage
 from seeker_accounting.shared.workflow.document_sequence_preflight import (
     consume_resume_payload_for_workflows,
     handle_document_sequence_error,
@@ -39,13 +45,46 @@ from seeker_accounting.shared.workflow.document_sequence_preflight import (
 )
 
 
-class CustomerReceiptsPage(QWidget):
+_log = logging.getLogger(__name__)
+
+
+RECEIPT_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="receipt_number", title="Receipt #"),
+    DataTableColumn(key="receipt_date", title="Date"),
+    DataTableColumn(key="customer_name", title="Customer"),
+    DataTableColumn(key="financial_account_name", title="Account"),
+    DataTableColumn(key="currency_code", title="Currency"),
+    DataTableColumn(key="amount_received", title="Amount", is_numeric=True),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="posted_at", title="Posted At"),
+)
+_STATUS_COLUMN_INDEX = 6
+
+_CMD_NEW = "customer_receipts.new"
+_CMD_EDIT = "customer_receipts.edit"
+_CMD_CANCEL = "customer_receipts.cancel"
+_CMD_POST = "customer_receipts.post"
+_CMD_REFRESH = "customer_receipts.refresh"
+_CMD_PRINT = "customer_receipts.print"
+_CMD_EXPORT_LIST = "customer_receipts.export_list"
+
+
+class CustomerReceiptsPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
         self._receipts: list[CustomerReceiptListItemDTO] = []
         self._total_count: int = 0
         self._pending_resume_payload: ResumeTokenPayload | None = None
+        self._command_enabled: dict[str, bool] = {
+            _CMD_NEW: False,
+            _CMD_EDIT: False,
+            _CMD_CANCEL: False,
+            _CMD_POST: False,
+            _CMD_REFRESH: True,
+            _CMD_PRINT: False,
+            _CMD_EXPORT_LIST: False,
+        }
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(250)
@@ -55,10 +94,14 @@ class CustomerReceiptsPage(QWidget):
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(16)
+        root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_action_bar())
-        root_layout.addWidget(self._build_content_stack(), 1)
+        self._register = RegisterPage(self)
+        self._populate_toolbar_strip(self._register)
+        # Action band is owned by the ribbon now; legacy hidden buttons removed.
+        self._register.action_band.hide()
+        self._register.set_table_widget(self._build_content_stack())
+        root_layout.addWidget(self._register)
 
         self._service_registry.active_company_context.active_company_changed.connect(
             self._handle_active_company_changed
@@ -79,7 +122,7 @@ class CustomerReceiptsPage(QWidget):
         if active_company is None:
             self._receipts = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._receipts_model.removeRows(0, self._receipts_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
@@ -101,7 +144,7 @@ class CustomerReceiptsPage(QWidget):
         except Exception as exc:
             self._receipts = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._receipts_model.removeRows(0, self._receipts_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
@@ -124,64 +167,39 @@ class CustomerReceiptsPage(QWidget):
     # UI building
     # ------------------------------------------------------------------
 
-    def _build_action_bar(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageToolbar")
-        card.setProperty("card", True)
+    def _populate_toolbar_strip(self, register: RegisterPage) -> None:
+        strip_layout = register.toolbar_strip_layout
 
-        layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(12)
-
-        self._search_input = QLineEdit(card)
-        self._search_input.setPlaceholderText("Search receipts...")
-        self._search_input.setFixedWidth(180)
+        self._search_input = QLineEdit(register.toolbar_strip)
+        self._search_input.setPlaceholderText("Search receipts…")
+        self._search_input.setFixedWidth(200)
         self._search_input.textChanged.connect(self._handle_search_text_changed)
-        layout.addWidget(self._search_input)
+        strip_layout.addWidget(self._search_input)
 
-        self._status_filter_combo = QComboBox(card)
+        self._status_filter_combo = QComboBox(register.toolbar_strip)
         self._status_filter_combo.addItem("All statuses", None)
         self._status_filter_combo.addItem("Draft", "draft")
         self._status_filter_combo.addItem("Posted", "posted")
         self._status_filter_combo.addItem("Cancelled", "cancelled")
-        self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_receipts(reset_page=True))
-        layout.addWidget(self._status_filter_combo)
+        self._status_filter_combo.currentIndexChanged.connect(
+            lambda _index: self.reload_receipts(reset_page=True)
+        )
+        strip_layout.addWidget(self._status_filter_combo)
 
-        self._new_button = QPushButton("New Receipt", card)
-        self._new_button.setProperty("variant", "primary")
-        self._new_button.clicked.connect(self._open_create_dialog)
-        layout.addWidget(self._new_button)
+        strip_layout.addStretch(1)
 
-        self._edit_button = QPushButton("Edit Draft", card)
-        self._edit_button.setProperty("variant", "secondary")
-        self._edit_button.clicked.connect(self._open_edit_dialog)
-        layout.addWidget(self._edit_button)
+        self._record_count_label = QLabel(register.toolbar_strip)
+        self._record_count_label.setObjectName("StatusRailText")
+        strip_layout.addWidget(self._record_count_label)
 
-        self._cancel_button = QPushButton("Cancel Draft", card)
-        self._cancel_button.setProperty("variant", "secondary")
-        self._cancel_button.clicked.connect(self._cancel_selected_draft)
-        layout.addWidget(self._cancel_button)
-
-        self._post_button = QPushButton("Post Receipt", card)
-        self._post_button.setProperty("variant", "secondary")
-        self._post_button.clicked.connect(self._post_selected_receipt)
-        layout.addWidget(self._post_button)
-
-        self._refresh_button = QPushButton("Refresh", card)
+        self._refresh_button = QPushButton("Refresh", register.toolbar_strip)
         self._refresh_button.setProperty("variant", "ghost")
         self._refresh_button.clicked.connect(lambda: self.reload_receipts())
-        layout.addWidget(self._refresh_button)
+        strip_layout.addWidget(self._refresh_button)
 
-        self._print_button = QPushButton("Print / Export", card)
-        self._print_button.setProperty("variant", "ghost")
-        self._print_button.clicked.connect(self._print_selected_receipt)
-        layout.addWidget(self._print_button)
-
-        self._export_list_button = QPushButton("Export List", card)
-        self._export_list_button.setProperty("variant", "ghost")
-        self._export_list_button.clicked.connect(self._print_receipt_list)
-        layout.addWidget(self._export_list_button)
-        return card
+    def _populate_action_band(self, register: RegisterPage) -> None:
+        # Legacy action-band buttons removed; ribbon owns these commands now.
+        return
 
     def _build_content_stack(self) -> QWidget:
         self._stack = QStackedWidget(self)
@@ -194,53 +212,37 @@ class CustomerReceiptsPage(QWidget):
         return self._stack
 
     def _build_table_surface(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
+        container = QWidget(self)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
 
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(12)
+        self._receipts_model = QStandardItemModel(0, len(RECEIPT_COLUMNS), self)
+        self._receipts_model.setHorizontalHeaderLabels([c.title for c in RECEIPT_COLUMNS])
 
-        top_row = QWidget(card)
-        top_row_layout = QHBoxLayout(top_row)
-        top_row_layout.setContentsMargins(0, 0, 0, 0)
-        top_row_layout.setSpacing(12)
+        self._table = DataTable(
+            columns=RECEIPT_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No receipts match the current filters.",
+            parent=container,
+        )
+        self._table.set_model(self._receipts_model)
+        self._receipts_status_delegate = apply_status_chip_to_column(
+            self._table.view(), _STATUS_COLUMN_INDEX
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
+        layout.addWidget(self._table, 1)
 
-        title = QLabel("Receipt Register", top_row)
-        title.setObjectName("CardTitle")
-        top_row_layout.addWidget(title)
-        top_row_layout.addStretch(1)
-
-        self._record_count_label = QLabel(top_row)
-        self._record_count_label.setObjectName("ToolbarMeta")
-        top_row_layout.addWidget(self._record_count_label)
-
-        layout.addWidget(top_row)
-
-        self._table = QTableWidget(card)
-        self._table.setObjectName("CustomerReceiptsTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels((
-            "Receipt #",
-            "Date",
-            "Customer",
-            "Account",
-            "Currency",
-            "Amount",
-            "Status",
-            "Posted At",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        layout.addWidget(self._table)
-
-        self._pager = Pager(card, default_page_size=100)
+        self._pager = Pager(container, default_page_size=100)
         self._pager.page_changed.connect(lambda _p: self.reload_receipts())
         self._pager.page_size_changed.connect(lambda _s: self.reload_receipts(reset_page=True))
         layout.addWidget(self._pager)
-        return card
+        return container
 
     def _build_empty_state(self) -> QWidget:
         card = QFrame(self)
@@ -333,44 +335,19 @@ class CustomerReceiptsPage(QWidget):
         self._stack.setCurrentWidget(self._empty_state)
 
     def _populate_table(self) -> None:
-        self._table.setUpdatesEnabled(False)
-        self._table.setSortingEnabled(False)
-        try:
-            self._table.setRowCount(len(self._receipts))
-            for row_index, r in enumerate(self._receipts):
-                values = (
-                    r.receipt_number,
-                    self._format_date(r.receipt_date),
-                    r.customer_name,
-                    r.financial_account_name,
-                    r.currency_code,
-                    self._format_amount(r.amount_received),
-                    r.status_code.title(),
-                    self._format_datetime(r.posted_at),
-                )
-                for col, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if col == 0:
-                        item.setData(Qt.ItemDataRole.UserRole, r.id)
-                    if col in {1, 4, 6, 7}:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    if col == 5:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    self._table.setItem(row_index, col, item)
-
-            self._table.resizeColumnsToContents()
-            header = self._table.horizontalHeader()
-            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-            header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        finally:
-            self._table.setSortingEnabled(True)
-            self._table.setUpdatesEnabled(True)
+        self._receipts_model.removeRows(0, self._receipts_model.rowCount())
+        for r in self._receipts:
+            row_items = [
+                self._make_item(r.receipt_number, user_data=r.id),
+                self._make_item(self._format_date(r.receipt_date)),
+                self._make_item(r.customer_name or ""),
+                self._make_item(r.financial_account_name or ""),
+                self._make_item(r.currency_code or ""),
+                self._make_numeric(r.amount_received),
+                self._make_item(r.status_code or ""),
+                self._make_item(self._format_datetime(r.posted_at)),
+            ]
+            self._receipts_model.appendRow(row_items)
 
         search_text = self._search_input.text().strip()
         total = self._total_count
@@ -387,30 +364,57 @@ class CustomerReceiptsPage(QWidget):
         return
 
     def _restore_selection(self, selected_receipt_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._receipts:
             return
         if selected_receipt_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, r in enumerate(self._receipts) if r.id == selected_receipt_id),
+                -1,
+            )
+        if target_idx < 0:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_receipt_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src_index = self._receipts_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_receipt(self) -> CustomerReceiptListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        receipt_id = item.data(Qt.ItemDataRole.UserRole)
-        for r in self._receipts:
-            if r.id == receipt_id:
-                return r
+        idx = rows[0]
+        if 0 <= idx < len(self._receipts):
+            return self._receipts[idx]
         return None
+
+    @staticmethod
+    def _make_item(text: str, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value: Decimal | None) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
 
     def _show_permission_denied(self, permission_code: str) -> None:
         show_error(
@@ -419,6 +423,9 @@ class CustomerReceiptsPage(QWidget):
             self._service_registry.permission_service.build_denied_message(permission_code),
         )
 
+    def _set_command_enabled(self, command_id: str, enabled: bool) -> None:
+        self._command_enabled[command_id] = bool(enabled)
+
     def _update_action_state(self) -> None:
         active_company = self._active_company()
         selected = self._selected_receipt()
@@ -426,20 +433,48 @@ class CustomerReceiptsPage(QWidget):
         is_draft = has_company and selected is not None and selected.status_code == "draft"
         permission_service = self._service_registry.permission_service
 
-        self._new_button.setEnabled(
-            has_company and permission_service.has_permission("sales.receipts.create")
+        self._set_command_enabled(
+            _CMD_NEW,
+            has_company and permission_service.has_permission("sales.receipts.create"),
         )
-        self._edit_button.setEnabled(
-            is_draft and permission_service.has_permission("sales.receipts.edit")
+        self._set_command_enabled(
+            _CMD_EDIT,
+            is_draft and permission_service.has_permission("sales.receipts.edit"),
         )
-        self._cancel_button.setEnabled(
-            is_draft and permission_service.has_permission("sales.receipts.cancel")
+        self._set_command_enabled(
+            _CMD_CANCEL,
+            is_draft and permission_service.has_permission("sales.receipts.cancel"),
         )
-        self._post_button.setEnabled(
-            is_draft and permission_service.has_permission("sales.receipts.post")
+        self._set_command_enabled(
+            _CMD_POST,
+            is_draft and permission_service.has_permission("sales.receipts.post"),
         )
-        self._print_button.setEnabled(has_company and selected is not None)
-        self._export_list_button.setEnabled(has_company and bool(self._receipts))
+        self._set_command_enabled(_CMD_REFRESH, True)
+        self._set_command_enabled(
+            _CMD_PRINT, has_company and selected is not None
+        )
+        self._set_command_enabled(
+            _CMD_EXPORT_LIST, has_company and bool(self._receipts)
+        )
+        self._notify_ribbon_state_changed()
+
+    # ------------------------------------------------------------------
+    # IRibbonHost
+    # ------------------------------------------------------------------
+
+    def _ribbon_commands(self):
+        return {
+            _CMD_NEW: self._open_create_dialog,
+            _CMD_EDIT: self._open_edit_dialog,
+            _CMD_CANCEL: self._cancel_selected_draft,
+            _CMD_POST: self._post_selected_receipt,
+            _CMD_REFRESH: self.reload_receipts,
+            _CMD_PRINT: self._print_selected_receipt,
+            _CMD_EXPORT_LIST: self._print_receipt_list,
+        }
+
+    def ribbon_state(self):
+        return dict(self._command_enabled)
 
     # ------------------------------------------------------------------
     # Actions
@@ -588,8 +623,12 @@ class CustomerReceiptsPage(QWidget):
                 active_company.company_id, selected.id, result
             )
             show_info(self, "Export", f"Document saved to:\n{result.output_path}")
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Failed", str(exc))
+
+        except Exception:
+            _log.exception("Export Failed")
+            show_error(self, "Export Failed", "An unexpected error occurred. See application log for details.")
 
     def _print_receipt_list(self) -> None:
         active_company = self._active_company()
@@ -603,8 +642,12 @@ class CustomerReceiptsPage(QWidget):
                 active_company.company_id, self._receipts, result
             )
             show_info(self, "Export", f"Document saved to:\n{result.output_path}")
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Failed", str(exc))
+
+        except Exception:
+            _log.exception("Export Failed")
+            show_error(self, "Export Failed", "An unexpected error occurred. See application log for details.")
 
     # ------------------------------------------------------------------
     # Formatting
@@ -623,7 +666,11 @@ class CustomerReceiptsPage(QWidget):
     # Signals
     # ------------------------------------------------------------------
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        # Preserve legacy double-click behaviour: edit when draft is selected.
         selected = self._selected_receipt()
         if selected is not None and selected.status_code == "draft":
             self._open_edit_dialog()

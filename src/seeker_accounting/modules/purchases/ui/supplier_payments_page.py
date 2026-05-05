@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -14,24 +16,28 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.purchases.dto.supplier_payment_dto import SupplierPaymentListItemDTO
 from seeker_accounting.modules.purchases.ui.supplier_payment_dialog import SupplierPaymentDialog
 from seeker_accounting.app.navigation.workflow_resume_service import ResumeTokenPayload
 from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.register import RegisterPage
 from seeker_accounting.shared.workflow.document_sequence_preflight import (
     consume_resume_payload_for_workflows,
     handle_document_sequence_error,
@@ -39,13 +45,48 @@ from seeker_accounting.shared.workflow.document_sequence_preflight import (
 )
 
 
-class SupplierPaymentsPage(QWidget):
+_log = logging.getLogger(__name__)
+
+
+PAYMENT_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="payment_number", title="Payment #"),
+    DataTableColumn(key="payment_date", title="Date"),
+    DataTableColumn(key="supplier_name", title="Supplier"),
+    DataTableColumn(key="financial_account_name", title="Account"),
+    DataTableColumn(key="currency_code", title="Currency"),
+    DataTableColumn(key="amount_paid", title="Amount", is_numeric=True),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="posted_at", title="Posted At"),
+)
+_STATUS_COLUMN_INDEX = 6
+
+
+_CMD_NEW = "supplier_payments.new"
+_CMD_EDIT = "supplier_payments.edit"
+_CMD_CANCEL = "supplier_payments.cancel"
+_CMD_POST = "supplier_payments.post"
+_CMD_REFRESH = "supplier_payments.refresh"
+_CMD_PRINT = "supplier_payments.print"
+_CMD_EXPORT_LIST = "supplier_payments.export_list"
+
+
+class SupplierPaymentsPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
         self._payments: list[SupplierPaymentListItemDTO] = []
         self._total_count: int = 0
         self._pending_resume_payload: ResumeTokenPayload | None = None
+        self._command_enabled: dict[str, bool] = {
+            _CMD_NEW: False,
+            _CMD_EDIT: False,
+            _CMD_CANCEL: False,
+            _CMD_POST: False,
+            _CMD_REFRESH: True,
+            _CMD_PRINT: False,
+            _CMD_EXPORT_LIST: False,
+        }
+
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(250)
@@ -57,8 +98,14 @@ class SupplierPaymentsPage(QWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_action_bar())
-        root_layout.addWidget(self._build_content_stack(), 1)
+        self._register = RegisterPage(self)
+        self._populate_toolbar_strip(self._register)
+        # Action band is owned by the ribbon now; the visible toolbar above
+        # carries the legacy buttons. ActionBand stays hidden for visual
+        # consistency with other migrated registers.
+        self._register.action_band.hide()
+        self._register.set_table_widget(self._build_content_stack())
+        root_layout.addWidget(self._register)
 
         self._service_registry.active_company_context.active_company_changed.connect(
             self._handle_active_company_changed
@@ -79,7 +126,7 @@ class SupplierPaymentsPage(QWidget):
         if active_company is None:
             self._payments = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._payments_model.removeRows(0, self._payments_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
@@ -101,7 +148,7 @@ class SupplierPaymentsPage(QWidget):
         except Exception as exc:
             self._payments = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._payments_model.removeRows(0, self._payments_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
@@ -124,73 +171,67 @@ class SupplierPaymentsPage(QWidget):
     # UI building
     # ------------------------------------------------------------------
 
-    def _build_action_bar(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageToolbar")
-        card.setProperty("card", True)
+    def _populate_toolbar_strip(self, register: RegisterPage) -> None:
+        strip_layout = register.toolbar_strip_layout
 
-        layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 2, 8, 2)
-        layout.setSpacing(6)
-
-        title = QLabel('Payment Register', card)
+        title = QLabel("Payment Register", register.toolbar_strip)
         title.setObjectName("ToolbarTitle")
-        layout.addWidget(title)
+        strip_layout.addWidget(title)
 
-        self._record_count_label = QLabel(card)
-        self._record_count_label.setObjectName("ToolbarMeta")
-        layout.addWidget(self._record_count_label)
-
-        layout.addStretch(1)
-        self._search_input = QLineEdit(card)
-        self._search_input.setPlaceholderText("Search payments...")
-        self._search_input.setFixedWidth(180)
+        self._search_input = QLineEdit(register.toolbar_strip)
+        self._search_input.setPlaceholderText("Search payments…")
+        self._search_input.setFixedWidth(200)
         self._search_input.textChanged.connect(self._handle_search_text_changed)
-        layout.addWidget(self._search_input)
+        strip_layout.addWidget(self._search_input)
 
-        self._status_filter_combo = QComboBox(card)
+        self._status_filter_combo = QComboBox(register.toolbar_strip)
         self._status_filter_combo.addItem("All statuses", None)
         self._status_filter_combo.addItem("Draft", "draft")
         self._status_filter_combo.addItem("Posted", "posted")
         self._status_filter_combo.addItem("Cancelled", "cancelled")
         self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_payments(reset_page=True))
-        layout.addWidget(self._status_filter_combo)
+        strip_layout.addWidget(self._status_filter_combo)
 
-        self._new_button = QPushButton("New Payment", card)
+        strip_layout.addStretch(1)
+
+        self._record_count_label = QLabel(register.toolbar_strip)
+        self._record_count_label.setObjectName("StatusRailText")
+        strip_layout.addWidget(self._record_count_label)
+
+        self._new_button = QPushButton("New Payment", register.toolbar_strip)
         self._new_button.setProperty("variant", "primary")
         self._new_button.clicked.connect(self._open_create_dialog)
-        layout.addWidget(self._new_button)
+        strip_layout.addWidget(self._new_button)
 
-        self._edit_button = QPushButton("Edit Draft", card)
+        self._edit_button = QPushButton("Edit Draft", register.toolbar_strip)
         self._edit_button.setProperty("variant", "secondary")
         self._edit_button.clicked.connect(self._open_edit_dialog)
-        layout.addWidget(self._edit_button)
+        strip_layout.addWidget(self._edit_button)
 
-        self._cancel_button = QPushButton("Cancel Draft", card)
+        self._cancel_button = QPushButton("Cancel Draft", register.toolbar_strip)
         self._cancel_button.setProperty("variant", "secondary")
         self._cancel_button.clicked.connect(self._cancel_selected_draft)
-        layout.addWidget(self._cancel_button)
+        strip_layout.addWidget(self._cancel_button)
 
-        self._post_button = QPushButton("Post Payment", card)
+        self._post_button = QPushButton("Post Payment", register.toolbar_strip)
         self._post_button.setProperty("variant", "secondary")
         self._post_button.clicked.connect(self._post_selected_payment)
-        layout.addWidget(self._post_button)
+        strip_layout.addWidget(self._post_button)
 
-        self._refresh_button = QPushButton("Refresh", card)
+        self._refresh_button = QPushButton("Refresh", register.toolbar_strip)
         self._refresh_button.setProperty("variant", "ghost")
         self._refresh_button.clicked.connect(lambda: self.reload_payments())
-        layout.addWidget(self._refresh_button)
+        strip_layout.addWidget(self._refresh_button)
 
-        self._print_button = QPushButton("Print / Export", card)
+        self._print_button = QPushButton("Print / Export", register.toolbar_strip)
         self._print_button.setProperty("variant", "ghost")
         self._print_button.clicked.connect(self._print_selected_payment)
-        layout.addWidget(self._print_button)
+        strip_layout.addWidget(self._print_button)
 
-        self._export_list_button = QPushButton("Export List", card)
+        self._export_list_button = QPushButton("Export List", register.toolbar_strip)
         self._export_list_button.setProperty("variant", "ghost")
         self._export_list_button.clicked.connect(self._print_payment_list)
-        layout.addWidget(self._export_list_button)
-        return card
+        strip_layout.addWidget(self._export_list_button)
 
     def _build_content_stack(self) -> QWidget:
         self._stack = QStackedWidget(self)
@@ -203,36 +244,53 @@ class SupplierPaymentsPage(QWidget):
         return self._stack
 
     def _build_table_surface(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
+        container = QWidget(self)
+        layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setObjectName("SupplierPaymentsTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels((
-            "Payment #",
-            "Date",
-            "Supplier",
-            "Account",
-            "Currency",
-            "Amount",
-            "Status",
-            "Posted At",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        layout.addWidget(self._table)
+        layout.setSpacing(4)
 
-        self._pager = Pager(card, default_page_size=100)
+        self._payments_model = QStandardItemModel(0, len(PAYMENT_COLUMNS), self)
+        self._payments_model.setHorizontalHeaderLabels([c.title for c in PAYMENT_COLUMNS])
+
+        self._table = DataTable(
+            columns=PAYMENT_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No payments match the current filters.",
+            parent=container,
+        )
+        self._table.set_model(self._payments_model)
+        self._payments_status_delegate = apply_status_chip_to_column(
+            self._table.view(), _STATUS_COLUMN_INDEX
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
+        layout.addWidget(self._table, 1)
+
+        self._pager = Pager(container, default_page_size=100)
         self._pager.page_changed.connect(lambda _p: self.reload_payments())
         self._pager.page_size_changed.connect(lambda _s: self.reload_payments(reset_page=True))
         layout.addWidget(self._pager)
-        return card
+        return container
+
+    @staticmethod
+    def _make_item(text: str, *, user_data=None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
 
     def _build_empty_state(self) -> QWidget:
         card = QFrame(self)
@@ -325,44 +383,19 @@ class SupplierPaymentsPage(QWidget):
         self._stack.setCurrentWidget(self._empty_state)
 
     def _populate_table(self) -> None:
-        self._table.setUpdatesEnabled(False)
-        self._table.setSortingEnabled(False)
-        try:
-            self._table.setRowCount(len(self._payments))
-            for row_index, p in enumerate(self._payments):
-                values = (
-                    p.payment_number,
-                    self._format_date(p.payment_date),
-                    p.supplier_name,
-                    p.financial_account_name,
-                    p.currency_code,
-                    self._format_amount(p.amount_paid),
-                    p.status_code.title(),
-                    self._format_datetime(p.posted_at),
-                )
-                for col, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if col == 0:
-                        item.setData(Qt.ItemDataRole.UserRole, p.id)
-                    if col in {1, 4, 6, 7}:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    if col == 5:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    self._table.setItem(row_index, col, item)
-
-            self._table.resizeColumnsToContents()
-            header = self._table.horizontalHeader()
-            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-            header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        finally:
-            self._table.setSortingEnabled(True)
-            self._table.setUpdatesEnabled(True)
+        self._payments_model.removeRows(0, self._payments_model.rowCount())
+        for p in self._payments:
+            row_items = [
+                self._make_item(p.payment_number, user_data=p.id),
+                self._make_item(self._format_date(p.payment_date)),
+                self._make_item(p.supplier_name),
+                self._make_item(p.financial_account_name),
+                self._make_item(p.currency_code),
+                self._make_numeric(p.amount_paid),
+                self._make_item(p.status_code or ""),
+                self._make_item(self._format_datetime(p.posted_at)),
+            ]
+            self._payments_model.appendRow(row_items)
 
         search_text = self._search_input.text().strip()
         total = self._total_count
@@ -379,30 +412,52 @@ class SupplierPaymentsPage(QWidget):
         return
 
     def _restore_selection(self, selected_payment_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._payments:
             return
         if selected_payment_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, p in enumerate(self._payments) if p.id == selected_payment_id),
+                -1,
+            )
+        if target_idx < 0:
+            target_idx = 0
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_payment_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._payments_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_payment(self) -> SupplierPaymentListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        payment_id = item.data(Qt.ItemDataRole.UserRole)
-        for p in self._payments:
-            if p.id == payment_id:
-                return p
+        idx = rows[0]
+        if 0 <= idx < len(self._payments):
+            return self._payments[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        selected = self._selected_payment()
+        if selected is not None and selected.status_code == "draft":
+            self._open_edit_dialog()
+
+    def _set_command_enabled(self, command_id: str, enabled: bool) -> None:
+        self._command_enabled[command_id] = bool(enabled)
 
     def _show_permission_denied(self, permission_code: str) -> None:
         show_error(
@@ -418,20 +473,44 @@ class SupplierPaymentsPage(QWidget):
         is_draft = has_company and selected is not None and selected.status_code == "draft"
         permission_service = self._service_registry.permission_service
 
-        self._new_button.setEnabled(
-            has_company and permission_service.has_permission("purchases.payments.create")
-        )
-        self._edit_button.setEnabled(
-            is_draft and permission_service.has_permission("purchases.payments.edit")
-        )
-        self._cancel_button.setEnabled(
-            is_draft and permission_service.has_permission("purchases.payments.cancel")
-        )
-        self._post_button.setEnabled(
-            is_draft and permission_service.has_permission("purchases.payments.post")
-        )
-        self._print_button.setEnabled(has_company and selected is not None)
-        self._export_list_button.setEnabled(has_company and bool(self._payments))
+        new_enabled = has_company and permission_service.has_permission("purchases.payments.create")
+        edit_enabled = is_draft and permission_service.has_permission("purchases.payments.edit")
+        cancel_enabled = is_draft and permission_service.has_permission("purchases.payments.cancel")
+        post_enabled = is_draft and permission_service.has_permission("purchases.payments.post")
+        print_enabled = has_company and selected is not None
+        export_enabled = has_company and bool(self._payments)
+
+        self._new_button.setEnabled(new_enabled)
+        self._edit_button.setEnabled(edit_enabled)
+        self._cancel_button.setEnabled(cancel_enabled)
+        self._post_button.setEnabled(post_enabled)
+        self._print_button.setEnabled(print_enabled)
+        self._export_list_button.setEnabled(export_enabled)
+
+        self._set_command_enabled(_CMD_NEW, new_enabled)
+        self._set_command_enabled(_CMD_EDIT, edit_enabled)
+        self._set_command_enabled(_CMD_CANCEL, cancel_enabled)
+        self._set_command_enabled(_CMD_POST, post_enabled)
+        self._set_command_enabled(_CMD_REFRESH, True)
+        self._set_command_enabled(_CMD_PRINT, print_enabled)
+        self._set_command_enabled(_CMD_EXPORT_LIST, export_enabled)
+        self._notify_ribbon_state_changed()
+
+    # ── IRibbonHost ───────────────────────────────────────────────────
+
+    def _ribbon_commands(self):
+        return {
+            _CMD_NEW: self._open_create_dialog,
+            _CMD_EDIT: self._open_edit_dialog,
+            _CMD_CANCEL: self._cancel_selected_draft,
+            _CMD_POST: self._post_selected_payment,
+            _CMD_REFRESH: self.reload_payments,
+            _CMD_PRINT: self._print_selected_payment,
+            _CMD_EXPORT_LIST: self._print_payment_list,
+        }
+
+    def ribbon_state(self):
+        return dict(self._command_enabled)
 
     # ------------------------------------------------------------------
     # Actions
@@ -584,18 +663,11 @@ class SupplierPaymentsPage(QWidget):
     # Signals
     # ------------------------------------------------------------------
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
-        selected = self._selected_payment()
-        if selected is not None and selected.status_code == "draft":
-            self._open_edit_dialog()
-
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:
         _ = company_id, company_name
         self.reload_payments()
 
     def set_navigation_context(self, context: dict) -> None:
-        from PySide6.QtCore import QTimer
-
         token_payload = consume_resume_payload_for_workflows(
             context=context,
             service_registry=self._service_registry,
@@ -640,8 +712,12 @@ class SupplierPaymentsPage(QWidget):
                 active_company.company_id, selected.id, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Supplier Payments", f"Export failed.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Supplier Payments")
+            show_error(self, "Supplier Payments", "An unexpected error occurred. See application log for details.")
 
     def _print_payment_list(self) -> None:
         active_company = self._active_company()
@@ -655,5 +731,9 @@ class SupplierPaymentsPage(QWidget):
                 active_company.company_id, self._payments, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Supplier Payments", f"Export failed.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Supplier Payments")
+            show_error(self, "Supplier Payments", "An unexpected error occurred. See application log for details.")

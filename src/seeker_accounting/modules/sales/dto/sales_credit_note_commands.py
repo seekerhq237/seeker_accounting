@@ -33,6 +33,7 @@ class CreateSalesCreditNoteCommand:
     project_id: int | None
     lines: list[SalesCreditNoteLineCommand]
     actor_user_id: int | None = None
+    tax_point_date: date | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,3 +51,4 @@ class UpdateSalesCreditNoteCommand:
     project_id: int | None
     lines: list[SalesCreditNoteLineCommand]
     actor_user_id: int | None = None
+    tax_point_date: date | None = None

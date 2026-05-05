@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from PySide6.QtCore import Qt
@@ -33,6 +36,9 @@ from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 _MONEY_SCALE = Decimal("0.0001")
 
 
+_log = logging.getLogger(__name__)
+
+
 class PayrollProjectAllocationsDialog(QDialog):
     def __init__(
         self,
@@ -52,7 +58,7 @@ class PayrollProjectAllocationsDialog(QDialog):
         self._jobs_by_project_id: dict[int, list[object]] = {}
 
         self.setModal(True)
-        self.resize(1180, 680)
+        apply_window_size(self, "modules.payroll.ui.dialogs.payroll.project.allocations.dialog.0")
         self.setWindowTitle("Payroll Project Allocations")
 
         layout = QVBoxLayout(self)
@@ -197,8 +203,11 @@ class PayrollProjectAllocationsDialog(QDialog):
                 self._company_id,
                 self._payroll_run_employee_id,
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Project Allocations", str(exc))
+        except Exception:
+            _log.exception("Project Allocations")
+            show_error(self, "Project Allocations", "An unexpected error occurred. See application log for details.")
             self.reject()
             return
 
@@ -435,8 +444,12 @@ class PayrollProjectAllocationsDialog(QDialog):
         except ValidationError as exc:
             self._set_error(str(exc))
             return
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Project Allocations", str(exc))
+            return
+        except Exception:
+            _log.exception("Project Allocations")
+            show_error(self, "Project Allocations", "An unexpected error occurred. See application log for details.")
             return
 
         self.accept()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from decimal import Decimal
@@ -84,7 +85,7 @@ class AssetDialog(QDialog):
         is_edit = asset_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Asset — {company_name}")
         self.setModal(True)
-        self.resize(560, 0)  # width hint; height will size-to-content via adjustSize
+        apply_window_size(self, "modules.fixed.assets.ui.asset.dialog.0")  # width hint; height will size-to-content via adjustSize
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)

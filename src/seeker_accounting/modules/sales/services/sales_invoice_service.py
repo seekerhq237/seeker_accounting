@@ -298,9 +298,11 @@ class SalesInvoiceService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
                 is_tax_inclusive=effective_inclusive,
+                tax_point_date=normalized_command.tax_point_date,
                 subtotal_amount=subtotal_amount,
                 tax_amount=tax_amount,
                 total_amount=total_amount,
+                withheld_vat_amount=normalized_command.withheld_vat_amount or Decimal("0"),
             )
             invoice_repository.add(invoice)
             uow.session.flush()
@@ -381,10 +383,12 @@ class SalesInvoiceService:
             invoice.contract_id = normalized_command.contract_id
             invoice.project_id = normalized_command.project_id
             invoice.is_tax_inclusive = effective_inclusive
+            invoice.tax_point_date = normalized_command.tax_point_date
             invoice.subtotal_amount = subtotal_amount
             invoice.tax_amount = tax_amount
             invoice.total_amount = total_amount
             invoice.payment_status_code = "unpaid"
+            invoice.withheld_vat_amount = normalized_command.withheld_vat_amount or Decimal("0")
             invoice_repository.save(invoice)
             line_repository.replace_lines(company_id, invoice.id, invoice_lines)
 
@@ -465,7 +469,10 @@ class SalesInvoiceService:
             notes=self._normalize_optional_text(command.notes),
             contract_id=self._normalize_optional_id(command.contract_id),
             project_id=self._normalize_optional_id(command.project_id),
+            is_tax_inclusive=command.is_tax_inclusive,
+            tax_point_date=command.tax_point_date,
             lines=self._normalize_line_commands(command.lines),
+            withheld_vat_amount=self._normalize_optional_money(command.withheld_vat_amount, "Withheld VAT amount"),
         )
 
     def _normalize_update_command(self, command: UpdateSalesInvoiceCommand) -> UpdateSalesInvoiceCommand:
@@ -479,7 +486,10 @@ class SalesInvoiceService:
             notes=self._normalize_optional_text(command.notes),
             contract_id=self._normalize_optional_id(command.contract_id),
             project_id=self._normalize_optional_id(command.project_id),
+            is_tax_inclusive=command.is_tax_inclusive,
+            tax_point_date=command.tax_point_date,
             lines=self._normalize_line_commands(command.lines),
+            withheld_vat_amount=self._normalize_optional_money(command.withheld_vat_amount, "Withheld VAT amount"),
         )
 
     def _normalize_line_commands(self, lines: tuple[SalesInvoiceLineCommand, ...]) -> tuple[SalesInvoiceLineCommand, ...]:
@@ -947,6 +957,8 @@ class SalesInvoiceService:
             lines=lines,
             contract_id=invoice.contract_id,
             project_id=invoice.project_id,
+            tax_point_date=invoice.tax_point_date,
+            withheld_vat_amount=invoice.withheld_vat_amount,
         )
 
     def _record_audit(

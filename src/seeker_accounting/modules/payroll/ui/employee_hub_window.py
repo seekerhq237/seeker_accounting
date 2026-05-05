@@ -58,6 +58,7 @@ from seeker_accounting.modules.payroll.ui.wizards.employee_payroll_setup_wizard 
     EmployeePayrollSetupWizardDialog,
 )
 from seeker_accounting.platform.exceptions import (
+    AppError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
@@ -65,6 +66,7 @@ from seeker_accounting.platform.exceptions import (
 )
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
@@ -211,7 +213,7 @@ class EmployeeHubWindow(ChildWindowBase):
         ):
             pill = QLabel(label_text, frame)
             pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            pill.setMinimumWidth(140)
+            pill.setMinimumWidth(DEFAULT_TOKENS.sizes.nav_pill_min_w)
             self._readiness_pills[key] = pill
             layout.addWidget(pill)
         layout.addStretch(1)
@@ -228,7 +230,7 @@ class EmployeeHubWindow(ChildWindowBase):
         return card
 
     def _build_profiles_card(self) -> QWidget:
-        card = self._card("Compensation Profiles")
+        card = self._card("Compensation")
         self._profiles_table = QTableWidget(card)
         configure_compact_table(self._profiles_table)
         self._profiles_table.setColumnCount(4)
@@ -245,12 +247,12 @@ class EmployeeHubWindow(ChildWindowBase):
         return card
 
     def _build_assignments_card(self) -> QWidget:
-        card = self._card("Component Assignments")
+        card = self._card("Component assignments")
         self._assignments_table = QTableWidget(card)
         configure_compact_table(self._assignments_table)
         self._assignments_table.setColumnCount(4)
         self._assignments_table.setHorizontalHeaderLabels(
-            ("Component", "Type", "From", "Status")
+            ("Payroll component", "Type", "From", "Status")
         )
         self._assignments_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
@@ -262,7 +264,7 @@ class EmployeeHubWindow(ChildWindowBase):
         return card
 
     def _build_recent_runs_card(self) -> QWidget:
-        card = self._card("Recent Payroll Runs")
+        card = self._card("Recent payroll runs")
         self._runs_table = QTableWidget(card)
         configure_compact_table(self._runs_table)
         self._runs_table.setColumnCount(5)
@@ -302,8 +304,12 @@ class EmployeeHubWindow(ChildWindowBase):
             show_error(self, "Employee Hub", "This employee no longer exists.")
             self.close()
             return
-        except Exception as exc:  # noqa: BLE001
+        except AppError as exc:
             show_error(self, "Employee Hub", str(exc))
+            return
+        except Exception:
+            _log.exception("Failed to load employee hub for employee=%s", self._employee_id)
+            show_error(self, "Employee Hub", "Could not load employee. See application log for details.")
             return
         self._employee = emp
         self.setWindowTitle(f"Employee Hub — {emp.display_name}")

@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -20,9 +21,12 @@ from seeker_accounting.modules.reporting.dto.trial_balance_report_dto import Tri
 from seeker_accounting.platform.exceptions import ValidationError
 from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class TrialBalanceTab(QWidget):
@@ -88,22 +92,29 @@ class TrialBalanceTab(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Account",
-                "Name",
-                "Opening Debit",
-                "Opening Credit",
-                "Period Debit",
-                "Period Credit",
-                "Closing Debit",
-                "Closing Credit",
-            ]
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="opening_debit", title="Opening Debit"),
+                DataTableColumn(key="opening_credit", title="Opening Credit"),
+                DataTableColumn(key="period_debit", title="Period Debit"),
+                DataTableColumn(key="period_credit", title="Period Credit"),
+                DataTableColumn(key="closing_debit", title="Closing Debit"),
+                DataTableColumn(key="closing_credit", title="Closing Credit"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
         )
-        configure_compact_table(self._table)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._model = QStandardItemModel(0, 8, panel)
+        self._model.setHorizontalHeaderLabels(
+            ["Account", "Name", "Opening Debit", "Opening Credit", "Period Debit", "Period Credit", "Closing Debit", "Closing Credit"]
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table, 1)
 
         self._totals_bar = self._build_totals_bar(panel)
@@ -177,7 +188,7 @@ class TrialBalanceTab(QWidget):
         company_id = filter_dto.company_id
         if not isinstance(company_id, int) or company_id <= 0:
             self._stack.setCurrentIndex(1)
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             return
 
         try:
@@ -191,8 +202,12 @@ class TrialBalanceTab(QWidget):
             show_error(self, "Trial Balance", str(exc))
             self._stack.setCurrentIndex(3)
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Trial Balance", str(exc))
+
+        except Exception:
+            _log.exception("Trial Balance")
+            show_error(self, "Trial Balance", "An unexpected error occurred. See application log for details.")
             self._stack.setCurrentIndex(3)
             return
 
@@ -210,7 +225,7 @@ class TrialBalanceTab(QWidget):
         assert report is not None
 
         if not report.rows:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentIndex(2)
             self._update_totals(report)
             return
@@ -227,25 +242,22 @@ class TrialBalanceTab(QWidget):
     # ------------------------------------------------------------------
 
     def _bind_report(self, report: TrialBalanceReportDTO) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(len(report.rows))
-
-        for row_idx, row in enumerate(report.rows):
-            code_item = QTableWidgetItem(row.account_code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.account_id)
-            self._table.setItem(row_idx, 0, code_item)
-
-            name_item = QTableWidgetItem(row.account_name)
-            self._table.setItem(row_idx, 1, name_item)
-
-            self._set_amount_item(row_idx, 2, row.opening_debit)
-            self._set_amount_item(row_idx, 3, row.opening_credit)
-            self._set_amount_item(row_idx, 4, row.period_debit)
-            self._set_amount_item(row_idx, 5, row.period_credit)
-            self._set_amount_item(row_idx, 6, row.closing_debit)
-            self._set_amount_item(row_idx, 7, row.closing_credit)
-
-        self._table.setSortingEnabled(True)
+        self._model.blockSignals(True)
+        try:
+            self._model.removeRows(0, self._model.rowCount())
+            for row in report.rows:
+                self._model.appendRow([
+                    self._make_item(row.account_code, user_data=row.account_id),
+                    self._make_item(row.account_name),
+                    self._make_amount_item(row.opening_debit),
+                    self._make_amount_item(row.opening_credit),
+                    self._make_amount_item(row.period_debit),
+                    self._make_amount_item(row.period_credit),
+                    self._make_amount_item(row.closing_debit),
+                    self._make_amount_item(row.closing_credit),
+                ])
+        finally:
+            self._model.blockSignals(False)
         self._update_totals(report)
 
     def _update_totals(self, report: TrialBalanceReportDTO) -> None:
@@ -256,10 +268,19 @@ class TrialBalanceTab(QWidget):
         self._totals_labels["closing"]["debit"].setText(f"Debit: {self._fmt(report.total_closing_debit)}")
         self._totals_labels["closing"]["credit"].setText(f"Credit: {self._fmt(report.total_closing_credit)}")
 
-    def _set_amount_item(self, row_index: int, col_index: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _make_amount_item(self, amount: Decimal) -> QStandardItem:
+        item = QStandardItem(self._fmt(amount))
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row_index, col_index, item)
+        return item
 
     @staticmethod
     def _fmt(amount: Decimal) -> str:
@@ -271,9 +292,14 @@ class TrialBalanceTab(QWidget):
     # Events
     # ------------------------------------------------------------------
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        code_item = self._table.item(row, 0)
-        name_item = self._table.item(row, 1)
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        code_item = self._model.item(row, 0)
+        name_item = self._model.item(row, 1)
         if code_item is None or name_item is None:
             return
         account_id = code_item.data(Qt.ItemDataRole.UserRole)

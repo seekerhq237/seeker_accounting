@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QDialogButtonBox,
     QFrame,
@@ -12,8 +13,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -31,7 +30,7 @@ from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, 
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 
 class CustomerGroupDialog(BaseDialog):
@@ -48,7 +47,7 @@ class CustomerGroupDialog(BaseDialog):
 
         super().__init__("Customer Groups", parent, help_key="dialog.customer_group")
         self.setObjectName("CustomerGroupDialog")
-        self.resize(700, 520)
+        apply_window_size(self, "modules.customers.ui.customer.group.dialog.0")
 
         intro_label = QLabel(
             "Keep customer segmentation compact and deliberate so later receivables workflows can reuse stable group references without widening the customer form.",
@@ -77,7 +76,7 @@ class CustomerGroupDialog(BaseDialog):
         self._save_button.clicked.connect(self._save_group)
         self._deactivate_button.clicked.connect(self._deactivate_group)
         self._refresh_button.clicked.connect(self.reload_groups)
-        self._table.itemSelectionChanged.connect(self._sync_editor_state)
+        self._table.selection_changed.connect(lambda _rows: self._sync_editor_state())
 
         self.reload_groups()
 
@@ -105,12 +104,24 @@ class CustomerGroupDialog(BaseDialog):
         title.setObjectName("DialogSectionTitle")
         layout.addWidget(title)
 
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(3)
-        self._table.setHorizontalHeaderLabels(("Code", "Name", "Status"))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemDoubleClicked.connect(lambda *_args: self._code_edit.setFocus())
+        self._model = QStandardItemModel(0, 3, card)
+        self._model.setHorizontalHeaderLabels(["Code", "Name", "Status"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        apply_status_chip_to_column(self._table.view(), 2)
+        self._table.view().doubleClicked.connect(lambda *_: self._code_edit.setFocus())
         layout.addWidget(self._table)
         return card
 
@@ -179,7 +190,7 @@ class CustomerGroupDialog(BaseDialog):
             )
         except Exception as exc:
             self._groups = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._set_error(f"Customer groups could not be loaded.\n\n{exc}")
             return
 
@@ -188,55 +199,55 @@ class CustomerGroupDialog(BaseDialog):
         self._restore_selection(selected_group_id)
         self._sync_editor_state()
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-
+        self._model.removeRows(0, self._model.rowCount())
         for group in self._groups:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (group.code, group.name, "Active" if group.is_active else "Inactive")
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, group.id)
-                if column_index == 2:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, column_index, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(group.code, user_data=group.id),
+                self._make_item(group.name),
+                self._make_item("active" if group.is_active else "inactive"),
+            ])
 
     def _restore_selection(self, selected_group_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._groups:
             self._clear_editor()
             return
         if selected_group_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, g in enumerate(self._groups) if g.id == selected_group_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_group_id:
-                self._table.selectRow(row_index)
-                return
-        self._table.selectRow(0)
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_group(self) -> CustomerGroupListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
+        row = rows[0]
+        if row < 0 or row >= len(self._groups):
             return None
-        group_id = item.data(Qt.ItemDataRole.UserRole)
-        for group in self._groups:
-            if group.id == group_id:
-                return group
-        return None
+        return self._groups[row]
 
     def _sync_editor_state(self) -> None:
         group = self._selected_group()
@@ -256,7 +267,7 @@ class CustomerGroupDialog(BaseDialog):
         self._deactivate_button.setEnabled(detail.is_active)
 
     def _clear_editor(self) -> None:
-        self._table.clearSelection()
+        self._table.view().clearSelection()
         self._code_edit.clear()
         self._name_edit.clear()
         self._active_checkbox.setChecked(True)

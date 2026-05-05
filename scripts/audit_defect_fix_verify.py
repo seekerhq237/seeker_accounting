@@ -644,6 +644,7 @@ def seed_actual_costs(s: Session, ids: dict, project_id: int, cc_id: int, job_id
     s.flush()
 
     s.add(PayrollRunEmployeeProjectAllocation(
+        company_id=co_id,
         payroll_run_employee_id=pre.id,
         line_number=1,
         project_id=project_id,

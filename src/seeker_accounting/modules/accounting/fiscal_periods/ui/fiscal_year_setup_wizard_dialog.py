@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from calendar import month_name
 from dataclasses import dataclass
 from datetime import date, timedelta
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDateEdit,
     QDialog,
     QDialogButtonBox,
@@ -19,8 +20,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,7 +41,7 @@ from seeker_accounting.platform.exceptions import (
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,7 +90,7 @@ class FiscalYearSetupWizardDialog(BaseDialog):
 
         super().__init__("Fiscal Year Setup", parent, help_key="wizard.fiscal_year_setup")
         self.setObjectName("FiscalYearSetupWizardDialog")
-        self.resize(640, 540)
+        apply_window_size(self, "modules.accounting.fiscal.periods.ui.fiscal.year.setup.wizard.dialog.0")
 
         intro = QLabel(
             "Create a fiscal year and generate its 12 monthly periods in one guided flow.",
@@ -244,13 +243,23 @@ class FiscalYearSetupWizardDialog(BaseDialog):
         self._review_summary.setWordWrap(True)
         card_layout.addWidget(self._review_summary)
 
-        self._preview_table = QTableWidget(card)
-        self._preview_table.setColumnCount(4)
-        self._preview_table.setHorizontalHeaderLabels(("#", "Code", "Name", "Date Range"))
-        configure_compact_table(self._preview_table)
-        self._preview_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self._preview_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._preview_table.verticalHeader().setVisible(False)
+        self._preview_model = QStandardItemModel(0, 4, card)
+        self._preview_model.setHorizontalHeaderLabels(["#", "Code", "Name", "Date Range"])
+        self._preview_table = DataTable(
+            columns=(
+                DataTableColumn(key="num", title="#"),
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="range", title="Date Range"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
+        )
+        self._preview_table.set_model(self._preview_model)
+        self._preview_table.view().verticalHeader().setVisible(False)
         card_layout.addWidget(self._preview_table, 1)
 
         footer = QLabel(
@@ -409,17 +418,19 @@ class FiscalYearSetupWizardDialog(BaseDialog):
             self._set_error(str(exc))
             return False
 
-        self._preview_table.setRowCount(len(periods))
-        for row, period in enumerate(periods):
-            self._preview_table.setItem(row, 0, QTableWidgetItem(str(period.number)))
-            self._preview_table.setItem(row, 1, QTableWidgetItem(period.code))
-            self._preview_table.setItem(row, 2, QTableWidgetItem(period.name))
-            self._preview_table.setItem(
-                row,
-                3,
-                QTableWidgetItem(f"{period.start_date.isoformat()} → {period.end_date.isoformat()}"),
-            )
-        self._preview_table.resizeColumnsToContents()
+        self._preview_model.removeRows(0, self._preview_model.rowCount())
+        for period in periods:
+            def _mi(t): 
+                i = QStandardItem("" if t is None else str(t))
+                i.setEditable(False)
+                return i
+            self._preview_model.appendRow([
+                _mi(str(period.number)),
+                _mi(period.code),
+                _mi(period.name),
+                _mi(f"{period.start_date.isoformat()} \u2192 {period.end_date.isoformat()}"),
+            ])
+        self._preview_table.view().resizeColumnsToContents()
 
         year_name = self._year_name_edit.text().strip()
         self._review_summary.setText(

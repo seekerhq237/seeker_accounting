@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.modules.payroll.dto.payroll_validation_dashboard_dto import ValidationCheckDTO
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 # ── Remediation guidance keyed by check_code ─────────────────────────────────
 
@@ -29,14 +30,14 @@ _REMEDIATION: dict[str, str] = {
         "4. Save and run the assessment again."
     ),
     "NO_STATUTORY_PACK": (
-        "1. Go to <b>Payroll Operations → Statutory Packs</b> tab.<br>"
+        "1. Go to <b>Payroll Operations → Statutory packs</b> tab.<br>"
         "2. Select the statutory pack for your jurisdiction "
         "(e.g. <b>CMR_2024_V1</b> for Cameroon).<br>"
         "3. Click <b>Apply Selected Pack</b>.<br>"
         "4. This seeds all required statutory components and rule sets in one step."
     ),
     "PACK_UNVERIFIED_ITEMS": (
-        "1. Go to <b>Payroll Operations → Statutory Packs</b> and review the "
+        "1. Go to <b>Payroll Operations → Statutory packs</b> and review the "
         "pack's verification summary.<br>"
         "2. Each unverified item uses a placeholder value. Cross-check every one "
         "against official CNPS/DGI publications for the current fiscal year.<br>"
@@ -106,31 +107,28 @@ _REMEDIATION: dict[str, str] = {
     "NO_COMPENSATION_PROFILE": (
         "1. Go to <b>Payroll Setup → Employees</b> and open the employee shown in "
         "the <b>Entity</b> column above.<br>"
-        "2. Open the <b>Compensation Profiles</b> section and add a profile.<br>"
+        "2. Open the <b>Compensation</b> section and add compensation.<br>"
         "3. Set <b>Effective From</b> to on or before the first day of the payroll "
         "period.<br>"
         "4. Enter the employee's gross salary or relevant rate."
     ),
     "EFFECTIVE_DATE_GAP": (
-        "1. Go to <b>Payroll Setup → Employees → [Employee] → Compensation "
-        "Profiles</b>.<br>"
-        "2. The employee has profiles, but none cover the selected payroll period.<br>"
-        "3. Either add a new profile with <b>Effective From</b> on or before the 1st "
+        "1. Go to <b>Payroll Setup → Employees → [Employee] → Compensation</b>.<br>"
+        "2. The employee has compensation records, but none cover the selected payroll period.<br>"
+        "3. Either add new compensation with <b>Effective From</b> on or before the 1st "
         "of the payroll month, or extend the <b>Effective To</b> date of an existing "
-        "profile so it covers the full period."
+        "record so it covers the full period."
     ),
     "EFFECTIVE_DATE_AMBIGUITY": (
-        "1. Go to <b>Payroll Setup → Employees → [Employee] → Compensation "
-        "Profiles</b>.<br>"
-        "2. Multiple profiles are active for the same period — only one is permitted "
+        "1. Go to <b>Payroll Setup → Employees → [Employee] → Compensation</b>.<br>"
+        "2. Multiple compensation records are active for the same period — only one is permitted "
         "per period.<br>"
-        "3. Set an <b>Effective To</b> end date on the older profile so it closes "
+        "3. Set an <b>Effective To</b> end date on the older compensation record so it closes "
         "before the newer one begins.<br>"
         "4. Verify that only one profile is active for the payroll month."
     ),
     "NO_COMPONENT_ASSIGNMENTS": (
-        "1. Go to <b>Payroll Setup → Employees → [Employee] → Component "
-        "Assignments</b>.<br>"
+        "1. Go to <b>Payroll Setup → Employees → [Employee] → Component assignments</b>.<br>"
         "2. Assign the payroll components this employee should receive "
         "(e.g. BASIC_SALARY, EMPLOYEE_CNPS, IRPP).<br>"
         "3. Set <b>Effective From</b> to on or before the 1st of the payroll month.<br>"
@@ -138,8 +136,7 @@ _REMEDIATION: dict[str, str] = {
         "will have no earnings or deductions."
     ),
     "ASSIGNMENT_EFFECTIVE_DATE_AMBIGUITY": (
-        "1. Go to <b>Payroll Setup → Employees → [Employee] → Component "
-        "Assignments</b>.<br>"
+        "1. Go to <b>Payroll Setup → Employees → [Employee] → Component assignments</b>.<br>"
         "2. The employee has multiple active assignments for the same component in "
         "the same period. Only one is allowed at a time.<br>"
         "3. Set an <b>Effective To</b> end date on the older assignment so it closes "
@@ -154,16 +151,14 @@ _REMEDIATION: dict[str, str] = {
         "the employee record."
     ),
     "OVERLAPPING_COMPENSATION_PROFILES": (
-        "1. Go to <b>Payroll Setup → Employees → [Employee] → Compensation "
-        "Profiles</b>.<br>"
-        "2. Review all profile date ranges — two or more profiles overlap.<br>"
-        "3. Set an <b>Effective To</b> end date on the profile that should have ended "
+        "1. Go to <b>Payroll Setup → Employees → [Employee] → Compensation</b>.<br>"
+        "2. Review all compensation date ranges — two or more records overlap.<br>"
+        "3. Set an <b>Effective To</b> end date on the compensation record that should have ended "
         "first so that the date ranges no longer overlap.<br>"
-        "4. Profiles must be sequential and non-overlapping."
+        "4. Compensation records must be sequential and non-overlapping."
     ),
     "OVERLAPPING_COMPONENT_ASSIGNMENTS": (
-        "1. Go to <b>Payroll Setup → Employees → [Employee] → Component "
-        "Assignments</b>.<br>"
+        "1. Go to <b>Payroll Setup → Employees → [Employee] → Component assignments</b>.<br>"
         "2. The entity column shows which employee is affected.<br>"
         "3. Find the component assignments with overlapping date ranges for the same "
         "component.<br>"
@@ -213,7 +208,7 @@ _REMEDIATION: dict[str, str] = {
         "<b>Benefits-in-Kind Mode</b> is selected (DGI Table or Company Policy)."
     ),
     "MISSING_RULE_SET": (
-        "1. <b>Fastest fix:</b> go to <b>Payroll Operations → Statutory Packs</b> "
+        "1. <b>Fastest fix:</b> go to <b>Payroll Operations → Statutory packs</b> "
         "and click <b>Apply Selected Pack</b> — this seeds all required rule sets "
         "in one step.<br>"
         "2. Alternatively, go to <b>Payroll Setup → Rule Sets</b> and manually "
@@ -231,10 +226,10 @@ _REMEDIATION: dict[str, str] = {
         "&nbsp;&nbsp;• Ensure upper bounds are strictly greater than lower bounds.<br>"
         "&nbsp;&nbsp;• Remove any negative values.<br>"
         "3. Alternatively, re-apply the statutory pack from <b>Payroll Operations → "
-        "Statutory Packs</b> to reseed the rule set with correct official values."
+        "Statutory packs</b> to reseed the rule set with correct official values."
     ),
     "MISSING_OVERTIME_RULE_LINK": (
-        "1. An approved input batch has overtime quantity entries, but no "
+        "1. Approved variable inputs include overtime quantity entries, but no "
         "<b>OVERTIME_STANDARD</b> rule set is configured for this period.<br>"
         "2. Go to <b>Payroll Setup → Rule Sets</b> and create an "
         "<b>OVERTIME_STANDARD</b> rule set with multiplier bracket rows per the "
@@ -251,19 +246,19 @@ _REMEDIATION: dict[str, str] = {
         "3. Go to <b>Payroll Setup → Rule Sets → CNPS_EMPLOYER_MAIN</b> and set "
         "the first bracket rate to exactly <b>4.20%</b>.<br>"
         "4. Alternatively, re-apply the statutory pack from <b>Payroll Operations → "
-        "Statutory Packs</b> to reseed the correct rate automatically."
+        "Statutory packs</b> to reseed the correct rate automatically."
     ),
     "FALLBACK_STATUTORY_CONSTANTS_RELIANCE": (
         "1. This is a summary warning: one or more required rule sets are absent, "
         "so the engine will use hard-coded fallback constants instead of your "
         "configured statutory values.<br>"
-        "2. <b>Fastest fix:</b> go to <b>Payroll Operations → Statutory Packs</b> "
+        "2. <b>Fastest fix:</b> go to <b>Payroll Operations → Statutory packs</b> "
         "and click <b>Apply Selected Pack</b> to seed all required rule sets at once.<br>"
         "3. Review the individual <b>Missing Rule Set</b> warnings in this assessment "
         "for the specific rule sets that need to be created."
     ),
     "PAYMENT_INCONSISTENCY": (
-        "1. Go to <b>Payroll → Payroll Runs</b> and open the run referenced in the "
+        "1. Go to <b>Payroll → Payroll runs</b> and open the run referenced in the "
         "message above.<br>"
         "2. Find the employee's payment records.<br>"
         "3. If <b>overpaid</b>: remove or correct any duplicate or excess payment "
@@ -310,8 +305,9 @@ class ValidationCheckDetailDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Validation Check — Details")
         self.setModal(True)
-        self.setMinimumSize(560, 480)
-        self.resize(680, 580)
+        from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _tok
+        self.setMinimumSize(_tok.sizes.dialog_min_w_validation, _tok.sizes.dialog_min_h_validation)
+        apply_window_size(self, "modules.payroll.ui.dialogs.validation.check.detail.dialog.0")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)

@@ -1,6 +1,7 @@
 """Dialog shown to admin users on login when there are unreviewed abnormal sessions."""
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -42,7 +43,7 @@ class AdminAbnormalSessionDialog(QDialog):
         self.setWindowTitle("Abnormal Session Reports")
         self.setModal(True)
         self.setMinimumWidth(700)
-        self.resize(760, 460)
+        apply_window_size(self, "modules.administration.ui.admin.abnormal.session.dialog.0")
 
         self._sessions = list(sessions)
         self._on_acknowledge = on_acknowledge

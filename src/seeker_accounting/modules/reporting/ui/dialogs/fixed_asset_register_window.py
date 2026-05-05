@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -11,8 +14,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -44,10 +45,13 @@ from seeker_accounting.modules.reporting.ui.widgets.reporting_filter_bar import 
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
 _WINDOWS: list["FixedAssetRegisterWindow"] = []
+
+
+_log = logging.getLogger(__name__)
 
 
 class FixedAssetRegisterDetailDialog(QDialog):
@@ -72,22 +76,28 @@ class FixedAssetRegisterDetailDialog(QDialog):
         root.setSpacing(10)
         root.addWidget(self._build_header())
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Run #",
-                "Run Date",
-                "Period End",
-                "Depreciation",
-                "Accum. After",
-                "Carrying After",
-                "Posted JE",
-            ]
+        self._model = QStandardItemModel(0, 7, self)
+        self._model.setHorizontalHeaderLabels(
+            ["Run #", "Run Date", "Period End", "Depreciation", "Accum. After", "Carrying After", "Posted JE"]
         )
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="run", title="Run #"),
+                DataTableColumn(key="date", title="Run Date"),
+                DataTableColumn(key="period", title="Period End"),
+                DataTableColumn(key="dep", title="Depreciation"),
+                DataTableColumn(key="accum", title="Accum. After"),
+                DataTableColumn(key="carry", title="Carrying After"),
+                DataTableColumn(key="je", title="Posted JE"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         root.addWidget(self._table, 1)
 
         footer = QLabel(
@@ -134,33 +144,45 @@ class FixedAssetRegisterDetailDialog(QDialog):
         return card
 
     def _bind_rows(self) -> None:
-        self._table.setRowCount(len(self._detail_dto.history_rows))
-        for row_index, row in enumerate(self._detail_dto.history_rows):
-            run_item = QTableWidgetItem(row.run_number or f"Run {row.run_id}")
-            if row.posted_journal_entry_id is not None:
-                run_item.setData(Qt.ItemDataRole.UserRole, row.posted_journal_entry_id)
-            self._table.setItem(row_index, 0, run_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(row.run_date.strftime("%Y-%m-%d")))
-            self._table.setItem(row_index, 2, QTableWidgetItem(row.period_end_date.strftime("%Y-%m-%d")))
-            self._set_amount(row_index, 3, self._fmt(row.depreciation_amount))
-            self._set_amount(row_index, 4, self._fmt(row.accumulated_depreciation_after))
-            self._set_amount(row_index, 5, self._fmt(row.carrying_amount_after))
-            self._table.setItem(
-                row_index,
-                6,
-                QTableWidgetItem(str(row.posted_journal_entry_id) if row.posted_journal_entry_id else "-"),
+        self._model.removeRows(0, self._model.rowCount())
+        for row in self._detail_dto.history_rows:
+            run_item = self._make_item(
+                row.run_number or f"Run {row.run_id}",
+                user_data=row.posted_journal_entry_id,
             )
+            self._model.appendRow([
+                run_item,
+                self._make_item(row.run_date.strftime("%Y-%m-%d")),
+                self._make_item(row.period_end_date.strftime("%Y-%m-%d")),
+                self._set_amount(self._fmt(row.depreciation_amount)),
+                self._set_amount(self._fmt(row.accumulated_depreciation_after)),
+                self._set_amount(self._fmt(row.carrying_amount_after)),
+                self._make_item(str(row.posted_journal_entry_id) if row.posted_journal_entry_id else "-"),
+            ])
 
-    def _set_amount(self, row: int, column: int, value: str) -> None:
-        item = QTableWidgetItem(value)
+    def _set_amount(self, value: str) -> QStandardItem:
+        item = self._make_item(value)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, column, item)
+        return item
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 0)
-        if item is None:
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        journal_entry_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        journal_entry_id = id_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(journal_entry_id, int):
             return
         JournalSourceDetailDialog.open(
@@ -424,25 +446,32 @@ class FixedAssetRegisterWindow(QFrame):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 0, 20, 20)
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(10)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Asset Code",
-                "Asset Name",
-                "Category",
-                "Acquired",
-                "Cost",
-                "Useful Life",
-                "Method",
-                "Accum. Dep.",
-                "Carrying",
-                "Status",
-            ]
+        self._model = QStandardItemModel(0, 10, panel)
+        self._model.setHorizontalHeaderLabels(
+            ["Asset Code", "Asset Name", "Category", "Acquired", "Cost",
+             "Useful Life", "Method", "Accum. Dep.", "Carrying", "Status"]
         )
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_table_double_clicked)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Asset Code"),
+                DataTableColumn(key="name", title="Asset Name"),
+                DataTableColumn(key="category", title="Category"),
+                DataTableColumn(key="acquired", title="Acquired"),
+                DataTableColumn(key="cost", title="Cost"),
+                DataTableColumn(key="life", title="Useful Life"),
+                DataTableColumn(key="method", title="Method"),
+                DataTableColumn(key="accum", title="Accum. Dep."),
+                DataTableColumn(key="carrying", title="Carrying"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_table_double_clicked)
         layout.addWidget(self._table, 1)
         return panel
 
@@ -500,8 +529,12 @@ class FixedAssetRegisterWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "Fixed Asset Register", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Fixed Asset Register", str(exc))
+            return
+        except Exception:
+            _log.exception("Fixed Asset Register")
+            show_error(self, "Fixed Asset Register", "An unexpected error occurred. See application log for details.")
             return
 
         self._current_report = report
@@ -514,25 +547,33 @@ class FixedAssetRegisterWindow(QFrame):
         self._stack.setCurrentIndex(0)
 
     def _bind_report(self, report: FixedAssetRegisterReportDTO) -> None:
-        self._table.setRowCount(len(report.rows))
-        for row_index, row in enumerate(report.rows):
-            code_item = QTableWidgetItem(row.asset_number)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.asset_id)
-            self._table.setItem(row_index, 0, code_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(row.asset_name))
-            self._table.setItem(row_index, 2, QTableWidgetItem(f"{row.category_code} | {row.category_name}"))
-            self._table.setItem(row_index, 3, QTableWidgetItem(row.acquisition_date.strftime("%Y-%m-%d")))
-            self._set_amount(row_index, 4, self._fmt(row.acquisition_cost))
-            self._table.setItem(row_index, 5, QTableWidgetItem(f"{row.useful_life_months} mo"))
-            self._table.setItem(row_index, 6, QTableWidgetItem(self._titleize(row.depreciation_method_code)))
-            self._set_amount(row_index, 7, self._fmt(row.accumulated_depreciation))
-            self._set_amount(row_index, 8, self._fmt(row.carrying_amount))
-            self._table.setItem(row_index, 9, QTableWidgetItem(self._titleize(row.status_code)))
+        self._model.removeRows(0, self._model.rowCount())
+        for row in report.rows:
+            self._model.appendRow([
+                self._make_item(row.asset_number, user_data=row.asset_id),
+                self._make_item(row.asset_name),
+                self._make_item(f"{row.category_code} | {row.category_name}"),
+                self._make_item(row.acquisition_date.strftime("%Y-%m-%d")),
+                self._set_amount(self._fmt(row.acquisition_cost)),
+                self._make_item(f"{row.useful_life_months} mo"),
+                self._make_item(self._titleize(row.depreciation_method_code)),
+                self._set_amount(self._fmt(row.accumulated_depreciation)),
+                self._set_amount(self._fmt(row.carrying_amount)),
+                self._make_item(self._titleize(row.status_code)),
+            ])
 
-    def _set_amount(self, row: int, column: int, value: str) -> None:
-        item = QTableWidgetItem(value)
+    def _set_amount(self, value: str) -> QStandardItem:
+        item = self._make_item(value)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, column, item)
+        return item
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _update_warning_band(self, warnings) -> None:
         messages = [warning.message for warning in warnings]
@@ -582,11 +623,16 @@ class FixedAssetRegisterWindow(QFrame):
         preview_meta = self._report_service.build_print_preview_meta(self._current_report, company_name)
         ReportPrintPreviewDialog.show_preview(preview_meta, parent=self)
 
-    def _on_table_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 0)
-        if item is None:
+    def _on_table_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        asset_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        asset_id = id_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(asset_id, int):
             return
         try:

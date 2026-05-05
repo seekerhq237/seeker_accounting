@@ -27,6 +27,12 @@ class CompanyPreference(Base):
         default=False,
         server_default=expression.false(),
     )
+    enforce_inventory_segregation_of_duties: Mapped[bool] = mapped_column(
+        Boolean(),
+        nullable=False,
+        default=False,
+        server_default=expression.false(),
+    )
     default_inventory_cost_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     idle_timeout_minutes: Mapped[int] = mapped_column(
         Integer,

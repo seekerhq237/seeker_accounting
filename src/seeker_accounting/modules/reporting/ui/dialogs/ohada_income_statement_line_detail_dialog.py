@@ -3,14 +3,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,7 +25,7 @@ from seeker_accounting.modules.reporting.ui.dialogs.ledger_drilldown_dialog impo
 from seeker_accounting.modules.reporting.ui.widgets.reporting_empty_state import (
     ReportingEmptyState,
 )
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
 
@@ -119,14 +118,27 @@ class OhadaIncomeStatementLineDetailDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels(
+        self._model = QStandardItemModel(0, 5, panel)
+        self._model.setHorizontalHeaderLabels(
             ["Account", "OHADA Line", "Debit", "Credit", "Signed Amount"]
         )
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="ohada_line", title="OHADA Line"),
+                DataTableColumn(key="debit", title="Debit"),
+                DataTableColumn(key="credit", title="Credit"),
+                DataTableColumn(key="signed_amount", title="Signed Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._table.set_model(self._model)
+        self._table.view().setSortingEnabled(False)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table)
         return panel
 
@@ -152,24 +164,33 @@ class OhadaIncomeStatementLineDetailDialog(QDialog):
             self._stack.setCurrentIndex(1)
             return
 
-        self._table.setRowCount(len(self._detail_dto.accounts))
+        self._model.removeRows(0, self._model.rowCount())
+        self._model.setRowCount(len(self._detail_dto.accounts))
         for row_index, account in enumerate(self._detail_dto.accounts):
-            account_item = QTableWidgetItem(f"{account.account_code} | {account.account_name}")
-            account_item.setData(Qt.ItemDataRole.UserRole, account.account_id)
-            self._table.setItem(row_index, 0, account_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(account.line_code or "-"))
+            account_item = QStandardItem(f"{account.account_code} | {account.account_name}")
+            account_item.setEditable(False)
+            account_item.setData(account.account_id, Qt.ItemDataRole.UserRole)
+            self._model.setItem(row_index, 0, account_item)
+            line_item = QStandardItem(account.line_code or "-")
+            line_item.setEditable(False)
+            self._model.setItem(row_index, 1, line_item)
             self._set_amount(row_index, 2, account.debit_amount)
             self._set_amount(row_index, 3, account.credit_amount)
             self._set_amount(row_index, 4, account.signed_amount)
         self._stack.setCurrentIndex(0)
 
     def _set_amount(self, row: int, col: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+        item = QStandardItem(self._fmt(amount))
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, col, item)
+        self._model.setItem(row, col, item)
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 0)
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        item = self._model.item(src.row(), 0)
         if item is None:
             return
         account_id = item.data(Qt.ItemDataRole.UserRole)

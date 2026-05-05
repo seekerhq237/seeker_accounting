@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import datetime
 
 from PySide6.QtCore import QDate, Qt
@@ -22,9 +24,13 @@ from seeker_accounting.modules.payroll.dto.payroll_posting_dto import (
     PostPayrollRunCommand,
     PayrollPostingValidationResultDTO,
 )
+from seeker_accounting.platform.exceptions import AppError
 from seeker_accounting.shared.ui.message_boxes import show_error
 
 _SEVERITY_ICONS = {"error": "✖", "warning": "⚠"}
+
+
+_log = logging.getLogger(__name__)
 
 
 class PayrollPostRunDialog(QDialog):
@@ -47,7 +53,7 @@ class PayrollPostRunDialog(QDialog):
         self._run_id = run_id
         self._posting_result = None
 
-        self.setWindowTitle("Post Payroll Run to GL")
+        self.setWindowTitle("Post payroll run to GL")
         self.setMinimumSize(580, 500)
         self.setModal(True)
 
@@ -104,7 +110,7 @@ class PayrollPostRunDialog(QDialog):
         self._btn_open_role_mappings.clicked.connect(self._go_to_role_mappings)
         self._quickfix_row.addWidget(self._btn_open_role_mappings)
 
-        self._btn_open_payroll_setup = QPushButton("Open Payroll Components")
+        self._btn_open_payroll_setup = QPushButton("Open payroll components")
         self._btn_open_payroll_setup.setFixedHeight(24)
         self._btn_open_payroll_setup.setStyleSheet("font-size: 11px;")
         self._btn_open_payroll_setup.clicked.connect(self._go_to_payroll_setup)
@@ -220,7 +226,7 @@ class PayrollPostRunDialog(QDialog):
 
     def _on_post(self) -> None:
         if self._validation_result is None or self._validation_result.has_errors:
-            show_error(self, "Post Payroll Run", "Cannot post until all validation errors are resolved.")
+            show_error(self, "Post payroll run", "Cannot post until all validation errors are resolved.")
             return
         posting_date = self._date_edit.date().toPython()
         narration = self._narration.toPlainText().strip() or None
@@ -235,8 +241,11 @@ class PayrollPostRunDialog(QDialog):
             )
             self._posting_result = result
             self.accept()
-        except Exception as exc:
-            show_error(self, "Post Payroll Run", str(exc))
+        except AppError as exc:
+            show_error(self, "Post payroll run", str(exc))
+        except Exception:
+            _log.exception("Post Payroll Run")
+            show_error(self, "Post payroll run", "An unexpected error occurred. See application log for details.")
 
     @property
     def posting_result(self):

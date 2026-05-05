@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -14,8 +16,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -30,17 +30,38 @@ from seeker_accounting.app.navigation.workflow_resume_service import ResumeToken
 from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.exceptions.error_resolution_resolver import ErrorResolutionResolver
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.guided_resolution_coordinator import GuidedResolutionCoordinator
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
 from seeker_accounting.shared.ui.register import RegisterPage
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
 from seeker_accounting.shared.workflow.document_sequence_preflight import (
     consume_resume_payload_for_workflows,
     handle_document_sequence_error,
     run_document_sequence_preflight,
 )
+
+
+INVOICE_COLUMNS = (
+    DataTableColumn(key="invoice_number", title="Invoice #"),
+    DataTableColumn(key="invoice_date", title="Date"),
+    DataTableColumn(key="due_date", title="Due Date"),
+    DataTableColumn(key="customer", title="Customer"),
+    DataTableColumn(key="currency", title="Currency"),
+    DataTableColumn(key="total", title="Total", is_numeric=True),
+    DataTableColumn(key="open_balance", title="Open Balance", is_numeric=True),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="payment", title="Payment"),
+    DataTableColumn(key="posted_at", title="Posted At"),
+)
+
+
+_log = logging.getLogger(__name__)
 
 
 class SalesInvoicesPage(RibbonHostMixin, QWidget):
@@ -50,6 +71,15 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         self._invoices: list[SalesInvoiceListItemDTO] = []
         self._total_count: int = 0
         self._pending_resume_payload: ResumeTokenPayload | None = None
+        self._command_enabled: dict[str, bool] = {
+            "sales_invoices.new": False,
+            "sales_invoices.edit": False,
+            "sales_invoices.cancel": False,
+            "sales_invoices.post": False,
+            "sales_invoices.refresh": True,
+            "sales_invoices.print": False,
+            "sales_invoices.export_list": False,
+        }
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(250)
@@ -63,9 +93,8 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
 
         self._register = RegisterPage(self)
         self._populate_toolbar_strip(self._register)
-        self._populate_action_band(self._register)
-        # Ribbon hosts the primary commands now; keep ActionBand buttons built
-        # (permissions, wiring, fallback) but hide the band itself.
+        # Ribbon hosts the primary commands now; the ActionBand is hidden for
+        # visual consistency with other migrated registers.
         self._register.action_band.hide()
         self._register.set_table_widget(self._build_content_stack())
         root_layout.addWidget(self._register)
@@ -89,7 +118,7 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         if active_company is None:
             self._invoices = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._invoices_model.removeRows(0, self._invoices_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
@@ -111,7 +140,7 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         except Exception as exc:
             self._invoices = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._invoices_model.removeRows(0, self._invoices_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
@@ -162,41 +191,6 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         self._refresh_button.clicked.connect(lambda: self.reload_invoices())
         strip_layout.addWidget(self._refresh_button)
 
-    def _populate_action_band(self, register: RegisterPage) -> None:
-        band_layout = register.action_band_layout
-
-        self._new_button = QPushButton("New Invoice", register.action_band)
-        self._new_button.setProperty("variant", "primary")
-        self._new_button.clicked.connect(self._open_create_dialog)
-        band_layout.addWidget(self._new_button)
-
-        self._edit_button = QPushButton("Edit Draft", register.action_band)
-        self._edit_button.setProperty("variant", "secondary")
-        self._edit_button.clicked.connect(self._open_edit_dialog)
-        band_layout.addWidget(self._edit_button)
-
-        self._cancel_button = QPushButton("Cancel Draft", register.action_band)
-        self._cancel_button.setProperty("variant", "secondary")
-        self._cancel_button.clicked.connect(self._cancel_selected_draft)
-        band_layout.addWidget(self._cancel_button)
-
-        self._post_button = QPushButton("Post Invoice", register.action_band)
-        self._post_button.setProperty("variant", "secondary")
-        self._post_button.clicked.connect(self._post_selected_invoice)
-        band_layout.addWidget(self._post_button)
-
-        band_layout.addStretch(1)
-
-        self._print_button = QPushButton("Print / Export", register.action_band)
-        self._print_button.setProperty("variant", "ghost")
-        self._print_button.clicked.connect(self._print_selected_invoice)
-        band_layout.addWidget(self._print_button)
-
-        self._export_list_button = QPushButton("Export List", register.action_band)
-        self._export_list_button.setProperty("variant", "ghost")
-        self._export_list_button.clicked.connect(self._print_invoice_list)
-        band_layout.addWidget(self._export_list_button)
-
     def _build_content_stack(self) -> QWidget:
         self._stack = QStackedWidget(self)
         self._table_surface = self._build_table_surface()
@@ -213,25 +207,22 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        self._table = QTableWidget(container)
-        self._table.setObjectName("SalesInvoicesTable")
-        self._table.setColumnCount(10)
-        self._table.setHorizontalHeaderLabels((
-            "Invoice #",
-            "Date",
-            "Due Date",
-            "Customer",
-            "Currency",
-            "Total",
-            "Open Balance",
-            "Status",
-            "Payment",
-            "Posted At",
-        ))
-        configure_dense_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+        self._invoices_model = QStandardItemModel(0, len(INVOICE_COLUMNS), self)
+        self._invoices_model.setHorizontalHeaderLabels([c.title for c in INVOICE_COLUMNS])
+
+        self._table = DataTable(
+            columns=INVOICE_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No invoices match the current filters.",
+        )
+        self._table.set_model(self._invoices_model)
+        self._invoices_status_delegate = apply_status_chip_to_column(self._table.view(), 7)
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
         layout.addWidget(self._table, 1)
 
         self._pager = Pager(container, default_page_size=100)
@@ -331,49 +322,38 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
-    def _populate_table(self) -> None:
-        self._table.setUpdatesEnabled(False)
-        self._table.setSortingEnabled(False)
-        try:
-            self._table.setRowCount(len(self._invoices))
-            for row_index, inv in enumerate(self._invoices):
-                values = (
-                    inv.invoice_number,
-                    self._format_date(inv.invoice_date),
-                    self._format_date(inv.due_date),
-                    inv.customer_name,
-                    inv.currency_code,
-                    self._format_amount(inv.total_amount),
-                    self._format_amount(inv.open_balance_amount),
-                    inv.status_code.title(),
-                    inv.payment_status_code.title(),
-                    self._format_datetime(inv.posted_at),
-                )
-                for col, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if col == 0:
-                        item.setData(Qt.ItemDataRole.UserRole, inv.id)
-                    if col in {1, 2, 4, 7, 8, 9}:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    if col in {5, 6}:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    self._table.setItem(row_index, col, item)
+    @staticmethod
+    def _make_item(text: str, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
-            self._table.resizeColumnsToContents()
-            header = self._table.horizontalHeader()
-            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(8, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(9, header.ResizeMode.ResizeToContents)
-        finally:
-            self._table.setSortingEnabled(True)
-            self._table.setUpdatesEnabled(True)
+    @staticmethod
+    def _make_numeric(value: Decimal) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
+    def _populate_table(self) -> None:
+        self._invoices_model.removeRows(0, self._invoices_model.rowCount())
+        for inv in self._invoices:
+            items = [
+                self._make_item(inv.invoice_number, user_data=inv.id),
+                self._make_item(self._format_date(inv.invoice_date)),
+                self._make_item(self._format_date(inv.due_date)),
+                self._make_item(inv.customer_name or ""),
+                self._make_item(inv.currency_code or ""),
+                self._make_numeric(inv.total_amount),
+                self._make_numeric(inv.open_balance_amount),
+                self._make_item(inv.status_code),
+                self._make_item((inv.payment_status_code or "").title()),
+                self._make_item(self._format_datetime(inv.posted_at)),
+            ]
+            self._invoices_model.appendRow(items)
 
         search_text = self._search_input.text().strip()
         total = self._total_count
@@ -391,29 +371,38 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         return
 
     def _restore_selection(self, selected_invoice_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._invoices:
             return
         if selected_invoice_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, inv in enumerate(self._invoices) if inv.id == selected_invoice_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_invoice_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._invoices_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_invoice(self) -> SalesInvoiceListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        invoice_id = item.data(Qt.ItemDataRole.UserRole)
-        for inv in self._invoices:
-            if inv.id == invoice_id:
-                return inv
+        idx = rows[0]
+        if 0 <= idx < len(self._invoices):
+            return self._invoices[idx]
         return None
 
     def _show_permission_denied(self, permission_code: str) -> None:
@@ -423,6 +412,9 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
             self._service_registry.permission_service.build_denied_message(permission_code),
         )
 
+    def _set_command_enabled(self, command_id: str, enabled: bool) -> None:
+        self._command_enabled[command_id] = bool(enabled)
+
     def _update_action_state(self) -> None:
         active_company = self._active_company()
         selected = self._selected_invoice()
@@ -430,20 +422,29 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         is_draft = has_company and selected is not None and selected.status_code == "draft"
         permission_service = self._service_registry.permission_service
 
-        self._new_button.setEnabled(
-            has_company and permission_service.has_permission("sales.invoices.create")
+        self._set_command_enabled(
+            "sales_invoices.new",
+            has_company and permission_service.has_permission("sales.invoices.create"),
         )
-        self._edit_button.setEnabled(
-            is_draft and permission_service.has_permission("sales.invoices.edit")
+        self._set_command_enabled(
+            "sales_invoices.edit",
+            is_draft and permission_service.has_permission("sales.invoices.edit"),
         )
-        self._cancel_button.setEnabled(
-            is_draft and permission_service.has_permission("sales.invoices.cancel")
+        self._set_command_enabled(
+            "sales_invoices.cancel",
+            is_draft and permission_service.has_permission("sales.invoices.cancel"),
         )
-        self._post_button.setEnabled(
-            is_draft and permission_service.has_permission("sales.invoices.post")
+        self._set_command_enabled(
+            "sales_invoices.post",
+            is_draft and permission_service.has_permission("sales.invoices.post"),
         )
-        self._print_button.setEnabled(has_company and selected is not None)
-        self._export_list_button.setEnabled(has_company and bool(self._invoices))
+        self._set_command_enabled("sales_invoices.refresh", True)
+        self._set_command_enabled(
+            "sales_invoices.print", has_company and selected is not None
+        )
+        self._set_command_enabled(
+            "sales_invoices.export_list", has_company and bool(self._invoices)
+        )
         self._notify_ribbon_state_changed()
 
     # ------------------------------------------------------------------
@@ -462,15 +463,7 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
         }
 
     def ribbon_state(self):
-        return {
-            "sales_invoices.new": self._new_button.isEnabled(),
-            "sales_invoices.edit": self._edit_button.isEnabled(),
-            "sales_invoices.cancel": self._cancel_button.isEnabled(),
-            "sales_invoices.post": self._post_button.isEnabled(),
-            "sales_invoices.refresh": True,
-            "sales_invoices.print": self._print_button.isEnabled(),
-            "sales_invoices.export_list": self._export_list_button.isEnabled(),
-        }
+        return dict(self._command_enabled)
 
     # ------------------------------------------------------------------
     # Actions
@@ -636,8 +629,12 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
                 active_company.company_id, selected.id, result
             )
             show_info(self, "Export", f"Document saved to:\n{result.output_path}")
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Failed", str(exc))
+
+        except Exception:
+            _log.exception("Export Failed")
+            show_error(self, "Export Failed", "An unexpected error occurred. See application log for details.")
 
     def _print_invoice_list(self) -> None:
         active_company = self._active_company()
@@ -651,8 +648,12 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
                 active_company.company_id, self._invoices, result
             )
             show_info(self, "Export", f"Document saved to:\n{result.output_path}")
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Failed", str(exc))
+
+        except Exception:
+            _log.exception("Export Failed")
+            show_error(self, "Export Failed", "An unexpected error occurred. See application log for details.")
 
     # ------------------------------------------------------------------
     # Formatting
@@ -671,7 +672,10 @@ class SalesInvoicesPage(RibbonHostMixin, QWidget):
     # Signals
     # ------------------------------------------------------------------
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
         selected = self._selected_invoice()
         if selected is None:
             return

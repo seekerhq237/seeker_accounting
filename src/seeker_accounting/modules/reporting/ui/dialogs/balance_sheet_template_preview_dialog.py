@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -12,8 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -29,6 +27,7 @@ from seeker_accounting.modules.reporting.dto.ohada_balance_sheet_dto import (
     OhadaBalanceSheetLineDTO,
     OhadaBalanceSheetReportDTO,
 )
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
 
@@ -199,22 +198,22 @@ class BalanceSheetTemplatePreviewDialog(QDialog):
         label.setObjectName("InfoCardTitle")
         layout.addWidget(label)
 
-        table = self._build_table(headers)
+        data_table, model = self._build_data_table(headers)
+        v = data_table.view()
         if is_assets:
-            table.setColumnWidth(0, 80)
-            table.setColumnWidth(1, 300)
-            table.setColumnWidth(2, 120)
-            table.setColumnWidth(3, 120)
-            table.setColumnWidth(4, 120)
+            v.setColumnWidth(0, 80)
+            v.setColumnWidth(1, 300)
+            v.setColumnWidth(2, 120)
+            v.setColumnWidth(3, 120)
+            v.setColumnWidth(4, 120)
         else:
-            table.setColumnWidth(0, 80)
-            table.setColumnWidth(1, 360)
-            table.setColumnWidth(2, 140)
+            v.setColumnWidth(0, 80)
+            v.setColumnWidth(1, 360)
+            v.setColumnWidth(2, 140)
 
-        table.setRowCount(len(lines))
         for row_index, line in enumerate(lines):
-            ref_item = QTableWidgetItem(line.reference_code or "")
-            label_item = QTableWidgetItem(line.label)
+            ref_item = self._make_item(line.reference_code or "")
+            label_item = self._make_item(line.label)
             items = [ref_item, label_item]
             if is_assets:
                 items.extend(
@@ -227,16 +226,15 @@ class BalanceSheetTemplatePreviewDialog(QDialog):
             else:
                 items.append(self._amount_item(line.net_amount))
             self._apply_ohada_row_style(items, line.row_kind_code)
-            table.setRowHeight(row_index, self._template_dto.row_height)
-            for column, item in enumerate(items):
-                table.setItem(row_index, column, item)
+            model.appendRow(items)
+            v.setRowHeight(row_index, self._template_dto.row_height)
 
-        layout.addWidget(table, 1)
+        layout.addWidget(data_table, 1)
         return panel
 
     def _apply_ohada_row_style(
         self,
-        items: list[QTableWidgetItem],
+        items: list[QStandardItem],
         row_kind_code: str,
     ) -> None:
         background_hex = self._template_dto.statement_background
@@ -260,29 +258,27 @@ class BalanceSheetTemplatePreviewDialog(QDialog):
         title.setObjectName("InfoCardTitle")
         layout.addWidget(title)
 
-        table = self._build_table(("Ref", "Line", "Amount"))
-        table.setColumnWidth(0, 100)
-        table.setColumnWidth(1, 600)
-        table.setColumnWidth(2, 180)
+        data_table, model = self._build_data_table(("Ref", "Line", "Amount"))
+        v = data_table.view()
+        v.setColumnWidth(0, 100)
+        v.setColumnWidth(1, 600)
+        v.setColumnWidth(2, 180)
 
         lines = report_dto.lines or self._fallback_ias_lines()
-        table.setRowCount(len(lines))
         for row_index, line in enumerate(lines):
-            ref_item = QTableWidgetItem("" if line.row_kind_code == "section" else line.code)
-            label_item = QTableWidgetItem(f"{'    ' * line.indent_level}{line.label}")
+            ref_item = self._make_item("" if line.row_kind_code == "section" else line.code)
+            label_item = self._make_item(f"{'    ' * line.indent_level}{line.label}")
             amount_item = self._amount_item(line.amount)
             self._apply_ias_row_style([ref_item, label_item, amount_item], line.row_kind_code, line.is_formula)
-            table.setRowHeight(row_index, self._template_dto.row_height)
-            table.setItem(row_index, 0, ref_item)
-            table.setItem(row_index, 1, label_item)
-            table.setItem(row_index, 2, amount_item)
+            model.appendRow([ref_item, label_item, amount_item])
+            v.setRowHeight(row_index, self._template_dto.row_height)
 
-        layout.addWidget(table, 1)
+        layout.addWidget(data_table, 1)
         return panel
 
     def _apply_ias_row_style(
         self,
-        items: list[QTableWidgetItem],
+        items: list[QStandardItem],
         row_kind_code: str,
         is_formula: bool,
     ) -> None:
@@ -315,42 +311,49 @@ class BalanceSheetTemplatePreviewDialog(QDialog):
         note.setWordWrap(True)
         layout.addWidget(note)
 
-        table = self._build_table(("Ref", "Line", "Amount"))
+        data_table, model = self._build_data_table(("Ref", "Line", "Amount"))
+        v = data_table.view()
         sample_rows = self._fallback_ias_lines()
-        table.setColumnWidth(0, 100)
-        table.setColumnWidth(1, 600)
-        table.setColumnWidth(2, 180)
-        table.setRowCount(len(sample_rows))
+        v.setColumnWidth(0, 100)
+        v.setColumnWidth(1, 600)
+        v.setColumnWidth(2, 180)
         for row_index, line in enumerate(sample_rows):
-            ref_item = QTableWidgetItem("" if line.row_kind_code == "section" else line.code)
-            label_item = QTableWidgetItem(f"{'    ' * line.indent_level}{line.label}")
+            ref_item = self._make_item("" if line.row_kind_code == "section" else line.code)
+            label_item = self._make_item(f"{'    ' * line.indent_level}{line.label}")
             amount_item = self._amount_item(line.amount)
             self._apply_ias_row_style([ref_item, label_item, amount_item], line.row_kind_code, line.is_formula)
-            table.setRowHeight(row_index, self._template_dto.row_height)
-            table.setItem(row_index, 0, ref_item)
-            table.setItem(row_index, 1, label_item)
-            table.setItem(row_index, 2, amount_item)
-        layout.addWidget(table, 1)
+            model.appendRow([ref_item, label_item, amount_item])
+            v.setRowHeight(row_index, self._template_dto.row_height)
+        layout.addWidget(data_table, 1)
         return panel
 
-    def _build_table(self, headers: tuple[str, ...]) -> QTableWidget:
-        table = QTableWidget(self)
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(list(headers))
-        table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(28)
-        table.setWordWrap(False)
-        table.setShowGrid(False)
-        table.setAlternatingRowColors(False)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.setStyleSheet(f"background: {self._template_dto.statement_background};")
-        return table
+    def _build_data_table(self, headers: tuple[str, ...]) -> tuple[DataTable, QStandardItemModel]:
+        model = QStandardItemModel(0, len(headers), self)
+        model.setHorizontalHeaderLabels(list(headers))
+        table = DataTable(
+            columns=tuple(DataTableColumn(key=f"col{i}", title=h) for i, h in enumerate(headers)),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        table.set_model(model)
+        v = table.view()
+        v.verticalHeader().setVisible(False)
+        v.verticalHeader().setDefaultSectionSize(28)
+        v.setWordWrap(False)
+        v.setShowGrid(False)
+        v.setAlternatingRowColors(False)
+        v.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        v.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        v.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        v.setStyleSheet(f"background: {self._template_dto.statement_background};")
+        return table, model
 
     def _apply_item_style(
         self,
-        items: list[QTableWidgetItem],
+        items: list[QStandardItem],
         background_hex: str,
         bold: bool,
     ) -> None:
@@ -365,9 +368,17 @@ class BalanceSheetTemplatePreviewDialog(QDialog):
                 font.setPointSize(self._template_dto.label_font_size)
             item.setFont(font)
 
-    def _amount_item(self, amount: Decimal | None) -> QTableWidgetItem:
-        item = QTableWidgetItem("" if amount is None else self._fmt(amount))
+    def _amount_item(self, amount: Decimal | None) -> QStandardItem:
+        item = self._make_item("" if amount is None else self._fmt(amount))
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
         return item
 
     @staticmethod

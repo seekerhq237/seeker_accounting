@@ -6,15 +6,11 @@ explicit acknowledgement before allowing the close.
 """
 from __future__ import annotations
 
-from PySide6.QtWidgets import (
-    QCheckBox,
-    QHeaderView,
-    QLabel,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from decimal import Decimal
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QCheckBox, QLabel, QVBoxLayout, QWidget
 
 from seeker_accounting.modules.wizards.month_end_close import state_keys as K
 from seeker_accounting.platform.wizards import (
@@ -22,6 +18,15 @@ from seeker_accounting.platform.wizards import (
     WizardContext,
     WizardState,
     WizardStep,
+)
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+
+
+_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="entry_number", title="Entry #", min_width=120),
+    DataTableColumn(key="date", title="Date", min_width=100),
+    DataTableColumn(key="reference", title="Reference", min_width=240),
+    DataTableColumn(key="amount", title="Amount", is_numeric=True, min_width=120),
 )
 
 
@@ -32,10 +37,29 @@ class DraftsCheckStep(WizardStep):
 
     def __init__(self) -> None:
         super().__init__()
-        self._table: QTableWidget | None = None
+        self._table: DataTable | None = None
+        self._model: QStandardItemModel | None = None
         self._summary: QLabel | None = None
         self._ack: QCheckBox | None = None
         self._draft_count = 0
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
 
     def build_widget(self, parent: QWidget | None = None) -> QWidget:
         root = QWidget(parent)
@@ -47,16 +71,17 @@ class DraftsCheckStep(WizardStep):
         self._summary.setStyleSheet("color: #2E3848; font-size: 12px;")
         outer.addWidget(self._summary)
 
-        self._table = QTableWidget(0, 4, root)
-        self._table.setHorizontalHeaderLabels(["Entry #", "Date", "Reference", "Amount"])
-        self._table.verticalHeader().setVisible(False)
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._model = QStandardItemModel(0, len(_COLUMNS), root)
+        self._model.setHorizontalHeaderLabels([c.title for c in _COLUMNS])
+        self._table = DataTable(
+            columns=_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=root,
+        )
+        self._table.set_model(self._model)
         outer.addWidget(self._table, 1)
 
         self._ack = QCheckBox(
@@ -67,7 +92,7 @@ class DraftsCheckStep(WizardStep):
         return root
 
     def load(self, context: WizardContext, state: WizardState) -> None:
-        if self._table is None or self._summary is None or self._ack is None:
+        if self._model is None or self._summary is None or self._ack is None:
             return
         company_id = context.require_company_id()
         period_id = state.get(K.KEY_PERIOD_ID)
@@ -81,14 +106,14 @@ class DraftsCheckStep(WizardStep):
         scoped = [e for e in entries if e.fiscal_period_id == period_id]
         self._draft_count = len(scoped)
 
-        self._table.setRowCount(len(scoped))
-        for row, entry in enumerate(scoped):
-            self._table.setItem(row, 0, QTableWidgetItem(entry.entry_number or "(unnumbered)"))
-            self._table.setItem(row, 1, QTableWidgetItem(entry.entry_date.isoformat()))
-            self._table.setItem(row, 2, QTableWidgetItem(entry.reference_text or entry.description or ""))
-            amount_item = QTableWidgetItem(f"{entry.total_debit:,.2f}")
-            amount_item.setTextAlignment(0x0002 | 0x0080)  # Qt.AlignmentFlag.AlignRight | AlignVCenter
-            self._table.setItem(row, 3, amount_item)
+        self._model.removeRows(0, self._model.rowCount())
+        for entry in scoped:
+            self._model.appendRow([
+                self._make_item(entry.entry_number or "(unnumbered)"),
+                self._make_item(entry.entry_date.isoformat()),
+                self._make_item(entry.reference_text or entry.description or ""),
+                self._make_numeric(entry.total_debit),
+            ])
 
         if self._draft_count == 0:
             self._summary.setText("No unposted drafts in this period.")

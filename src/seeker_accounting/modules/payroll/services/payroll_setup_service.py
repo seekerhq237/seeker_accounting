@@ -105,6 +105,8 @@ class PayrollSetupService:
             row.benefit_in_kind_policy_mode_code = command.benefit_in_kind_policy_mode_code
             row.payroll_number_prefix = command.payroll_number_prefix
             row.payroll_number_padding_width = command.payroll_number_padding_width
+            row.variance_threshold_percent = command.variance_threshold_percent
+            row.variance_per_component_thresholds = command.variance_per_component_thresholds
             row.updated_at = now
             row.updated_by_user_id = command.updated_by_user_id
 
@@ -122,6 +124,7 @@ class PayrollSetupService:
                         "default_pay_frequency_code": command.default_pay_frequency_code,
                         "default_payroll_currency_code": command.default_payroll_currency_code,
                         "statutory_pack_version_code": command.statutory_pack_version_code,
+                        "variance_threshold_percent": str(command.variance_threshold_percent),
                     }),
                 ),
             )
@@ -340,6 +343,8 @@ class PayrollSetupService:
             )
         if cmd.payroll_number_padding_width is not None and cmd.payroll_number_padding_width < 1:
             raise ValidationError("Payroll number padding width must be at least 1.")
+        if cmd.variance_threshold_percent < 0:
+            raise ValidationError("Variance threshold percent cannot be negative.")
 
     def _validate_dept_fields(self, code: str, name: str) -> None:
         if not code or not code.strip():
@@ -365,6 +370,8 @@ class PayrollSetupService:
             benefit_in_kind_policy_mode_code=row.benefit_in_kind_policy_mode_code,
             payroll_number_prefix=row.payroll_number_prefix,
             payroll_number_padding_width=row.payroll_number_padding_width,
+            variance_threshold_percent=row.variance_threshold_percent,
+            variance_per_component_thresholds=row.variance_per_component_thresholds,
             updated_at=row.updated_at,
             updated_by_user_id=row.updated_by_user_id,
         )

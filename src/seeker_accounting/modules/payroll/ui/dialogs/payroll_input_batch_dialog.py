@@ -5,8 +5,8 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -17,8 +17,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -31,9 +29,9 @@ from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
     PayrollInputLineDTO,
     UpdatePayrollInputLineCommand,
 )
-from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import AppError, NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_configuration_error, show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
 
@@ -64,7 +62,7 @@ class NewPayrollInputBatchDialog(QDialog):
         self._company_id = company_id
         self._created_id: int | None = None
 
-        self.setWindowTitle("New Variable Input Batch")
+        self.setWindowTitle("New variable input")
         self.setMinimumWidth(360)
         self.setModal(True)
 
@@ -125,14 +123,14 @@ class NewPayrollInputBatchDialog(QDialog):
                 from seeker_accounting.app.navigation import nav_ids
                 if show_configuration_error(
                     self,
-                    "Payroll Input Batch",
+                    "Variable input",
                     f"{error_msg}\n\nConfigure it in Accounting Setup \u2192 Document Sequences.",
                     "Open Document Sequences",
                 ):
                     self._registry.navigation_service.navigate(nav_ids.DOCUMENT_SEQUENCES)
                     self.reject()
             else:
-                show_error(self, "Payroll Input Batch", error_msg)
+                show_error(self, "Variable input", error_msg)
 
 
 class PayrollInputBatchDialog(QDialog):
@@ -150,7 +148,7 @@ class PayrollInputBatchDialog(QDialog):
         self._company_id = company_id
         self._batch_id = batch_id
 
-        self.setWindowTitle("Variable Input Batch")
+        self.setWindowTitle("Variable input")
         self.setMinimumSize(720, 500)
         self.setModal(True)
 
@@ -177,14 +175,23 @@ class PayrollInputBatchDialog(QDialog):
         layout.addLayout(toolbar)
 
         # Table
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels([
-            "Employee", "Component", "Type", "Amount", "Qty", "Notes"
+        self._model = QStandardItemModel(0, 6)
+        self._model.setHorizontalHeaderLabels([
+            "Employee", "Payroll component", "Type", "Amount", "Qty", "Notes"
         ])
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="employee", title="Employee"),
+                DataTableColumn(key="component", title="Payroll component"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="amount", title="Amount"),
+                DataTableColumn(key="qty", title="Qty"),
+                DataTableColumn(key="notes", title="Notes"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
         layout.addWidget(self._table)
 
         close_btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -224,29 +231,31 @@ class PayrollInputBatchDialog(QDialog):
         self._btn_approve.setEnabled(is_draft)
         self._btn_void.setEnabled(batch.status_code not in ("voided",))
 
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         for line in batch.lines:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(line.employee_display_name))
-            self._table.setItem(row, 1, QTableWidgetItem(line.component_name))
-            self._table.setItem(row, 2, QTableWidgetItem(line.component_type_code))
-            amt = QTableWidgetItem(f"{line.input_amount:,.2f}")
-            amt.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 3, amt)
-            qty_text = str(line.input_quantity) if line.input_quantity is not None else ""
-            self._table.setItem(row, 4, QTableWidgetItem(qty_text))
-            self._table.setItem(row, 5, QTableWidgetItem(line.notes or ""))
-            self._table.item(row, 0).setData(Qt.ItemDataRole.UserRole, line.id)
-
-        self._table.resizeColumnsToContents()
+            amt_item = QStandardItem(f"{line.input_amount:,.2f}")
+            amt_item.setEditable(False)
+            amt_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            qty_item = QStandardItem(str(line.input_quantity) if line.input_quantity is not None else "")
+            qty_item.setEditable(False)
+            id_item = QStandardItem(line.employee_display_name)
+            id_item.setEditable(False)
+            id_item.setData(line.id, Qt.ItemDataRole.UserRole)
+            self._model.appendRow([
+                id_item,
+                QStandardItem(line.component_name),
+                QStandardItem(line.component_type_code),
+                amt_item,
+                qty_item,
+                QStandardItem(line.notes or ""),
+            ])
         self._batch = batch
 
     def _selected_line_id(self) -> int | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_add(self) -> None:
@@ -280,8 +289,11 @@ class PayrollInputBatchDialog(QDialog):
                 self._company_id, self._batch_id, line_id
             )
             self._refresh()
-        except Exception as exc:
-            show_error(self, "Payroll Input Batch", str(exc))
+        except AppError as exc:
+            show_error(self, "Variable input", str(exc))
+        except Exception:
+            _log.exception("Payroll Input Batch")
+            show_error(self, "Variable input", "An unexpected error occurred. See application log for details.")
 
     def _on_approve(self) -> None:
         if QMessageBox.question(
@@ -293,8 +305,11 @@ class PayrollInputBatchDialog(QDialog):
                 self._company_id, self._batch_id
             )
             self._refresh()
-        except Exception as exc:
-            show_error(self, "Payroll Input Batch", str(exc))
+        except AppError as exc:
+            show_error(self, "Variable input", str(exc))
+        except Exception:
+            _log.exception("Payroll Input Batch")
+            show_error(self, "Variable input", "An unexpected error occurred. See application log for details.")
 
     def _on_void(self) -> None:
         if QMessageBox.question(self, "Void Batch", "Void this batch?") != QMessageBox.StandardButton.Yes:
@@ -304,8 +319,11 @@ class PayrollInputBatchDialog(QDialog):
                 self._company_id, self._batch_id
             )
             self._refresh()
-        except Exception as exc:
-            show_error(self, "Payroll Input Batch", str(exc))
+        except AppError as exc:
+            show_error(self, "Variable input", str(exc))
+        except Exception:
+            _log.exception("Payroll Input Batch")
+            show_error(self, "Variable input", "An unexpected error occurred. See application log for details.")
 
 
 class _InputLineFormDialog(QDialog):
@@ -344,7 +362,7 @@ class _InputLineFormDialog(QDialog):
         self._load_components()
 
         form.addRow("Employee:", self._employee_combo)
-        form.addRow("Component:", self._component_combo)
+        form.addRow("Payroll component:", self._component_combo)
 
         self._amount = QLineEdit()
         self._amount.setPlaceholderText("0.00")
@@ -414,18 +432,18 @@ class _InputLineFormDialog(QDialog):
         employee_id = self._employee_combo.currentData()
         component_id = self._component_combo.currentData()
         if not employee_id or not component_id:
-            show_error(self, "Payroll Input Batch", "Select employee and component.")
+            show_error(self, "Variable input", "Select employee and payroll component.")
             return
         try:
             amount = Decimal(self._amount.text().strip())
         except InvalidOperation:
-            show_error(self, "Payroll Input Batch", "Amount must be a valid number.")
+            show_error(self, "Variable input", "Amount must be a valid number.")
             return
         qty_text = self._quantity.text().strip()
         try:
             quantity = Decimal(qty_text) if qty_text else None
         except InvalidOperation:
-            show_error(self, "Payroll Input Batch", "Quantity must be a valid number.")
+            show_error(self, "Variable input", "Quantity must be a valid number.")
             return
 
         try:
@@ -455,4 +473,4 @@ class _InputLineFormDialog(QDialog):
                 )
             self.accept()
         except (ValidationError, NotFoundError, Exception) as exc:
-            show_error(self, "Payroll Input Batch", str(exc))
+            show_error(self, "Variable input", str(exc))

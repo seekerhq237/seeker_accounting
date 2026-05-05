@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: payroll-terminology
+        name: Payroll terminology glossary
+        entry: python scripts/check_payroll_terminology.py
+        language: system
+        files: ^src/seeker_accounting/modules/payroll/.*\.py$
+        pass_filenames: false

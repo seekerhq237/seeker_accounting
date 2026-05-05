@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
@@ -19,6 +21,9 @@ from seeker_accounting.modules.payroll.dto.payroll_remittance_dto import (
     CreatePayrollRemittanceLineCommand,
 )
 from seeker_accounting.shared.ui.message_boxes import show_error
+
+
+_log = logging.getLogger(__name__)
 
 
 class PayrollRemittanceLineDialog(QDialog):
@@ -90,5 +95,8 @@ class PayrollRemittanceLineDialog(QDialog):
                 ),
             )
             self.accept()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Remittance Line", str(exc))
+        except Exception:
+            _log.exception("Remittance Line")
+            show_error(self, "Remittance Line", "An unexpected error occurred. See application log for details.")

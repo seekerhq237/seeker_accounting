@@ -111,6 +111,9 @@ TAX_TYPE_TSR: Final = "TSR"
 # not a periodic cadence). Created ad-hoc when an import declaration
 # is processed.
 TAX_TYPE_CUSTOMS: Final = "CUSTOMS"
+# Slice T39: lodging / accommodation tax (taxe sur les établissements
+# d'hébergement – Cameroon DGI).
+TAX_TYPE_LODGING: Final = "LODGING"
 
 ALL_TAX_TYPE_CODES: Final[frozenset[str]] = frozenset(
     {
@@ -125,6 +128,7 @@ ALL_TAX_TYPE_CODES: Final[frozenset[str]] = frozenset(
         TAX_TYPE_PATENTE,
         TAX_TYPE_TSR,
         TAX_TYPE_CUSTOMS,
+        TAX_TYPE_LODGING,
     }
 )
 
@@ -275,4 +279,106 @@ ASSESSED_PAYMENT_DEBIT_ACCOUNT_CODE_BY_TAX_TYPE: Final[dict[str, str]] = {
     TAX_TYPE_TSR: PAYMENT_TSR_PAYABLE_ACCOUNT_CODE,
     TAX_TYPE_CUSTOMS: PAYMENT_CUSTOMS_EXPENSE_ACCOUNT_CODE,
 }
+
+
+# --- VAT exemption kinds (Slice T30) -------------------------------------
+
+VAT_EXEMPTION_KIND_EXEMPT: Final = "EXEMPT"
+VAT_EXEMPTION_KIND_EXPORT: Final = "EXPORT"
+VAT_EXEMPTION_KIND_OUT_OF_SCOPE: Final = "OUT_OF_SCOPE"
+VAT_EXEMPTION_KIND_STATE_BORNE: Final = "STATE_BORNE"
+
+
+# --- VAT DGI return line codes (Slices T30 / vat_return_form_layout) -----
+#
+# Statutory line codes of the Cameroon DGI monthly VAT return form
+# (Déclaration de TVA — DGI MESURE 2022/V1).  The form has the following
+# sections with their DGI line numbers:
+#
+#   Section 4 — Turnover realised       L17 … L23
+#   Section 5 — VAT recoverable         L24 … L31
+#   Section 6 — VAT adjustments         L32 … L35
+#   Section 7 — VAT payable or credit   L36 … L43
+#   Section 8 — Total VAT payable       L44 … L47
+
+VAT_RETURN_LINE_L17: Final = "L17"   # Standard-rate taxable sales base
+VAT_RETURN_LINE_L18: Final = "L18"   # Excise-duty taxable base
+VAT_RETURN_LINE_L19: Final = "L19"   # Lodging-tax taxable base
+VAT_RETURN_LINE_L20: Final = "L20"   # Reduced-rate taxable sales
+VAT_RETURN_LINE_L21: Final = "L21"   # Export taxable base (zero-rated)
+VAT_RETURN_LINE_L22: Final = "L22"   # Exempt / out-of-scope sales
+VAT_RETURN_LINE_L23: Final = "L23"   # Total turnover (L17+L18+L19+L20+L21+L22)
+VAT_RETURN_LINE_L24: Final = "L24"   # Standard-rate output VAT collected
+VAT_RETURN_LINE_L25: Final = "L25"   # Credit carried forward from prior period (L43 prior)
+VAT_RETURN_LINE_L26: Final = "L26"   # Standard-rate input VAT on purchases
+VAT_RETURN_LINE_L27: Final = "L27"   # Excise-duty input
+VAT_RETURN_LINE_L28: Final = "L28"   # Reduced-rate input VAT
+VAT_RETURN_LINE_L29: Final = "L29"   # Reverse-charge / foreign-services VAT
+VAT_RETURN_LINE_L30: Final = "L30"   # Total deductible input VAT (L26+…+L29)
+VAT_RETURN_LINE_L31: Final = "L31"   # Pro-rata deduction adjustment (Art. 147 CGI)
+VAT_RETURN_LINE_L36: Final = "L36"   # Net VAT payable (L24 − L30 − L31)
+VAT_RETURN_LINE_L37: Final = "L37"   # Adjustment additions
+VAT_RETURN_LINE_L40: Final = "L40"   # VAT payable before withholding (L36 + L37)
+VAT_RETURN_LINE_L43: Final = "L43"   # Credit carried forward to next period
+VAT_RETURN_LINE_L44: Final = "L44"   # Withholding VAT pre-payment amount
+VAT_RETURN_LINE_L45: Final = "L45"   # WHT-VAT certificate deduction
+VAT_RETURN_LINE_L47: Final = "L47"   # Net VAT payable after WHT (L40 − L44 − L45)
+VAT_RETURN_LINE_NON_DEDUCTIBLE: Final = "NON_DEDUCTIBLE"  # Non-recoverable input
+
+ALL_VAT_RETURN_LINE_CODES: Final[frozenset[str]] = frozenset(
+    {
+        VAT_RETURN_LINE_L17, VAT_RETURN_LINE_L18, VAT_RETURN_LINE_L19,
+        VAT_RETURN_LINE_L20, VAT_RETURN_LINE_L21, VAT_RETURN_LINE_L22,
+        VAT_RETURN_LINE_L23, VAT_RETURN_LINE_L24, VAT_RETURN_LINE_L25,
+        VAT_RETURN_LINE_L26, VAT_RETURN_LINE_L27, VAT_RETURN_LINE_L28,
+        VAT_RETURN_LINE_L29, VAT_RETURN_LINE_L30, VAT_RETURN_LINE_L31,
+        VAT_RETURN_LINE_L36, VAT_RETURN_LINE_L37, VAT_RETURN_LINE_L40,
+        VAT_RETURN_LINE_L43, VAT_RETURN_LINE_L44, VAT_RETURN_LINE_L45,
+        VAT_RETURN_LINE_L47, VAT_RETURN_LINE_NON_DEDUCTIBLE,
+    }
+)
+
+
+# --- VAT settlement account codes (Slice T37) ----------------------------
+
+# Receivable from customers who withheld VAT on our behalf
+# (prélèvement TVA / retenue à la source TVA — Cameroon).
+SETTLEMENT_WITHHOLDING_VAT_RECEIVABLE_ACCOUNT_CODE: Final = "4459"
+
+
+# --- VAT accounting basis (Slice T32) ------------------------------------
+
+VAT_BASIS_ACCRUAL: Final = "ACCRUAL"
+VAT_BASIS_CASH: Final = "CASH"
+VAT_BASIS_MIXED: Final = "MIXED"
+
+ALL_VAT_ACCOUNTING_BASIS_CODES: Final[frozenset[str]] = frozenset(
+    {VAT_BASIS_ACCRUAL, VAT_BASIS_CASH, VAT_BASIS_MIXED}
+)
+
+
+# --- Return status codes extended (Slice T47) ----------------------------
+# The base statuses (DRAFT, REVIEWED, FILED, AMENDED, CANCELLED) are
+# defined in the ALL_RETURN_STATUS_CODES block above.  T47 adds the
+# 4-eye review/approve/submit workflow:
+#   DRAFT → READY_FOR_REVIEW → APPROVED → FILED →
+#   SUBMITTED_AWAITING_CONFIRMATION → SUBMITTED_CONFIRMED
+
+RETURN_STATUS_READY_FOR_REVIEW: Final = "READY_FOR_REVIEW"
+RETURN_STATUS_APPROVED: Final = "APPROVED"
+RETURN_STATUS_SUBMITTED_AWAITING_CONFIRMATION: Final = "SUBMITTED_AWAITING_CONFIRMATION"
+RETURN_STATUS_SUBMITTED_CONFIRMED: Final = "SUBMITTED_CONFIRMED"
+
+ALL_RETURN_STATUS_CODES_EXTENDED: Final[frozenset[str]] = frozenset(
+    {
+        RETURN_STATUS_DRAFT,
+        RETURN_STATUS_READY_FOR_REVIEW,
+        RETURN_STATUS_APPROVED,
+        RETURN_STATUS_FILED,
+        RETURN_STATUS_SUBMITTED_AWAITING_CONFIRMATION,
+        RETURN_STATUS_SUBMITTED_CONFIRMED,
+        RETURN_STATUS_AMENDED,
+        RETURN_STATUS_CANCELLED,
+    }
+)
 

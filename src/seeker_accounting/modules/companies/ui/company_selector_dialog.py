@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -19,7 +18,7 @@ from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 
 class CompanySelectorDialog(BaseDialog):
@@ -36,7 +35,7 @@ class CompanySelectorDialog(BaseDialog):
         self._companies: list[CompanyListItemDTO] = []
 
         self.setObjectName("CompanySelectorDialog")
-        self.resize(700, 400)
+        apply_window_size(self, "modules.companies.ui.company.selector.dialog.0")
 
         summary_label = QLabel(
             "Choose the active operating context for the current session. Only active companies can be selected.",
@@ -108,17 +107,29 @@ class CompanySelectorDialog(BaseDialog):
         card_layout.setContentsMargins(0, 0, 0, 0)
         card_layout.setSpacing(0)
 
-        self._company_table = QTableWidget(card)
-        self._company_table.setObjectName("CompanySelectorTable")
-        self._company_table.setColumnCount(5)
-        self._company_table.setHorizontalHeaderLabels(
-            ("Display Name", "Legal Name", "Country", "Currency", "Status")
+        self._company_model = QStandardItemModel(0, 5, card)
+        self._company_model.setHorizontalHeaderLabels(
+            ["Display Name", "Legal Name", "Country", "Currency", "Status"]
         )
-        configure_compact_table(self._company_table)
-        self._company_table.setSortingEnabled(False)
-        self._company_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._company_table.itemSelectionChanged.connect(self._update_selection_state)
-        self._company_table.itemDoubleClicked.connect(self._handle_item_double_click)
+        self._company_table = DataTable(
+            columns=(
+                DataTableColumn(key="display_name", title="Display Name"),
+                DataTableColumn(key="legal_name", title="Legal Name"),
+                DataTableColumn(key="country", title="Country"),
+                DataTableColumn(key="currency", title="Currency"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
+        )
+        self._company_table.set_model(self._company_model)
+        apply_status_chip_to_column(self._company_table.view(), 4)
+        self._company_table.selection_changed.connect(lambda _rows: self._update_selection_state())
+        self._company_table.view().doubleClicked.connect(self._handle_item_double_click)
         card_layout.addWidget(self._company_table)
 
         layout.addWidget(card)
@@ -185,69 +196,68 @@ class CompanySelectorDialog(BaseDialog):
         self._select_initial_row(active_company)
         self._update_selection_state()
 
-    def _populate_table(self, active_company: ActiveCompanyDTO | None) -> None:
-        self._company_table.setRowCount(0)
-        for company in self._companies:
-            row_index = self._company_table.rowCount()
-            self._company_table.insertRow(row_index)
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
+    def _populate_table(self, active_company: ActiveCompanyDTO | None) -> None:
+        self._company_model.removeRows(0, self._company_model.rowCount())
+        for company in self._companies:
             display_name_text = company.display_name
             if active_company is not None and active_company.company_id == company.id:
                 display_name_text = f"{display_name_text}  (Current)"
-
-            values = (
-                display_name_text,
-                company.legal_name,
-                company.country_code,
-                company.base_currency_code,
-                "Active" if company.is_active else "Inactive",
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, company.id)
-                if column_index == 4:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._company_table.setItem(row_index, column_index, item)
-
-        self._company_table.resizeColumnsToContents()
-        header = self._company_table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
+            self._company_model.appendRow([
+                self._make_item(display_name_text, user_data=company.id),
+                self._make_item(company.legal_name),
+                self._make_item(company.country_code),
+                self._make_item(company.base_currency_code),
+                self._make_item("active" if company.is_active else "inactive"),
+            ])
 
     def _select_initial_row(self, active_company: ActiveCompanyDTO | None) -> None:
         preferred_company_id = self._initial_company_id
         if preferred_company_id is None and active_company is not None:
             preferred_company_id = active_company.company_id
         if preferred_company_id is None:
-            if self._company_table.rowCount() > 0:
-                self._company_table.selectRow(0)
+            if self._company_model.rowCount() > 0:
+                proxy = self._company_table.view().model()
+                if proxy:
+                    sm = self._company_table.view().selectionModel()
+                    if sm:
+                        sm.select(
+                            proxy.mapFromSource(self._company_model.index(0, 0)),
+                            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+                        )
             return
-
-        for row_index in range(self._company_table.rowCount()):
-            item = self._company_table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == preferred_company_id:
-                self._company_table.selectRow(row_index)
-                return
-
-        if self._company_table.rowCount() > 0:
-            self._company_table.selectRow(0)
+        target_idx = next(
+            (i for i, c in enumerate(self._companies) if c.id == preferred_company_id),
+            0,
+        )
+        proxy = self._company_table.view().model()
+        if proxy is None:
+            return
+        src_index = self._company_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._company_table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._company_table.view().scrollTo(proxy_index)
 
     def _selected_company(self) -> CompanyListItemDTO | None:
-        current_row = self._company_table.currentRow()
-        if current_row < 0 or current_row >= len(self._companies):
+        rows = self._company_table.selected_rows()
+        if not rows:
             return None
-
-        current_id_item = self._company_table.item(current_row, 0)
-        if current_id_item is None:
+        row = rows[0]
+        if row < 0 or row >= len(self._companies):
             return None
-
-        company_id = current_id_item.data(Qt.ItemDataRole.UserRole)
-        for company in self._companies:
-            if company.id == company_id:
-                return company
-        return None
+        return self._companies[row]
 
     def _update_selection_state(self) -> None:
         company = self._selected_company()

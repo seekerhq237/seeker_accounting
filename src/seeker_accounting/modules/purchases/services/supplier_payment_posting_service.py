@@ -32,6 +32,7 @@ from seeker_accounting.modules.purchases.repositories.supplier_payment_repositor
     SupplierPaymentRepository,
 )
 from seeker_accounting.modules.treasury.repositories.financial_account_repository import FinancialAccountRepository
+from seeker_accounting.modules.taxation.repositories.posted_tax_line_repository import PostedTaxLineRepository
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
 from seeker_accounting.modules.administration.services.permission_service import PermissionService
@@ -47,6 +48,7 @@ SupplierPaymentAllocationRepositoryFactory = Callable[[Session], SupplierPayment
 PurchaseBillRepositoryFactory = Callable[[Session], PurchaseBillRepository]
 AccountRoleMappingRepositoryFactory = Callable[[Session], AccountRoleMappingRepository]
 FinancialAccountRepositoryFactory = Callable[[Session], FinancialAccountRepository]
+PostedTaxLineRepositoryFactory = Callable[[Session], PostedTaxLineRepository]
 
 
 class SupplierPaymentPostingService:
@@ -67,6 +69,7 @@ class SupplierPaymentPostingService:
         numbering_service: NumberingService,
         permission_service: PermissionService,
         audit_service: AuditService | None = None,
+        posted_tax_line_repository_factory: PostedTaxLineRepositoryFactory | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
@@ -81,6 +84,7 @@ class SupplierPaymentPostingService:
         self._numbering_service = numbering_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._posted_tax_line_repository_factory = posted_tax_line_repository_factory
 
     def post_payment(
         self,
@@ -222,6 +226,18 @@ class SupplierPaymentPostingService:
                     else:
                         bill.payment_status_code = "unpaid"
                     bill_repo.save(bill)
+
+            # T32: stamp payment_date on posted-tax-line rows for the allocated
+            # bills (cash-basis VAT).  Only rows with payment_date IS NULL are
+            # updated so the first-payment date is preserved.
+            if affected_bill_ids and self._posted_tax_line_repository_factory is not None:
+                ptl_repo = self._posted_tax_line_repository_factory(uow.session)
+                ptl_repo.stamp_payment_date_for_source_docs(
+                    company_id,
+                    "purchase_bill",
+                    affected_bill_ids,
+                    payment.payment_date,
+                )
 
             # --- Calculate result ---
             total_allocated = sum((a.allocated_amount for a in allocations), Decimal("0.00"))

@@ -17,6 +17,7 @@ class InventoryDocumentLine(Base):
         UniqueConstraint("inventory_document_id", "line_number"),
         Index("ix_inventory_document_lines_document_id", "inventory_document_id"),
         Index("ix_inventory_document_lines_item_id", "item_id"),
+        Index("ix_inventory_document_lines_batch_id", "batch_id"),
         Index("ix_inventory_document_lines_project_id", "project_id"),
         Index("ix_inventory_document_lines_project_job_id", "project_job_id"),
     )
@@ -32,6 +33,11 @@ class InventoryDocumentLine(Base):
         Integer,
         ForeignKey("items.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    batch_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("item_batches.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
@@ -77,6 +83,7 @@ class InventoryDocumentLine(Base):
         "InventoryDocument", back_populates="lines"
     )
     item: Mapped["Item"] = relationship("Item")
+    batch: Mapped["ItemBatch | None"] = relationship("ItemBatch")
     transaction_uom: Mapped["UnitOfMeasure | None"] = relationship(
         "UnitOfMeasure", foreign_keys=[transaction_uom_id]
     )
@@ -87,3 +94,8 @@ class InventoryDocumentLine(Base):
     project: Mapped["Project | None"] = relationship("Project")
     project_job: Mapped["ProjectJob | None"] = relationship("ProjectJob")
     project_cost_code: Mapped["ProjectCostCode | None"] = relationship("ProjectCostCode")
+    serial_links: Mapped[list["InventoryDocumentLineSerial"]] = relationship(
+        "InventoryDocumentLineSerial",
+        back_populates="document_line",
+        cascade="all, delete-orphan",
+    )

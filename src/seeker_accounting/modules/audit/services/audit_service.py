@@ -5,8 +5,9 @@ managing persistence details. Events are immutable once written.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Mapping
 
 from sqlalchemy.orm import Session
 
@@ -80,6 +81,112 @@ class AuditService:
             actor_display_name=self._app_context.current_user_display_name,
         )
         repo.save(event)
+
+    def record_state_transition(
+        self,
+        company_id: int,
+        *,
+        module_code: str,
+        entity_type: str,
+        entity_id: int | None,
+        from_state: str | None,
+        to_state: str,
+        description: str | None = None,
+        reason: str | None = None,
+        context: Mapping[str, object] | None = None,
+    ) -> None:
+        self.record_event(
+            company_id,
+            self._build_state_transition_command(
+                module_code=module_code,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                from_state=from_state,
+                to_state=to_state,
+                description=description,
+                reason=reason,
+                context=context,
+            ),
+        )
+
+    def record_state_transition_in_session(
+        self,
+        session: Session,
+        company_id: int,
+        *,
+        module_code: str,
+        entity_type: str,
+        entity_id: int | None,
+        from_state: str | None,
+        to_state: str,
+        description: str | None = None,
+        reason: str | None = None,
+        context: Mapping[str, object] | None = None,
+    ) -> None:
+        self.record_event_in_session(
+            session,
+            company_id,
+            self._build_state_transition_command(
+                module_code=module_code,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                from_state=from_state,
+                to_state=to_state,
+                description=description,
+                reason=reason,
+                context=context,
+            ),
+        )
+
+    def record_override_applied(
+        self,
+        company_id: int,
+        *,
+        module_code: str,
+        entity_type: str,
+        entity_id: int | None,
+        override_code: str,
+        reason: str,
+        description: str | None = None,
+        context: Mapping[str, object] | None = None,
+    ) -> None:
+        self.record_event(
+            company_id,
+            self._build_override_command(
+                module_code=module_code,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                override_code=override_code,
+                reason=reason,
+                description=description,
+                context=context,
+            ),
+        )
+
+    def record_business_process_step(
+        self,
+        company_id: int,
+        *,
+        module_code: str,
+        entity_type: str,
+        entity_id: int | None,
+        process_code: str,
+        step_code: str,
+        description: str | None = None,
+        context: Mapping[str, object] | None = None,
+    ) -> None:
+        self.record_event(
+            company_id,
+            self._build_business_process_step_command(
+                module_code=module_code,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                process_code=process_code,
+                step_code=step_code,
+                description=description,
+                context=context,
+            ),
+        )
 
     def list_events(
         self,
@@ -183,6 +290,83 @@ class AuditService:
     def _require_permission(self, permission_code: str | None) -> None:
         if permission_code and self._permission_service is not None:
             self._permission_service.require_permission(permission_code)
+
+    @staticmethod
+    def _build_state_transition_command(
+        *,
+        module_code: str,
+        entity_type: str,
+        entity_id: int | None,
+        from_state: str | None,
+        to_state: str,
+        description: str | None,
+        reason: str | None,
+        context: Mapping[str, object] | None,
+    ) -> RecordAuditEventCommand:
+        payload = {
+            "from_state": from_state,
+            "to_state": to_state,
+            "reason": reason,
+            "context": dict(context or {}),
+        }
+        return RecordAuditEventCommand(
+            event_type_code="STATE_TRANSITION",
+            module_code=module_code,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            description=description or f"{entity_type} state changed from {from_state or 'none'} to {to_state}.",
+            detail_json=json.dumps(payload, sort_keys=True),
+        )
+
+    @staticmethod
+    def _build_override_command(
+        *,
+        module_code: str,
+        entity_type: str,
+        entity_id: int | None,
+        override_code: str,
+        reason: str,
+        description: str | None,
+        context: Mapping[str, object] | None,
+    ) -> RecordAuditEventCommand:
+        payload = {
+            "override_code": override_code,
+            "reason": reason,
+            "context": dict(context or {}),
+        }
+        return RecordAuditEventCommand(
+            event_type_code="OVERRIDE_APPLIED",
+            module_code=module_code,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            description=description or f"Override applied: {override_code}.",
+            detail_json=json.dumps(payload, sort_keys=True),
+        )
+
+    @staticmethod
+    def _build_business_process_step_command(
+        *,
+        module_code: str,
+        entity_type: str,
+        entity_id: int | None,
+        process_code: str,
+        step_code: str,
+        description: str | None,
+        context: Mapping[str, object] | None,
+    ) -> RecordAuditEventCommand:
+        payload = {
+            "process_code": process_code,
+            "step_code": step_code,
+            "context": dict(context or {}),
+        }
+        return RecordAuditEventCommand(
+            event_type_code="BUSINESS_PROCESS_STEP",
+            module_code=module_code,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            description=description or f"Business process step completed: {process_code}.{step_code}.",
+            detail_json=json.dumps(payload, sort_keys=True),
+        )
 
     @staticmethod
     def _to_dto(e: AuditEvent) -> AuditEventDTO:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 
 from PySide6.QtCore import QDate, Qt
@@ -39,7 +40,7 @@ class FiscalYearDialog(BaseDialog):
 
         super().__init__("New Fiscal Year", parent, help_key="dialog.fiscal_year")
         self.setObjectName("FiscalYearDialog")
-        self.resize(540, 0)
+        apply_window_size(self, "modules.accounting.fiscal.periods.ui.fiscal.year.dialog.0")
 
         self.body_layout.addWidget(create_label_value_row("Company", company_name, self))
 

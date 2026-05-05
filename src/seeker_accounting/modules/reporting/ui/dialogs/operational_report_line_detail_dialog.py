@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -19,7 +18,7 @@ from seeker_accounting.modules.reporting.dto.operational_report_filter_dto impor
 from seeker_accounting.modules.reporting.ui.dialogs.journal_source_detail_dialog import (
     JournalSourceDetailDialog,
 )
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 
 class OperationalReportLineDetailDialog(QDialog):
@@ -74,11 +73,19 @@ class OperationalReportLineDetailDialog(QDialog):
                 warning_layout.addWidget(label)
             layout.addWidget(warning)
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(len(detail_dto.columns))
-        self._table.setHorizontalHeaderLabels(list(detail_dto.columns))
-        configure_compact_table(self._table)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        columns = tuple(DataTableColumn(key=str(i), title=col) for i, col in enumerate(detail_dto.columns))
+        self._table = DataTable(
+            columns=columns,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._model = QStandardItemModel(0, len(detail_dto.columns), self)
+        self._model.setHorizontalHeaderLabels(list(detail_dto.columns))
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
@@ -88,21 +95,28 @@ class OperationalReportLineDetailDialog(QDialog):
         self._bind_rows()
 
     def _bind_rows(self) -> None:
-        self._table.setRowCount(len(self._detail_dto.rows))
-        for row_index, row in enumerate(self._detail_dto.rows):
+        self._model.removeRows(0, self._model.rowCount())
+        for row in self._detail_dto.rows:
+            items = []
             for column_index, value in enumerate(row.values):
-                item = QTableWidgetItem(value)
+                item = self._make_item(value)
                 if column_index == len(row.values) - 1:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, row.journal_entry_id)
-                self._table.setItem(row_index, column_index, item)
+                    item.setData(row.journal_entry_id, Qt.ItemDataRole.UserRole)
+                items.append(item)
+            self._model.appendRow(items)
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        first_item = self._table.item(row, 0)
-        if first_item is None:
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        journal_entry_id = first_item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        journal_entry_id = id_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(journal_entry_id, int):
             return
         JournalSourceDetailDialog.open(
@@ -111,6 +125,14 @@ class OperationalReportLineDetailDialog(QDialog):
             journal_entry_id=journal_entry_id,
             parent=self,
         )
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     @classmethod
     def open(

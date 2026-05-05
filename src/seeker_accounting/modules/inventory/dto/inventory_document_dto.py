@@ -12,6 +12,10 @@ class InventoryDocumentLineDTO:
     item_id: int
     item_code: str
     item_name: str
+    batch_id: int | None
+    batch_number: str | None
+    serial_ids: tuple[int, ...]
+    serial_numbers: tuple[str, ...]
     quantity: Decimal
     unit_cost: Decimal | None
     line_amount: Decimal | None
@@ -40,6 +44,10 @@ class InventoryDocumentListItemDTO:
     total_value: Decimal
     posted_at: datetime | None
     updated_at: datetime
+    submitted_at: datetime | None = None
+    submitted_by_user_id: int | None = None
+    reversal_document_id: int | None = None
+    reversal_of_document_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,10 +65,31 @@ class InventoryDocumentDetailDTO:
     posted_journal_entry_id: int | None
     posted_at: datetime | None
     posted_by_user_id: int | None
+    submitted_at: datetime | None
+    submitted_by_user_id: int | None
+    approved_at: datetime | None
+    approved_by_user_id: int | None
+    cancellation_reason_code_id: int | None
+    cancelled_at: datetime | None
+    cancelled_by_user_id: int | None
+    reversal_of_document_id: int | None
+    reversal_document_id: int | None
+    reverse_reason_code_id: int | None
+    reversed_at: datetime | None
+    reversed_by_user_id: int | None
+    reversing_journal_entry_id: int | None
     created_at: datetime
     updated_at: datetime
     contract_id: int | None = None
     project_id: int | None = None
+    reason_code_id: int | None = None
+    reason_code_code: str | None = None
+    source_module_code: str | None = None
+    source_document_type: str | None = None
+    source_document_id: int | None = None
+    stock_count_session_id: int | None = None
+    bom_id: int | None = None
+    production_order_id: int | None = None
     lines: tuple[InventoryDocumentLineDTO, ...] = field(default_factory=tuple)
 
 
@@ -73,3 +102,15 @@ class InventoryPostingResultDTO:
     journal_entry_number: str
     posted_at: datetime
     posted_by_user_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryReversalResultDTO:
+    company_id: int
+    original_document_id: int
+    reversal_document_id: int
+    reversal_document_number: str
+    reversing_journal_entry_id: int
+    reversing_journal_entry_number: str
+    reversed_at: datetime
+    reversed_by_user_id: int | None

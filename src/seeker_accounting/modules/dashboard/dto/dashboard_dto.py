@@ -98,6 +98,37 @@ class DashboardKpiDeltaDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class DashboardSetupChecklistItemDTO:
+    """One readiness item in the first-run setup checklist."""
+
+    key: str
+    label: str
+    detail: str
+    is_complete: bool
+    nav_id: str
+    required: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class DashboardSetupChecklistDTO:
+    """Company setup readiness summary for the dashboard."""
+
+    items: tuple[DashboardSetupChecklistItemDTO, ...] = field(default_factory=tuple)
+
+    @property
+    def total_count(self) -> int:
+        return len(self.items)
+
+    @property
+    def complete_count(self) -> int:
+        return sum(1 for item in self.items if item.is_complete)
+
+    @property
+    def is_complete(self) -> bool:
+        return bool(self.items) and self.complete_count == self.total_count
+
+
+@dataclass(frozen=True, slots=True)
 class DashboardDataDTO:
     """Composite object carrying all dashboard surface data."""
 
@@ -108,6 +139,7 @@ class DashboardDataDTO:
     ar_aging: DashboardAgingSnapshotDTO = field(default_factory=DashboardAgingSnapshotDTO)
     ap_aging: DashboardAgingSnapshotDTO = field(default_factory=DashboardAgingSnapshotDTO)
     cash_liquidity: DashboardCashLiquidityDTO = field(default_factory=DashboardCashLiquidityDTO)
+    setup_checklist: DashboardSetupChecklistDTO = field(default_factory=DashboardSetupChecklistDTO)
     as_of_date: date | None = None
     loaded_at: datetime | None = None
     period_label: str = ""

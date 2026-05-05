@@ -85,6 +85,7 @@ class PurchaseBillDetailDTO:
     lines: tuple[PurchaseBillLineDTO, ...]
     contract_id: int | None = None
     project_id: int | None = None
+    tax_point_date: date | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,6 +17,7 @@ Layout (style-guide compliant):
 """
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import (
@@ -57,7 +58,7 @@ class WizardHostDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
-        self.resize(940, 620)
+        apply_window_size(self, "platform.wizards.host.dialog.0")
         self.setObjectName("WizardHostDialog")
 
         self._controller = controller

@@ -39,7 +39,7 @@ from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
 from seeker_accounting.modules.payroll.ui.dialogs.payroll_input_batch_dialog import (
     _InputLineFormDialog,
 )
-from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import AppError, NotFoundError, ValidationError
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
@@ -73,7 +73,7 @@ class PayrollInputBatchWindow(ChildWindowBase):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(
-            title="Variable Input Batch",
+            title="Variable input",
             surface_key=RibbonRegistry.child_window_key(self.DOC_TYPE),
             window_key=(self.DOC_TYPE, batch_id),
             registry=service_registry.ribbon_registry or RibbonRegistry(),
@@ -103,7 +103,7 @@ class PayrollInputBatchWindow(ChildWindowBase):
         hero_layout.setContentsMargins(18, 14, 18, 14)
         hero_layout.setSpacing(4)
 
-        self._title_label = QLabel("Variable Input Batch", hero)
+        self._title_label = QLabel("Variable input", hero)
         self._title_label.setObjectName("DialogSectionTitle")
         hero_layout.addWidget(self._title_label)
 
@@ -117,7 +117,7 @@ class PayrollInputBatchWindow(ChildWindowBase):
         configure_compact_table(self._table)
         self._table.setColumnCount(6)
         self._table.setHorizontalHeaderLabels(
-            ("Employee", "Component", "Type", "Amount", "Qty", "Notes")
+            ("Employee", "Payroll component", "Type", "Amount", "Qty", "Notes")
         )
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -147,18 +147,22 @@ class PayrollInputBatchWindow(ChildWindowBase):
                 self._company_id, self._batch_id
             )
         except NotFoundError:
-            show_error(self, "Variable Input Batch", "This batch no longer exists.")
+            show_error(self, "Variable input", "This batch no longer exists.")
             self.close()
             return
-        except Exception as exc:  # noqa: BLE001 — surface any load failure
-            show_error(self, "Variable Input Batch", str(exc))
+        except AppError as exc:
+            show_error(self, "Variable input", str(exc))
+            return
+        except Exception:
+            _log.exception("Failed to load variable input batch=%s", self._batch_id)
+            show_error(self, "Variable input", "Could not load batch. See application log for details.")
             return
 
         self._batch = batch
 
         period_name = _MONTHS[batch.period_month] if 1 <= batch.period_month <= 12 else ""
         status_label = _STATUS_LABELS.get(batch.status_code, batch.status_code)
-        self.setWindowTitle(f"Variable Input Batch — {batch.batch_reference}")
+        self.setWindowTitle(f"Variable input - {batch.batch_reference}")
         self._title_label.setText(f"Batch {batch.batch_reference}")
         self._summary_label.setText(
             f"{period_name} {batch.period_year}  ·  Status: {status_label}"
@@ -264,7 +268,7 @@ class PayrollInputBatchWindow(ChildWindowBase):
                 self._company_id, self._batch_id, line_id
             )
         except (ValidationError, NotFoundError) as exc:
-            show_error(self, "Variable Input Batch", str(exc))
+            show_error(self, "Variable input", str(exc))
             return
         self._reload()
 
@@ -280,7 +284,7 @@ class PayrollInputBatchWindow(ChildWindowBase):
                 self._company_id, self._batch_id
             )
         except (ValidationError, NotFoundError) as exc:
-            show_error(self, "Variable Input Batch", str(exc))
+            show_error(self, "Variable input", str(exc))
             return
         self._reload()
 
@@ -294,6 +298,6 @@ class PayrollInputBatchWindow(ChildWindowBase):
                 self._company_id, self._batch_id
             )
         except (ValidationError, NotFoundError) as exc:
-            show_error(self, "Variable Input Batch", str(exc))
+            show_error(self, "Variable input", str(exc))
             return
         self._reload()

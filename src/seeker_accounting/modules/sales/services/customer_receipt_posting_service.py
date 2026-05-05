@@ -28,6 +28,9 @@ from seeker_accounting.modules.sales.repositories.customer_receipt_allocation_re
 from seeker_accounting.modules.sales.repositories.customer_receipt_repository import CustomerReceiptRepository
 from seeker_accounting.modules.sales.repositories.sales_invoice_repository import SalesInvoiceRepository
 from seeker_accounting.modules.treasury.repositories.financial_account_repository import FinancialAccountRepository
+from seeker_accounting.modules.taxation.repositories.posted_tax_line_repository import PostedTaxLineRepository
+from seeker_accounting.modules.taxation.repositories.withholding_tax_certificate_repository import WithholdingTaxCertificateRepository
+from seeker_accounting.modules.accounting.reference_data.repositories.tax_code_repository import TaxCodeRepository
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
 
@@ -42,6 +45,9 @@ CustomerReceiptAllocationRepositoryFactory = Callable[[Session], CustomerReceipt
 SalesInvoiceRepositoryFactory = Callable[[Session], SalesInvoiceRepository]
 AccountRoleMappingRepositoryFactory = Callable[[Session], AccountRoleMappingRepository]
 FinancialAccountRepositoryFactory = Callable[[Session], FinancialAccountRepository]
+PostedTaxLineRepositoryFactory = Callable[[Session], PostedTaxLineRepository]
+WithholdingTaxCertificateRepositoryFactory = Callable[[Session], WithholdingTaxCertificateRepository]
+TaxCodeRepositoryFactory = Callable[[Session], TaxCodeRepository]
 
 
 class CustomerReceiptPostingService:
@@ -61,6 +67,9 @@ class CustomerReceiptPostingService:
         company_repository_factory: CompanyRepositoryFactory,
         numbering_service: NumberingService,
         audit_service: AuditService | None = None,
+        posted_tax_line_repository_factory: PostedTaxLineRepositoryFactory | None = None,
+        withholding_tax_certificate_repository_factory: WithholdingTaxCertificateRepositoryFactory | None = None,
+        tax_code_repository_factory: TaxCodeRepositoryFactory | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
@@ -74,6 +83,9 @@ class CustomerReceiptPostingService:
         self._company_repository_factory = company_repository_factory
         self._numbering_service = numbering_service
         self._audit_service = audit_service
+        self._posted_tax_line_repository_factory = posted_tax_line_repository_factory
+        self._wht_cert_repository_factory = withholding_tax_certificate_repository_factory
+        self._tax_code_repository_factory = tax_code_repository_factory
 
     def post_receipt(
         self,
@@ -214,6 +226,73 @@ class CustomerReceiptPostingService:
                     else:
                         inv.payment_status_code = "unpaid"
                     invoice_repo.save(inv)
+
+            # T32: stamp payment_date on posted-tax-line rows for the allocated
+            # invoices (cash-basis VAT).  Only rows with payment_date IS NULL
+            # are updated so the first-payment date is preserved.
+            if affected_invoice_ids and self._posted_tax_line_repository_factory is not None:
+                ptl_repo = self._posted_tax_line_repository_factory(uow.session)
+                ptl_repo.stamp_payment_date_for_source_docs(
+                    company_id,
+                    "sales_invoice",
+                    affected_invoice_ids,
+                    receipt.receipt_date,
+                )
+
+            # T37: auto-create INBOUND withholding-tax certificates for each
+            # allocated invoice that carries a withheld_vat_amount > 0.
+            if (
+                affected_invoice_ids
+                and self._wht_cert_repository_factory is not None
+                and self._tax_code_repository_factory is not None
+            ):
+                from seeker_accounting.modules.taxation.constants import TAX_TYPE_WITHHOLDING
+                from seeker_accounting.modules.taxation.models.withholding_tax_certificate import (
+                    WithholdingTaxCertificate as _WHTCert,
+                    DIRECTION_INBOUND as _INBOUND,
+                    STATUS_RECEIVED as _STATUS_RECEIVED,
+                    COUNTERPARTY_CUSTOMER as _CPTY_CUSTOMER,
+                )
+                tc_repo = self._tax_code_repository_factory(uow.session)
+                wht_tax_code = tc_repo.find_first_by_tax_type(company_id, TAX_TYPE_WITHHOLDING)
+                if wht_tax_code is not None:
+                    wht_cert_repo = self._wht_cert_repository_factory(uow.session)
+                    _zero = Decimal("0.00")
+                    for inv_id in affected_invoice_ids:
+                        inv = invoice_repo.get_by_id(company_id, inv_id)
+                        if inv is None:
+                            continue
+                        withheld = getattr(inv, "withheld_vat_amount", _zero) or _zero
+                        if withheld <= _zero:
+                            continue
+                        cert_number = f"AUTO-INB-R{receipt.id}-I{inv_id}"
+                        # Skip if already created (idempotent re-post guard).
+                        if wht_cert_repo.find_existing_certificate_number(
+                            company_id, _INBOUND, cert_number
+                        ) is not None:
+                            continue
+                        taxable_base = (inv.total_amount or _zero) - withheld
+                        # Snapshot customer name from Customer table.
+                        from seeker_accounting.modules.customers.models.customer import Customer as _CustomerModel
+                        cust = uow.session.get(_CustomerModel, inv.customer_id)
+                        cpty_name = (cust.display_name if cust else None) or f"Customer {inv.customer_id}"
+                        cert = _WHTCert(
+                            company_id=company_id,
+                            direction=_INBOUND,
+                            counterparty_kind=_CPTY_CUSTOMER,
+                            counterparty_id=inv.customer_id,
+                            counterparty_name=cpty_name,
+                            tax_code_id=wht_tax_code.id,
+                            certificate_number=cert_number,
+                            certificate_date=receipt.receipt_date,
+                            source_document_type="sales_invoice",
+                            source_document_id=inv_id,
+                            taxable_base=taxable_base.quantize(Decimal("0.01")),
+                            tax_amount=withheld.quantize(Decimal("0.01")),
+                            status_code=_STATUS_RECEIVED,
+                            recorded_by_user_id=actor_id,
+                        )
+                        wht_cert_repo.add(cert)
 
             # --- Calculate result ---
             total_allocated = sum((a.allocated_amount for a in allocations), Decimal("0.00"))

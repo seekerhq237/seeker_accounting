@@ -13,13 +13,15 @@ from decimal import Decimal
 from seeker_accounting.modules.payroll.engines.engine_types import (
     EngineContext,
     EngineLineResult,
+    quantize_xaf,
 )
 
 _EARNING_METHODS = frozenset({"fixed_amount", "manual_input", "percentage"})
 # Codes handled by their own engines — skip them here
 _DELEGATED_CODES = frozenset({
     "OVERTIME", "OVERTIME_DAY_T1", "OVERTIME_DAY_T2", "OVERTIME_DAY_T3", "OVERTIME_NIGHT",
-    "HOUSING_BIK", "TRANSPORT_BIK",
+    "HOUSING_BIK", "ELECTRICITY_BIK", "WATER_BIK", "DOMESTIC_BIK",
+    "MEAL_BIK", "VEHICLE_BIK", "VEHICLE_BIK_2", "TRANSPORT_BIK",
 })
 
 
@@ -54,13 +56,13 @@ def run_earnings_engine(ctx: EngineContext) -> list[EngineLineResult]:
 def _resolve_amount(comp, basic_salary: Decimal) -> Decimal:
     # Variable input overrides everything when provided
     if comp.input_amount is not None:
-        return comp.input_amount.quantize(Decimal("0.0001"))
+        return quantize_xaf(comp.input_amount)
 
     if comp.calculation_method_code == "fixed_amount":
-        return comp.base_amount.quantize(Decimal("0.0001"))
+        return quantize_xaf(comp.base_amount)
 
     if comp.calculation_method_code == "percentage":
-        return (basic_salary * comp.base_rate).quantize(Decimal("0.0001"))
+        return quantize_xaf(basic_salary * comp.base_rate)
 
     if comp.calculation_method_code == "manual_input":
         # No input provided — skip

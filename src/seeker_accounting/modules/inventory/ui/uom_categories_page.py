@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -16,8 +17,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -29,8 +28,21 @@ from seeker_accounting.modules.inventory.dto.inventory_reference_commands import
 )
 from seeker_accounting.modules.inventory.dto.inventory_reference_dto import UomCategoryDTO
 from seeker_accounting.platform.exceptions import ConflictError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+UOM_CATEGORY_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="code", title="Code"),
+    DataTableColumn(key="name", title="Name"),
+    DataTableColumn(key="description", title="Description"),
+    DataTableColumn(key="active", title="Active"),
+)
+
 
 _log = logging.getLogger(__name__)
 
@@ -53,7 +65,7 @@ class _CategoryDialog(QDialog):
         is_edit = category_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} UoM Category — {company_name}")
         self.setModal(True)
-        self.resize(420, 280)
+        apply_window_size(self, "modules.inventory.ui.uom.categories.page.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -161,7 +173,7 @@ class UomCategoriesPage(QWidget):
     def reload(self) -> None:
         active_company = self._service_registry.company_context_service.get_active_company()
         if active_company is None:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_company_state)
             return
@@ -170,7 +182,7 @@ class UomCategoriesPage(QWidget):
                 active_company.company_id
             )
         except Exception as exc:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             show_error(self, "UoM Categories", f"Could not load data.\n\n{exc}")
@@ -233,13 +245,23 @@ class UomCategoriesPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(("Code", "Name", "Description", "Active"))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_edit())
+
+        self._model = QStandardItemModel(0, len(UOM_CATEGORY_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in UOM_CATEGORY_COLUMNS])
+
+        self._table = DataTable(
+            columns=UOM_CATEGORY_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No UoM categories to display.",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 3)
+        self._table.row_activated.connect(lambda _row: self._on_edit())
         layout.addWidget(self._table)
         return card
 
@@ -286,20 +308,24 @@ class UomCategoriesPage(QWidget):
     # Data
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate(self, rows: list[UomCategoryDTO]) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._rows: list[UomCategoryDTO] = list(rows)
+        self._model.removeRows(0, self._model.rowCount())
         for row in rows:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            code_item = QTableWidgetItem(row.code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._table.setItem(ri, 0, code_item)
-            self._table.setItem(ri, 1, QTableWidgetItem(row.name))
-            self._table.setItem(ri, 2, QTableWidgetItem(row.description or ""))
-            self._table.setItem(ri, 3, QTableWidgetItem("Yes" if row.is_active else "No"))
-        self._table.resizeColumnsToContents()
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(row.code, user_data=row.id),
+                self._make_item(row.name),
+                self._make_item(row.description or ""),
+                self._make_item("active" if row.is_active else "inactive"),
+            ])
         self._count_label.setText(f"{len(rows)} categories")
 
     def _sync_stack(self, active_company: object, rows: list[UomCategoryDTO]) -> None:
@@ -330,13 +356,13 @@ class UomCategoriesPage(QWidget):
         active_company = self._service_registry.company_context_service.get_active_company()
         if active_company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        idx = rows[0]
+        if not (0 <= idx < len(getattr(self, "_rows", []))):
             return
-        category_id = item.data(Qt.ItemDataRole.UserRole)
+        category_id = self._rows[idx].id
         if category_id is None:
             return
         dlg = _CategoryDialog(

@@ -6,8 +6,8 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QDialog,
@@ -21,10 +21,14 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+)
+
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
@@ -32,9 +36,8 @@ from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.treasury.dto.bank_reconciliation_commands import CreateReconciliationSessionCommand
 from seeker_accounting.modules.treasury.dto.bank_reconciliation_dto import ReconciliationSessionListItemDTO
-from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
 
@@ -161,7 +164,7 @@ class BankReconciliationPage(QWidget):
 
         if active_company is None:
             self._sessions = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -174,7 +177,7 @@ class BankReconciliationPage(QWidget):
             )
         except Exception as exc:
             self._sessions = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -260,22 +263,28 @@ class BankReconciliationPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setObjectName("BankReconciliationTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels((
-            "ID",
-            "Account",
-            "Statement End Date",
-            "Ending Balance",
-            "Matches",
-            "Status",
-            "Completed At",
-            "Created At",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
+        self._model = QStandardItemModel(0, 8, card)
+        self._model.setHorizontalHeaderLabels([
+            "ID", "Account", "Statement End Date", "Ending Balance",
+            "Matches", "Status", "Completed At", "Created At",
+        ])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="id", title="ID"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="stmt_end", title="Statement End Date"),
+                DataTableColumn(key="balance", title="Ending Balance"),
+                DataTableColumn(key="matches", title="Matches"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="completed_at", title="Completed At"),
+                DataTableColumn(key="created_at", title="Created At"),
+            ),
+            show_search=False,
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        apply_status_chip_to_column(self._table.view(), 5)
+        self._table.selection_changed.connect(lambda _rows: self._update_action_state())
         layout.addWidget(self._table)
         return card
 
@@ -357,6 +366,13 @@ class BankReconciliationPage(QWidget):
     def _active_company(self) -> ActiveCompanyDTO | None:
         return self._service_registry.company_context_service.get_active_company()
 
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Permission Denied",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
     def _status_filter_value(self) -> str | None:
         value = self._status_filter_combo.currentData()
         return value if isinstance(value, str) and value else None
@@ -370,84 +386,82 @@ class BankReconciliationPage(QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    @staticmethod
+    def _make_item(text: str, *, user_data=None) -> QStandardItem:
+        item = QStandardItem(text)
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for session in self._sessions:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                str(session.id),
-                session.financial_account_name,
-                self._format_date(session.statement_end_date),
-                self._format_amount(session.statement_ending_balance),
-                str(session.match_count),
-                session.status_code.title(),
-                self._format_datetime(session.completed_at),
-                self._format_datetime(session.created_at),
-            )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, session.id)
-                # Right-align numeric columns: Ending Balance (3), Matches (4)
-                if col in {3, 4}:
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
-                # Center-align: ID (0), Statement End Date (2), Status (5), Completed At (6), Created At (7)
-                if col in {0, 2, 5, 6, 7}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, col, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            id_item = self._make_item(str(session.id), user_data=session.id)
+            balance_item = self._make_item(self._format_amount(session.statement_ending_balance))
+            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            matches_item = self._make_item(str(session.match_count))
+            matches_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._model.appendRow([
+                id_item,
+                self._make_item(session.financial_account_name),
+                self._make_item(self._format_date(session.statement_end_date)),
+                balance_item,
+                matches_item,
+                self._make_item((session.status_code or "").lower()),
+                self._make_item(self._format_datetime(session.completed_at)),
+                self._make_item(self._format_datetime(session.created_at)),
+            ])
 
         count = len(self._sessions)
         self._record_count_label.setText(f"{count} session" if count == 1 else f"{count} sessions")
 
     def _apply_search_filter(self) -> None:
         query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
+        view = self._table.view()
+        for row in range(self._model.rowCount()):
             if not query:
-                self._table.setRowHidden(row, False)
+                view.setRowHidden(row, False)
                 continue
             match = False
-            for col in range(self._table.columnCount()):
-                item = self._table.item(row, col)
+            for col in range(self._model.columnCount()):
+                item = self._model.item(row, col)
                 if item is not None and query in item.text().lower():
                     match = True
                     break
-            self._table.setRowHidden(row, not match)
+            view.setRowHidden(row, not match)
 
     def _restore_selection(self, selected_session_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if self._model.rowCount() == 0:
             return
-        if selected_session_id is None:
-            self._table.selectRow(0)
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_session_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        target_row = 0
+        if selected_session_id is not None:
+            for row in range(self._model.rowCount()):
+                item = self._model.item(row, 0)
+                if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_session_id:
+                    target_row = row
+                    break
+        src_index = self._model.index(target_row, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is not None:
+            sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+            self._table.view().scrollTo(proxy_index)
 
     def _selected_session(self) -> ReconciliationSessionListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
+        id_item = self._model.item(rows[0], 0)
+        if id_item is None:
+            return None
+        session_id = id_item.data(Qt.ItemDataRole.UserRole)
         if item is None:
             return None
         session_id = item.data(Qt.ItemDataRole.UserRole)
@@ -462,9 +476,10 @@ class BankReconciliationPage(QWidget):
         has_company = active_company is not None
         is_draft = has_company and selected is not None and selected.status_code == "draft"
         has_selection = has_company and selected is not None
+        perm = self._service_registry.permission_service
 
-        self._new_button.setEnabled(has_company)
-        self._complete_button.setEnabled(is_draft)
+        self._new_button.setEnabled(has_company and perm.has_permission("treasury.reconciliation.create_session"))
+        self._complete_button.setEnabled(is_draft and perm.has_permission("treasury.reconciliation.complete"))
         self._summary_button.setEnabled(has_selection)
 
     # ------------------------------------------------------------------
@@ -472,6 +487,9 @@ class BankReconciliationPage(QWidget):
     # ------------------------------------------------------------------
 
     def _open_create_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.reconciliation.create_session"):
+            self._show_permission_denied("treasury.reconciliation.create_session")
+            return
         active_company = self._active_company()
         if active_company is None:
             show_info(self, "Bank Reconciliation", "Select an active company before creating sessions.")
@@ -498,6 +516,9 @@ class BankReconciliationPage(QWidget):
         self.reload_sessions(selected_session_id=result.id)
 
     def _complete_selected_session(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.reconciliation.complete"):
+            self._show_permission_denied("treasury.reconciliation.complete")
+            return
         active_company = self._active_company()
         selected = self._selected_session()
         if active_company is None or selected is None:

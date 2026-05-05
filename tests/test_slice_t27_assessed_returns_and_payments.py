@@ -202,6 +202,8 @@ def _build_mock_return_service(*, obligation: TaxObligation, existing_return=Non
         tax_return_repository_factory=lambda s: return_repo,
         tax_obligation_repository_factory=lambda s: obligation_repo,
         company_repository_factory=lambda s: company_repo,
+        posted_tax_line_repository_factory=lambda s: MagicMock(),
+        fiscal_period_repository_factory=lambda s: MagicMock(),
         permission_service=_FakePermissionService(granted),
         audit_service=None,
     )

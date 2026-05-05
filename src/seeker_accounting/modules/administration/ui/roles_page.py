@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -12,8 +13,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -23,8 +22,8 @@ from seeker_accounting.modules.administration.dto.user_dto import RoleDTO
 from seeker_accounting.modules.administration.ui.permission_assignment_dialog import PermissionAssignmentDialog
 from seeker_accounting.modules.administration.ui.role_edit_dialog import RoleEditDialog
 from seeker_accounting.platform.exceptions import ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +57,7 @@ class RolesPage(QWidget):
         root.addWidget(self._build_content_stack(), 1)
 
         self._search_edit.textChanged.connect(self._apply_search_filter)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
+        self._table.selection_changed.connect(self._update_action_state)
 
         self.reload_roles()
 
@@ -70,7 +69,7 @@ class RolesPage(QWidget):
         if not perm.has_permission("administration.roles.view"):
             self._roles = []
             self._perm_counts.clear()
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Access denied")
             self._stack.setCurrentWidget(self._access_denied_state)
             self._update_action_state()
@@ -165,11 +164,25 @@ class RolesPage(QWidget):
         ts.setContentsMargins(0, 0, 0, 0)
         ts.setSpacing(0)
 
-        self._table = QTableWidget(0, _COL_COUNT, self._table_surface)
-        self._table.setHorizontalHeaderLabels([
-            "Name", "Code", "Description", "System", "Permissions",
-        ])
-        configure_compact_table(self._table)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="system", title="System"),
+                DataTableColumn(key="permissions", title="Permissions"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self._table_surface,
+        )
+        self._model = QStandardItemModel(0, _COL_COUNT, self._table_surface)
+        self._model.setHorizontalHeaderLabels(
+            ["Name", "Code", "Description", "System", "Permissions"]
+        )
+        self._table.set_model(self._model)
         ts.addWidget(self._table)
         self._stack.addWidget(self._table_surface)
 
@@ -216,71 +229,80 @@ class RolesPage(QWidget):
 
     # ── table ────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for role in self._roles:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
+            name_item = self._make_item(role.name)
+            name_item.setData(role.id, _ROLE_ROLE_ID)
+            name_item.setData(role.is_system, _ROLE_IS_SYSTEM)
 
-            name_item = QTableWidgetItem(role.name)
-            name_item.setData(_ROLE_ROLE_ID, role.id)
-            name_item.setData(_ROLE_IS_SYSTEM, role.is_system)
-            self._table.setItem(row, _COL_NAME, name_item)
-
-            self._table.setItem(row, _COL_CODE, QTableWidgetItem(role.code))
-            self._table.setItem(row, _COL_DESCRIPTION, QTableWidgetItem(role.description or ""))
-
-            sys_item = QTableWidgetItem("System" if role.is_system else "Custom")
+            sys_item = self._make_item("System" if role.is_system else "Custom")
             sys_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, _COL_SYSTEM, sys_item)
 
             perm_count = self._perm_counts.get(role.id, 0)
-            perm_item = QTableWidgetItem(str(perm_count))
+            perm_item = self._make_item(str(perm_count))
             perm_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, _COL_PERM_COUNT, perm_item)
 
-        self._table.setSortingEnabled(True)
-        self._table.resizeColumnsToContents()
-        self._table.horizontalHeader().setStretchLastSection(True)
+            self._model.appendRow([
+                name_item,
+                self._make_item(role.code),
+                self._make_item(role.description or ""),
+                sys_item,
+                perm_item,
+            ])
 
     def _apply_search_filter(self) -> None:
-        query = self._search_edit.text().lower().strip()
-        for row in range(self._table.rowCount()):
-            name_item = self._table.item(row, _COL_NAME)
-            code_item = self._table.item(row, _COL_CODE)
-            if name_item is None:
-                continue
-            name = name_item.text().lower()
-            code = code_item.text().lower() if code_item else ""
-            self._table.setRowHidden(row, bool(query) and query not in name and query not in code)
+        query = self._search_edit.text().strip()
+        proxy = self._table.view().model()
+        if proxy is not None and hasattr(proxy, "set_search_text"):
+            proxy.set_search_text(query)
 
     def _restore_selection(self, role_id: int) -> None:
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, _COL_NAME)
-            if item and item.data(_ROLE_ROLE_ID) == role_id:
-                self._table.selectRow(row)
-                return
+        if not self._roles:
+            return
+        target_idx = next(
+            (i for i, r in enumerate(self._roles) if r.id == role_id), 0
+        )
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._table.view().scrollTo(proxy_index)
 
     # ── selection helpers ────────────────────────────────────────────
 
     def _selected_row(self) -> int | None:
-        items = self._table.selectedItems()
-        return items[0].row() if items else None
+        rows = self._table.selected_rows()
+        return rows[0] if rows else None
 
     def _selected_role_id(self) -> int | None:
         row = self._selected_row()
         if row is None:
             return None
-        item = self._table.item(row, _COL_NAME)
+        item = self._model.item(row, _COL_NAME)
         return item.data(_ROLE_ROLE_ID) if item else None
 
     def _selected_is_system(self) -> bool | None:
         row = self._selected_row()
         if row is None:
             return None
-        item = self._table.item(row, _COL_NAME)
+        item = self._model.item(row, _COL_NAME)
         return item.data(_ROLE_IS_SYSTEM) if item else None
 
     def _selected_role_dto(self) -> RoleDTO | None:

@@ -27,6 +27,7 @@ from seeker_accounting.modules.treasury.repositories.financial_account_repositor
     FinancialAccountRepository,
 )
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.validation import require_minimum_int, require_text
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -292,10 +293,7 @@ class FinancialAccountService:
         return normalized
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _normalize_optional_text(self, value: str | None) -> str | None:
         if value is None:
@@ -304,9 +302,7 @@ class FinancialAccountService:
         return normalized or None
 
     def _require_positive_id(self, value: int, label: str) -> int:
-        if value <= 0:
-            raise ValidationError(f"{label} is required.")
-        return value
+        return require_minimum_int(value, label, minimum=1, message=f"{label} is required.")
 
     def _translate_integrity_error(self, exc: IntegrityError) -> ValidationError | ConflictError:
         message = str(exc.orig).lower() if exc.orig is not None else str(exc).lower()

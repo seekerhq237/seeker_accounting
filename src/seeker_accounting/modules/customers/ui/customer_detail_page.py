@@ -12,14 +12,12 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSizePolicy,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -33,7 +31,7 @@ from seeker_accounting.platform.exceptions import NotFoundError
 from seeker_accounting.shared.ui.entity_detail.entity_detail_page import EntityDetailPage
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBarItem
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 _log = logging.getLogger(__name__)
 
@@ -104,17 +102,30 @@ class CustomerDetailPage(EntityDetailPage):
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(0)
 
-        self._invoices_table = QTableWidget(container)
-        configure_compact_table(self._invoices_table)
-        self._invoices_table.setColumnCount(7)
-        self._invoices_table.setHorizontalHeaderLabels([
+        self._invoices_model = QStandardItemModel(0, 7, container)
+        self._invoices_model.setHorizontalHeaderLabels([
             "Invoice #", "Date", "Due Date", "Status", "Payment Status",
             "Total", "Open Balance",
         ])
-        self._invoices_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._invoices_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._invoices_table.setSortingEnabled(True)
-        self._invoices_table.horizontalHeader().setStretchLastSection(True)
+        self._invoices_table = DataTable(
+            columns=(
+                DataTableColumn(key="invoice_number", title="Invoice #"),
+                DataTableColumn(key="invoice_date", title="Date"),
+                DataTableColumn(key="due_date", title="Due Date"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="payment_status", title="Payment Status"),
+                DataTableColumn(key="total", title="Total"),
+                DataTableColumn(key="open_balance", title="Open Balance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=container,
+        )
+        self._invoices_table.set_model(self._invoices_model)
+        apply_status_chip_to_column(self._invoices_table.view(), 3)
+        apply_status_chip_to_column(self._invoices_table.view(), 4)
         layout.addWidget(self._invoices_table)
 
         return container
@@ -125,16 +136,26 @@ class CustomerDetailPage(EntityDetailPage):
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(0)
 
-        self._receipts_table = QTableWidget(container)
-        configure_compact_table(self._receipts_table)
-        self._receipts_table.setColumnCount(5)
-        self._receipts_table.setHorizontalHeaderLabels([
+        self._receipts_model = QStandardItemModel(0, 5, container)
+        self._receipts_model.setHorizontalHeaderLabels([
             "Receipt #", "Date", "Account", "Status", "Amount Received",
         ])
-        self._receipts_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._receipts_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._receipts_table.setSortingEnabled(True)
-        self._receipts_table.horizontalHeader().setStretchLastSection(True)
+        self._receipts_table = DataTable(
+            columns=(
+                DataTableColumn(key="receipt_number", title="Receipt #"),
+                DataTableColumn(key="receipt_date", title="Date"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="amount_received", title="Amount Received"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=container,
+        )
+        self._receipts_table.set_model(self._receipts_model)
+        apply_status_chip_to_column(self._receipts_table.view(), 3)
         layout.addWidget(self._receipts_table)
 
         return container
@@ -208,8 +229,12 @@ class CustomerDetailPage(EntityDetailPage):
             show_error(self, "Customer Detail", "Customer not found.")
             self._navigate_back()
             return
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Customer Detail", f"Failed to load customer: {exc}")
+            return
+        except Exception:
+            _log.exception("Customer Detail")
+            show_error(self, "Customer Detail", "An unexpected error occurred. See application log for details.")
             return
 
         # Load invoices (filter to this customer)
@@ -299,53 +324,45 @@ class CustomerDetailPage(EntityDetailPage):
 
         self._set_money_bar(items)
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_invoices_table(self) -> None:
-        self._invoices_table.setSortingEnabled(False)
-        self._invoices_table.setRowCount(0)
-        self._invoices_table.setRowCount(len(self._invoices))
+        self._invoices_model.removeRows(0, self._invoices_model.rowCount())
 
-        for row, inv in enumerate(sorted(self._invoices, key=lambda x: x.invoice_date, reverse=True)):
-            def _cell(text: str, align: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignLeft) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                item.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
-            right = Qt.AlignmentFlag.AlignRight
-
-            self._invoices_table.setItem(row, 0, _cell(inv.invoice_number))
-            self._invoices_table.setItem(row, 1, _cell(inv.invoice_date.strftime("%d %b %Y")))
-            self._invoices_table.setItem(row, 2, _cell(inv.due_date.strftime("%d %b %Y")))
-            self._invoices_table.setItem(row, 3, _cell(inv.status_code.title()))
-            self._invoices_table.setItem(row, 4, _cell(inv.payment_status_code.replace("_", " ").title()))
-            self._invoices_table.setItem(row, 5, _cell(_fmt_amount(inv.total_amount), right))
-            self._invoices_table.setItem(row, 6, _cell(_fmt_amount(inv.open_balance_amount), right))
-
-        self._invoices_table.setSortingEnabled(True)
-        self._invoices_table.resizeColumnsToContents()
+        for inv in sorted(self._invoices, key=lambda x: x.invoice_date, reverse=True):
+            total_item = self._make_item(_fmt_amount(inv.total_amount))
+            total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            balance_item = self._make_item(_fmt_amount(inv.open_balance_amount))
+            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._invoices_model.appendRow([
+                self._make_item(inv.invoice_number),
+                self._make_item(inv.invoice_date.strftime("%d %b %Y")),
+                self._make_item(inv.due_date.strftime("%d %b %Y")),
+                self._make_item(inv.status_code.lower()),
+                self._make_item(inv.payment_status_code.lower()),
+                total_item,
+                balance_item,
+            ])
 
     def _populate_receipts_table(self) -> None:
-        self._receipts_table.setSortingEnabled(False)
-        self._receipts_table.setRowCount(0)
-        self._receipts_table.setRowCount(len(self._receipts))
+        self._receipts_model.removeRows(0, self._receipts_model.rowCount())
 
-        for row, receipt in enumerate(sorted(self._receipts, key=lambda x: x.receipt_date, reverse=True)):
-            def _cell(text: str, align: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignLeft) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                item.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
-            right = Qt.AlignmentFlag.AlignRight
-
-            self._receipts_table.setItem(row, 0, _cell(receipt.receipt_number))
-            self._receipts_table.setItem(row, 1, _cell(receipt.receipt_date.strftime("%d %b %Y")))
-            self._receipts_table.setItem(row, 2, _cell(receipt.financial_account_name))
-            self._receipts_table.setItem(row, 3, _cell(receipt.status_code.title()))
-            self._receipts_table.setItem(row, 4, _cell(_fmt_amount(receipt.amount_received), right))
-
-        self._receipts_table.setSortingEnabled(True)
-        self._receipts_table.resizeColumnsToContents()
+        for receipt in sorted(self._receipts, key=lambda x: x.receipt_date, reverse=True):
+            amount_item = self._make_item(_fmt_amount(receipt.amount_received))
+            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._receipts_model.appendRow([
+                self._make_item(receipt.receipt_number),
+                self._make_item(receipt.receipt_date.strftime("%d %b %Y")),
+                self._make_item(receipt.financial_account_name),
+                self._make_item(receipt.status_code.lower()),
+                amount_item,
+            ])
 
     def _populate_info_tab(self) -> None:
         c = self._customer

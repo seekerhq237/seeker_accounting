@@ -3,8 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -12,8 +12,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -25,8 +23,24 @@ from seeker_accounting.modules.inventory.dto.inventory_valuation_dto import (
     InventoryStockPositionDTO,
     InventoryValuationSummaryDTO,
 )
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+STOCK_POSITION_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="item_code", title="Item Code"),
+    DataTableColumn(key="item_name", title="Item Name"),
+    DataTableColumn(key="uom", title="UoM"),
+    DataTableColumn(key="qty_on_hand", title="Qty on Hand"),
+    DataTableColumn(key="avg_cost", title="Avg Cost"),
+    DataTableColumn(key="total_value", title="Total Value"),
+    DataTableColumn(key="reorder_level", title="Reorder Lvl"),
+    DataTableColumn(key="low_stock", title="Low Stock"),
+)
 
 
 class InventoryStockView(QWidget):
@@ -61,7 +75,7 @@ class InventoryStockView(QWidget):
         if active_company is None:
             self._positions = []
             self._summary = None
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_summary_display()
@@ -79,7 +93,7 @@ class InventoryStockView(QWidget):
         except Exception as exc:
             self._positions = []
             self._summary = None
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_summary_display()
@@ -87,7 +101,6 @@ class InventoryStockView(QWidget):
             return
 
         self._populate_table()
-        self._apply_search_filter()
         self._sync_surface_state(active_company)
         self._update_summary_display()
 
@@ -116,7 +129,7 @@ class InventoryStockView(QWidget):
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search items...")
         self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self._search_input)
 
         self._low_stock_checkbox = QCheckBox("Low stock only", card)
@@ -173,22 +186,22 @@ class InventoryStockView(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setObjectName("StockPositionTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels((
-            "Item Code",
-            "Item Name",
-            "UoM",
-            "Qty on Hand",
-            "Avg Cost",
-            "Total Value",
-            "Reorder Lvl",
-            "Low Stock",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+
+        self._model = QStandardItemModel(0, len(STOCK_POSITION_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in STOCK_POSITION_COLUMNS])
+
+        self._table = DataTable(
+            columns=STOCK_POSITION_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No stock positions to display.",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 7)
         layout.addWidget(self._table)
         return card
 
@@ -273,61 +286,43 @@ class InventoryStockView(QWidget):
         self._total_value_label.setText(f"Total value: {self._format_amount(self._summary.total_inventory_value)}")
         self._low_stock_label.setText(f"Low stock: {self._summary.low_stock_item_count}")
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for pos in self._positions:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                pos.item_code,
-                pos.item_name,
-                pos.unit_of_measure_code,
-                self._format_qty(pos.quantity_on_hand),
-                self._format_cost(pos.weighted_average_cost),
-                self._format_amount(pos.total_value),
-                self._format_qty(pos.reorder_level_quantity) if pos.reorder_level_quantity is not None else "",
-                "Yes" if pos.is_low_stock else "",
-            )
-            for col, value in enumerate(values):
-                cell = QTableWidgetItem(value)
-                if col == 0:
-                    cell.setData(Qt.ItemDataRole.UserRole, pos.item_id)
-                if col in {2, 3, 4, 5, 6, 7}:
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if col == 7 and pos.is_low_stock:
-                    cell.setForeground(Qt.GlobalColor.red)
-                self._table.setItem(row_index, col, cell)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            row_items = [
+                self._make_item(pos.item_code, user_data=pos.item_id),
+                self._make_item(pos.item_name),
+                self._make_item(pos.unit_of_measure_code),
+                self._make_numeric(pos.quantity_on_hand),
+                self._make_numeric(pos.weighted_average_cost),
+                self._make_numeric(pos.total_value),
+                self._make_numeric(pos.reorder_level_quantity),
+                self._make_item("low_stock" if pos.is_low_stock else "in_stock"),
+            ]
+            self._model.appendRow(row_items)
 
         count = len(self._positions)
         self._record_count_label.setText(f"{count} item" if count == 1 else f"{count} items")
 
-    def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                cell = self._table.item(row, col)
-                if cell is not None and query in cell.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
+    def _on_search_text_changed(self, text: str) -> None:
+        self._table.set_search_text(text)
 
     # ------------------------------------------------------------------
     # Formatting

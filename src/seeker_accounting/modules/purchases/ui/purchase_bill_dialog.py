@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -29,6 +32,9 @@ from seeker_accounting.shared.ui.document import DocumentWorkspace, DocumentWork
 from seeker_accounting.shared.ui.searchable_combo_box import SearchableComboBox
 
 
+_log = logging.getLogger(__name__)
+
+
 class PurchaseBillDialog(QDialog):
     def __init__(
         self,
@@ -47,7 +53,7 @@ class PurchaseBillDialog(QDialog):
         is_edit = bill_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Purchase Bill - {company_name}")
         self.setModal(True)
-        self.resize(1040, 720)
+        apply_window_size(self, "modules.purchases.ui.purchase.bill.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -191,6 +197,12 @@ class PurchaseBillDialog(QDialog):
         self._notes_input.setPlaceholderText("Notes")
         self._workspace.add_metadata_full_row(8, "Notes", self._notes_input)
 
+        self._tax_point_date_edit = QDateEdit(strip)
+        self._tax_point_date_edit.setCalendarPopup(True)
+        self._tax_point_date_edit.setDate(date.today())
+        self._workspace.add_metadata_pair(10, "Tax Point Date", self._tax_point_date_edit)
+        self._tax_point_date_edit.setVisible(False)
+
     def _build_lines_section(self) -> QWidget:
         self._lines_grid = PurchaseBillLinesGrid(self._service_registry, self._company_id, self)
         return self._lines_grid
@@ -300,8 +312,20 @@ class PurchaseBillDialog(QDialog):
             self._notes_input.textChanged.connect(self._on_data_changed)
             self._lines_grid.lines_changed.connect(self._on_data_changed)
             self._on_currency_changed(self._currency_combo.current_value())
-        except Exception as exc:
+
+            # Show tax_point_date field only if company uses tax-point scheme
+            try:
+                tp = self._service_registry.company_tax_profile_service.get_or_default(self._company_id)
+                if tp.vat_uses_tax_point:
+                    self._show_tax_point_row(True)
+            except Exception:
+                pass
+        except AppError as exc:
             self._show_error(f"Failed to load reference data: {exc}")
+
+        except Exception:
+            _log.exception("Unexpected error")
+            self._show_error("An unexpected error occurred. See application log for details.")
 
     def _load_bill(self) -> None:
         if self._bill_id is None:
@@ -319,6 +343,9 @@ class PurchaseBillDialog(QDialog):
             self._bill_date_edit.setDate(bill.bill_date)
             self._due_date_edit.setDate(bill.due_date)
 
+            if bill.tax_point_date is not None:
+                self._tax_point_date_edit.setDate(bill.tax_point_date)
+
             self._currency_combo.set_current_value(bill.currency_code)
 
             if bill.exchange_rate is not None:
@@ -331,8 +358,12 @@ class PurchaseBillDialog(QDialog):
             self._on_currency_changed(self._currency_combo.current_value())
             self._update_totals()
             self._refresh_identity()
-        except Exception as exc:
+        except AppError as exc:
             self._show_error(f"Failed to load bill: {exc}")
+
+        except Exception:
+            _log.exception("Unexpected error")
+            self._show_error("An unexpected error occurred. See application log for details.")
 
     # ------------------------------------------------------------------
     # Event handlers
@@ -429,6 +460,7 @@ class PurchaseBillDialog(QDialog):
                     notes=notes,
                     contract_id=contract_id,
                     project_id=project_id,
+                    tax_point_date=self._tax_point_date_edit.date().toPython() if self._tax_point_date_edit.isVisible() else None,
                     lines=lines,
                 )
                 self._saved_bill = self._service_registry.purchase_bill_service.create_draft_bill(
@@ -445,6 +477,7 @@ class PurchaseBillDialog(QDialog):
                     notes=notes,
                     contract_id=contract_id,
                     project_id=project_id,
+                    tax_point_date=self._tax_point_date_edit.date().toPython() if self._tax_point_date_edit.isVisible() else None,
                     lines=lines,
                 )
                 self._saved_bill = self._service_registry.purchase_bill_service.update_draft_bill(
@@ -454,12 +487,27 @@ class PurchaseBillDialog(QDialog):
             self.accept()
         except ValidationError as exc:
             self._show_error(str(exc))
-        except Exception as exc:
+        except AppError as exc:
             self._show_error(f"Failed to save bill: {exc}")
+
+        except Exception:
+            _log.exception("Unexpected error")
+            self._show_error("An unexpected error occurred. See application log for details.")
 
     def _show_error(self, message: str) -> None:
         self._error_label.setText(message)
         self._error_label.show()
+
+    def _show_tax_point_row(self, visible: bool) -> None:
+        """Show or hide the Tax Point Date field and its label in the metadata grid."""
+        grid = self._workspace.metadata_grid
+        # row 10 with 2 columns → grid_row=5, pair_index=0 → label_col=0, value_col=1
+        for col in (0, 1):
+            item = grid.itemAtPosition(5, col)
+            if item is not None:
+                w = item.widget()
+                if w is not None:
+                    w.setVisible(visible)
 
     def _base_currency_code(self) -> str | None:
         return getattr(self._service_registry.active_company_context, "base_currency_code", None)

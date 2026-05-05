@@ -16,6 +16,10 @@ class PayrollRun(TimestampMixin, Base):
         calculated     – engines have run, employee rows exist, pending approval
         approved       – approved for posting, cannot be recalculated
         posted         – posted to GL; immutable for accounting-sensitive changes
+        reversed       – previously posted run that has been offset in the GL
+                         by a reversal journal entry; settlement records remain
+                         visible but no further accounting changes occur on
+                         this run.
         voided         – cancelled, cannot be used
 
     One non-voided run per (company_id, period_year, period_month).
@@ -58,6 +62,16 @@ class PayrollRun(TimestampMixin, Base):
         ForeignKey("journal_entries.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    reversed_at: Mapped[datetime | None] = mapped_column(DateTime(), nullable=True)
+    reversed_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    reversal_journal_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("journal_entries.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    reversal_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     employees: Mapped[list["PayrollRunEmployee"]] = relationship(
         "PayrollRunEmployee",

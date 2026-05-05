@@ -3,18 +3,18 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 from seeker_accounting.modules.reporting.dto.ias_income_statement_dto import (
     IasIncomeStatementReportDTO,
@@ -75,28 +75,38 @@ class IasIncomeStatementTemplatePreviewDialog(QDialog):
         layout.addWidget(description)
         return card
 
-    def _build_preview_table(self) -> QWidget:
-        table = QTableWidget(self)
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
-        table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(28)
-        table.setWordWrap(False)
-        table.setShowGrid(False)
-        table.setAlternatingRowColors(False)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    def _build_preview_table(self) -> DataTable:
+        model = QStandardItemModel(0, 3, self)
+        model.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
+
+        table = DataTable(
+            columns=(
+                DataTableColumn(key="ref", title="Ref"),
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        table.set_model(model)
+        table.view().setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        table.view().setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        table.view().verticalHeader().setVisible(False)
+        table.view().verticalHeader().setDefaultSectionSize(28)
+        table.view().setShowGrid(False)
+        table.view().setAlternatingRowColors(False)
         table.setStyleSheet(f"background: {self._template_dto.statement_background};")
-        table.setColumnWidth(0, 100)
-        table.setColumnWidth(1, 560)
-        table.setColumnWidth(2, 180)
+        table.view().setColumnWidth(0, 100)
+        table.view().setColumnWidth(1, 560)
+        table.view().setColumnWidth(2, 180)
 
         rows = self._build_rows()
-        table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
-            self._bind_row(table, row_index, row)
-            table.setRowHeight(row_index, self._template_dto.row_height)
+            self._bind_row(model, row)
+            table.view().setRowHeight(row_index, self._template_dto.row_height)
         return table
 
     def _build_rows(self) -> list[tuple[str, str | None, str, Decimal | None]]:
@@ -112,14 +122,13 @@ class IasIncomeStatementTemplatePreviewDialog(QDialog):
 
     def _bind_row(
         self,
-        table: QTableWidget,
-        row_index: int,
-        row_data: tuple[str, str | None, str, Decimal | None],
+        model: QStandardItemModel,
+        row_data: "tuple[str, str | None, str, Decimal | None]",
     ) -> None:
         row_type, ref, label, amount = row_data
-        ref_item = QTableWidgetItem(ref or "")
-        label_item = QTableWidgetItem(label)
-        amount_item = QTableWidgetItem("" if amount is None else self._fmt(amount))
+        ref_item = self._make_item(ref or "")
+        label_item = self._make_item(label)
+        amount_item = self._make_item("" if amount is None else self._fmt(amount))
         amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         if row_type == "section":
@@ -129,15 +138,13 @@ class IasIncomeStatementTemplatePreviewDialog(QDialog):
         else:
             self._apply_row_style(ref_item, label_item, amount_item, False, self._template_dto.statement_background)
 
-        table.setItem(row_index, 0, ref_item)
-        table.setItem(row_index, 1, label_item)
-        table.setItem(row_index, 2, amount_item)
+        model.appendRow([ref_item, label_item, amount_item])
 
     def _apply_row_style(
         self,
-        ref_item: QTableWidgetItem,
-        label_item: QTableWidgetItem,
-        amount_item: QTableWidgetItem,
+        ref_item: QStandardItem,
+        label_item: QStandardItem,
+        amount_item: QStandardItem,
         bold: bool,
         color_hex: str,
     ) -> None:
@@ -147,6 +154,14 @@ class IasIncomeStatementTemplatePreviewDialog(QDialog):
             font = item.font()
             font.setBold(bold)
             item.setFont(font)
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     @staticmethod
     def _fmt(amount: Decimal) -> str:

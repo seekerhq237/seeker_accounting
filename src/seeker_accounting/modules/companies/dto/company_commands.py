@@ -48,6 +48,7 @@ class UpdateCompanyPreferencesCommand:
     decimal_places: int
     tax_inclusive_default: bool
     allow_negative_stock: bool = False
+    enforce_inventory_segregation_of_duties: bool = False
     default_inventory_cost_method: str | None = None
     idle_timeout_minutes: int = 2
     password_expiry_days: int = 30

@@ -27,6 +27,7 @@ from seeker_accounting.modules.payroll.engines.engine_types import (
     EngineContext,
     EngineLineResult,
     RuleSetInput,
+    quantize_xaf,
 )
 
 _IRPP_RULE = "DGI_IRPP_MAIN"
@@ -83,7 +84,7 @@ def run_irpp_engine(
         cac_comp = _find_component(ctx, "CAC")
         if cac_comp is not None:
             cac_rate = cac_comp.base_rate if cac_comp.base_rate > 0 else _CAC_RATE_FALLBACK
-            cac_amount = (irpp_amount * cac_rate).quantize(Decimal("0.0001"))
+            cac_amount = quantize_xaf(irpp_amount * cac_rate)
             results.append(
                 EngineLineResult(
                     component_id=cac_comp.component_id,
@@ -122,7 +123,7 @@ def _append_crtv(
         results.append(
             EngineLineResult(
                 component_id=crtv_comp.component_id,
-                component_type_code="deduction",
+                component_type_code="tax",
                 calculation_basis=gross_for_lookup,
                 rate_applied=None,
                 component_amount=crtv_amount,
@@ -139,8 +140,8 @@ def _find_component(ctx: EngineContext, code: str):
 
 def _resolve_fixed(comp) -> Decimal:
     if comp.input_amount is not None:
-        return comp.input_amount.quantize(Decimal("0.0001"))
-    return comp.base_amount.quantize(Decimal("0.0001"))
+        return quantize_xaf(comp.input_amount)
+    return quantize_xaf(comp.base_amount)
 
 
 def _resolve_crtv_bracket(gross: Decimal, rule_set: RuleSetInput) -> Decimal:
@@ -159,7 +160,7 @@ def _resolve_crtv_bracket(gross: Decimal, rule_set: RuleSetInput) -> Decimal:
             matched_amount = bracket.fixed_amount
             break
         matched_amount = bracket.fixed_amount
-    return matched_amount.quantize(Decimal("0.0001"))
+    return quantize_xaf(matched_amount)
 
 
 def _calculate_bracket_tax(
@@ -200,6 +201,7 @@ def _calculate_bracket_tax(
         tax_per_part += max(bracket_tax, Decimal("0"))
 
     # Multiply back by parts and de-annualize
+    # Keep 4dp intermediate precision; round final monthly tax to whole XAF.
     annual_tax = tax_per_part * parts
-    monthly_tax = (annual_tax / 12).quantize(Decimal("0.0001"))
+    monthly_tax = quantize_xaf(annual_tax / 12)
     return monthly_tax

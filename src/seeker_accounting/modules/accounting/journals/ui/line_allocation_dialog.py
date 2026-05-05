@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -34,7 +35,7 @@ class LineAllocationDialog(BaseDialog):
 
         super().__init__("Allocate to Contract / Project", parent)
         self.setObjectName("LineAllocationDialog")
-        self.resize(420, 320)
+        apply_window_size(self, "modules.accounting.journals.ui.line.allocation.dialog.0")
 
         self._contract_options: list[ContractListItemDTO] = []
         self._project_options: list[ProjectListItemDTO] = []

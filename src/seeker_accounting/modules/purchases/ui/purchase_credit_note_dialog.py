@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 from datetime import date
 
@@ -52,7 +53,7 @@ class PurchaseCreditNoteDialog(QDialog):
         is_edit = credit_note_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Purchase Credit Note — {company_name}")
         self.setModal(True)
-        self.resize(920, 680)
+        apply_window_size(self, "modules.purchases.ui.purchase.credit.note.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
@@ -155,6 +156,17 @@ class PurchaseCreditNoteDialog(QDialog):
         self._reason_edit.setFixedHeight(60)
         grid.addLayout(create_field_block("Reason", self._reason_edit), 2, 1)
 
+        # Row 3: Tax Point Date (visible only when vat_uses_tax_point)
+        self._tax_point_date_edit = QDateEdit(frame)
+        self._tax_point_date_edit.setCalendarPopup(True)
+        self._tax_point_date_edit.setDate(date.today())
+        self._tax_point_field_block = create_field_block("Tax Point Date", self._tax_point_date_edit)
+        grid.addLayout(self._tax_point_field_block, 3, 0)
+        for i in range(self._tax_point_field_block.count()):
+            item = self._tax_point_field_block.itemAt(i)
+            if item and item.widget():
+                item.widget().setVisible(False)
+
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         return frame
@@ -209,6 +221,14 @@ class PurchaseCreditNoteDialog(QDialog):
         except Exception:
             _log.warning("PCN dialog: failed to load currencies", exc_info=True)
 
+        # Show tax_point_date field only if company uses tax-point scheme
+        try:
+            tp = self._service_registry.company_tax_profile_service.get_or_default(self._company_id)
+            if tp.vat_uses_tax_point:
+                self._set_tax_point_visible(True)
+        except Exception:
+            pass
+
     # ------------------------------------------------------------------
     # Load existing
     # ------------------------------------------------------------------
@@ -237,6 +257,9 @@ class PurchaseCreditNoteDialog(QDialog):
         self._supplier_ref_edit.setText(cn.supplier_credit_reference or "")
         self._source_bill_edit.setText(cn.source_bill_number or "")
         self._reason_edit.setPlainText(cn.reason_text or "")
+
+        if cn.tax_point_date is not None:
+            self._tax_point_date_edit.setDate(cn.tax_point_date)
 
         self._lines_grid.set_lines(cn.lines)
         self._update_totals()
@@ -303,6 +326,7 @@ class PurchaseCreditNoteDialog(QDialog):
                     contract_id=None,
                     project_id=None,
                     lines=line_cmds,
+                    tax_point_date=self._tax_point_date_edit.date().toPython() if self._tax_point_date_edit.isVisible() else None,
                 )
                 self._saved = self._service_registry.purchase_credit_note_service.create_draft_credit_note(cmd)
             else:
@@ -319,6 +343,7 @@ class PurchaseCreditNoteDialog(QDialog):
                     contract_id=None,
                     project_id=None,
                     lines=line_cmds,
+                    tax_point_date=self._tax_point_date_edit.date().toPython() if self._tax_point_date_edit.isVisible() else None,
                 )
                 self._saved = self._service_registry.purchase_credit_note_service.update_draft_credit_note(cmd)
 
@@ -331,3 +356,9 @@ class PurchaseCreditNoteDialog(QDialog):
             _log.error("PCN dialog submit error", exc_info=True)
             self._error_label.setText(f"Unexpected error: {exc}")
             self._error_label.show()
+
+    def _set_tax_point_visible(self, visible: bool) -> None:
+        for i in range(self._tax_point_field_block.count()):
+            item = self._tax_point_field_block.itemAt(i)
+            if item and item.widget():
+                item.widget().setVisible(visible)

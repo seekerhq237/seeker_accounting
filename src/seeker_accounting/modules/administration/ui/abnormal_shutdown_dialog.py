@@ -1,6 +1,7 @@
 """Dialog shown on login when the previous session was not cleanly closed."""
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -37,7 +38,7 @@ class AbnormalShutdownDialog(QDialog):
         self.setWindowTitle("Session Not Properly Closed")
         self.setModal(True)
         self.setMinimumWidth(500)
-        self.resize(540, 420)
+        apply_window_size(self, "modules.administration.ui.abnormal.shutdown.dialog.0")
         # Remove close button from title bar
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowCloseButtonHint)
 

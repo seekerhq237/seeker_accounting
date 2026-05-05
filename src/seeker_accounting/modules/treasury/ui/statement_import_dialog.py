@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtWidgets import (
@@ -42,7 +43,7 @@ class StatementImportDialog(QDialog):
 
         self.setWindowTitle(f"Import Bank Statement — {company_name}")
         self.setModal(True)
-        self.resize(550, 350)
+        apply_window_size(self, "modules.treasury.ui.statement.import.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

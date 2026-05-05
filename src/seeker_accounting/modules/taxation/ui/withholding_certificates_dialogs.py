@@ -12,6 +12,7 @@ and dispatch to ``WithholdingTaxCertificateService``:
 
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -245,7 +246,7 @@ class RecordWithholdingCertificateDialog(BaseDialog):
             help_key="dialog.tax.record_withholding_certificate",
         )
         self.setObjectName("RecordWithholdingCertificateDialog")
-        self.resize(640, 620)
+        apply_window_size(self, "modules.taxation.ui.withholding.certificates.dialogs.0")
 
         intro = QLabel(
             "Record an inbound (received from customer) or outbound "
@@ -347,7 +348,7 @@ class EditWithholdingCertificateDialog(BaseDialog):
             help_key="dialog.tax.edit_withholding_certificate",
         )
         self.setObjectName("EditWithholdingCertificateDialog")
-        self.resize(640, 620)
+        apply_window_size(self, "modules.taxation.ui.withholding.certificates.dialogs.1")
 
         intro = QLabel(
             f"Editing certificate <b>{certificate.certificate_number}</b> "
@@ -465,7 +466,7 @@ class VoidWithholdingCertificateDialog(BaseDialog):
             help_key="dialog.tax.void_withholding_certificate",
         )
         self.setObjectName("VoidWithholdingCertificateDialog")
-        self.resize(520, 320)
+        apply_window_size(self, "modules.taxation.ui.withholding.certificates.dialogs.2")
 
         intro = QLabel(
             f"Void certificate <b>{certificate.certificate_number}</b> "
@@ -570,7 +571,7 @@ class LinkWithholdingCertificateDialog(BaseDialog):
             help_key="dialog.tax.link_withholding_certificate",
         )
         self.setObjectName("LinkWithholdingCertificateDialog")
-        self.resize(620, 460)
+        apply_window_size(self, "modules.taxation.ui.withholding.certificates.dialogs.3")
 
         intro = QLabel(
             f"Attach a posted journal entry to certificate "

@@ -17,6 +17,7 @@ from seeker_accounting.modules.accounting.journals.models.journal_entry_line imp
 from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import (
     JournalEntryRepository,
 )
+from seeker_accounting.modules.budgeting.services.budget_control_service import BudgetControlService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.treasury.dto.treasury_transaction_dto import TreasuryTransactionPostingResultDTO
 from seeker_accounting.modules.treasury.repositories.financial_account_repository import FinancialAccountRepository
@@ -54,6 +55,7 @@ class TreasuryTransactionPostingService:
         company_repository_factory: CompanyRepositoryFactory,
         numbering_service: NumberingService,
         permission_service: PermissionService,
+        budget_control_service: BudgetControlService | None = None,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -65,6 +67,7 @@ class TreasuryTransactionPostingService:
         self._company_repository_factory = company_repository_factory
         self._numbering_service = numbering_service
         self._permission_service = permission_service
+        self._budget_control_service = budget_control_service
         self._audit_service = audit_service
 
     def post_transaction(
@@ -110,6 +113,8 @@ class TreasuryTransactionPostingService:
             journal_lines: list[JournalEntryLine] = []
             line_number = 1
             is_receipt = txn.transaction_type_code in _RECEIPT_TYPES
+            if not is_receipt:
+                self._enforce_budget_for_payment(txn)
 
             for txn_line in txn.lines:
                 if is_receipt:
@@ -241,6 +246,32 @@ class TreasuryTransactionPostingService:
         repo = self._company_repository_factory(session)
         if repo.get_by_id(company_id) is None:
             raise NotFoundError(f"Company with id {company_id} was not found.")
+
+    def _enforce_budget_for_payment(self, txn: object) -> None:
+        if self._budget_control_service is None:
+            return
+        requests: dict[tuple[int, int | None, int | None], Decimal] = {}
+        for line in txn.lines:
+            project_id = getattr(line, "project_id", None) or getattr(txn, "project_id", None)
+            if project_id is None:
+                continue
+            amount = Decimal(getattr(line, "amount", Decimal("0.00"))).quantize(Decimal("0.01"))
+            if amount <= Decimal("0.00"):
+                continue
+            key = (
+                project_id,
+                getattr(line, "project_job_id", None),
+                getattr(line, "project_cost_code_id", None),
+            )
+            requests[key] = requests.get(key, Decimal("0.00")) + amount
+        for (project_id, project_job_id, project_cost_code_id), amount in requests.items():
+            self._budget_control_service.enforce_budget(
+                project_id,
+                amount,
+                project_job_id=project_job_id,
+                project_cost_code_id=project_cost_code_id,
+                context_label=f"Treasury payment {getattr(txn, 'transaction_number', '')}".strip(),
+            )
 
     def _translate_posting_integrity_error(self, exc: IntegrityError) -> ValidationError | ConflictError:
         message = str(exc.orig).lower() if exc.orig is not None else str(exc).lower()

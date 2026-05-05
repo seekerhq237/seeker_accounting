@@ -57,3 +57,25 @@ class PayrollPostingResultDTO:
     total_credit: Decimal
     posted_at: datetime
     journal_lines: tuple[PostingJournalLineDTO, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ReversePayrollRunCommand:
+    run_id: int
+    reversal_date: date
+    reason: str
+    narration: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PayrollReversalResultDTO:
+    run_id: int
+    run_reference: str
+    original_journal_entry_id: int
+    reversal_journal_entry_id: int
+    reversal_entry_number: str
+    reversal_date: date
+    total_debit: Decimal
+    total_credit: Decimal
+    reversed_at: datetime
+    journal_lines: tuple[PostingJournalLineDTO, ...]

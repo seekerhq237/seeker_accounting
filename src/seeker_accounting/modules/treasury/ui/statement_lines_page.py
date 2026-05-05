@@ -6,8 +6,8 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -15,8 +15,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -28,10 +26,26 @@ from seeker_accounting.modules.treasury.dto.bank_statement_dto import BankStatem
 from seeker_accounting.modules.treasury.ui.manual_statement_line_dialog import ManualStatementLineDialog
 from seeker_accounting.modules.treasury.ui.statement_import_dialog import StatementImportDialog
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
+
+
+STATEMENT_LINE_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="date", title="Date"),
+    DataTableColumn(key="value_date", title="Value Date"),
+    DataTableColumn(key="description", title="Description"),
+    DataTableColumn(key="reference", title="Reference"),
+    DataTableColumn(key="debit", title="Debit", is_numeric=True),
+    DataTableColumn(key="credit", title="Credit", is_numeric=True),
+    DataTableColumn(key="reconciled", title="Reconciled"),
+    DataTableColumn(key="batch", title="Batch"),
+)
 
 
 class StatementLinesPage(QWidget):
@@ -64,7 +78,7 @@ class StatementLinesPage(QWidget):
 
         if active_company is None:
             self._lines = []
-            self._table.setRowCount(0)
+            self._lines_model.removeRows(0, self._lines_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -73,7 +87,7 @@ class StatementLinesPage(QWidget):
         financial_account_id = self._selected_financial_account_id()
         if financial_account_id is None:
             self._lines = []
-            self._table.setRowCount(0)
+            self._lines_model.removeRows(0, self._lines_model.rowCount())
             self._record_count_label.setText("Select an account")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -87,7 +101,7 @@ class StatementLinesPage(QWidget):
             )
         except Exception as exc:
             self._lines = []
-            self._table.setRowCount(0)
+            self._lines_model.removeRows(0, self._lines_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -95,8 +109,8 @@ class StatementLinesPage(QWidget):
             return
 
         self._populate_table()
-        self._apply_search_filter()
         self._sync_surface_state(active_company)
+        self._update_record_count_label()
         self._update_action_state()
 
     # ------------------------------------------------------------------
@@ -124,7 +138,7 @@ class StatementLinesPage(QWidget):
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search lines...")
         self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self._search_input)
 
         self._account_filter_combo = QComboBox(card)
@@ -171,22 +185,27 @@ class StatementLinesPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setObjectName("StatementLinesTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels((
-            "Date",
-            "Value Date",
-            "Description",
-            "Reference",
-            "Debit",
-            "Credit",
-            "Reconciled",
-            "Batch",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
+
+        self._lines_model = QStandardItemModel(0, len(STATEMENT_LINE_COLUMNS), self)
+        self._lines_model.setHorizontalHeaderLabels(
+            [c.title for c in STATEMENT_LINE_COLUMNS]
+        )
+
+        self._table = DataTable(
+            columns=STATEMENT_LINE_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No statement lines to display.",
+            parent=card,
+        )
+        self._table.set_model(self._lines_model)
+        self._lines_status_delegate = apply_status_chip_to_column(
+            self._table.view(), 6
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
         layout.addWidget(self._table)
         return card
 
@@ -296,63 +315,62 @@ class StatementLinesPage(QWidget):
 
         self._account_filter_combo.blockSignals(False)
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-
+        self._lines_model.removeRows(0, self._lines_model.rowCount())
         for line in self._lines:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                self._format_date(line.line_date),
-                self._format_date(line.value_date) if line.value_date else "",
-                line.description,
-                line.reference or "",
-                self._format_amount(line.debit_amount),
-                self._format_amount(line.credit_amount),
-                "Yes" if line.is_reconciled else "No",
-                str(line.import_batch_id) if line.import_batch_id else "Manual",
+            value_date = self._format_date(line.value_date) if line.value_date else ""
+            batch = str(line.import_batch_id) if line.import_batch_id else "Manual"
+            reconciled = "reconciled" if line.is_reconciled else "unreconciled"
+            items = [
+                self._make_item(self._format_date(line.line_date), user_data=line.id),
+                self._make_item(value_date),
+                self._make_item(line.description),
+                self._make_item(line.reference or ""),
+                self._make_numeric(line.debit_amount),
+                self._make_numeric(line.credit_amount),
+                self._make_item(reconciled),
+                self._make_item(batch),
+            ]
+            self._lines_model.appendRow(items)
+
+    def _on_search_text_changed(self, text: str) -> None:
+        self._table.set_search_text(text)
+        self._update_record_count_label()
+
+    def _update_record_count_label(self) -> None:
+        total = len(self._lines)
+        query = self._search_input.text().strip()
+        if query:
+            proxy = self._table.view().model()
+            visible = proxy.rowCount() if proxy is not None else total
+            self._record_count_label.setText(
+                f"{visible} shown of {total} lines"
             )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, line.id)
-                if col in {0, 1, 4, 5, 6, 7}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if col in {4, 5}:
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
-                self._table.setItem(row_index, col, item)
+        else:
+            self._record_count_label.setText(
+                f"{total} line" if total == 1 else f"{total} lines"
+            )
 
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
-
-        count = len(self._lines)
-        self._record_count_label.setText(f"{count} line" if count == 1 else f"{count} lines")
-
-    def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                item = self._table.item(row, col)
-                if item is not None and query in item.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
 
     def _update_action_state(self) -> None:
         active_company = self._active_company()

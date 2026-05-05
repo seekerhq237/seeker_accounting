@@ -31,6 +31,7 @@ from seeker_accounting.modules.customers.models.customer_group import CustomerGr
 from seeker_accounting.modules.customers.repositories.customer_group_repository import CustomerGroupRepository
 from seeker_accounting.modules.customers.repositories.customer_repository import CustomerRepository
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.validation import require_code, require_non_negative_decimal, require_text
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -140,6 +141,7 @@ class CustomerService:
             group = repository.get_by_id(company_id, group_id)
             if group is None:
                 raise NotFoundError(f"Customer group with id {group_id} was not found.")
+            from_state = "active" if group.is_active else "inactive"
             group.is_active = False
             repository.save(group)
             try:
@@ -149,6 +151,14 @@ class CustomerService:
 
             from seeker_accounting.modules.audit.event_type_catalog import CUSTOMER_GROUP_DEACTIVATED
             self._record_audit(company_id, CUSTOMER_GROUP_DEACTIVATED, "CustomerGroup", group.id, "Deactivated customer group")
+            self._record_state_transition(
+                company_id,
+                "CustomerGroup",
+                group.id,
+                from_state,
+                "inactive",
+                "Customer group deactivated.",
+            )
     def list_customers(
         self,
         company_id: int,
@@ -374,6 +384,7 @@ class CustomerService:
             customer = repository.get_by_id(company_id, customer_id)
             if customer is None:
                 raise NotFoundError(f"Customer with id {customer_id} was not found.")
+            from_state = "active" if customer.is_active else "inactive"
             customer.is_active = False
             repository.save(customer)
             try:
@@ -383,6 +394,14 @@ class CustomerService:
 
             from seeker_accounting.modules.audit.event_type_catalog import CUSTOMER_DEACTIVATED
             self._record_audit(company_id, CUSTOMER_DEACTIVATED, "Customer", customer_id, "Deactivated customer")
+            self._record_state_transition(
+                company_id,
+                "Customer",
+                customer_id,
+                from_state,
+                "inactive",
+                "Customer deactivated.",
+            )
     def _validate_customer_dependencies(
         self,
         *,
@@ -429,14 +448,10 @@ class CustomerService:
         return self._customer_repository_factory(session)
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _require_code(self, value: str, label: str) -> str:
-        normalized = self._require_text(value, label).upper()
-        return normalized.replace(" ", "")
+        return require_code(value, label, remove_spaces=True)
 
     def _normalize_optional_text(self, value: str | None) -> str | None:
         if value is None:
@@ -454,11 +469,12 @@ class CustomerService:
         return value
 
     def _normalize_optional_decimal(self, value: Decimal | None) -> Decimal | None:
-        if value is None:
-            return None
-        if value < 0:
-            raise ValidationError("Credit limit amount cannot be negative.")
-        return value.quantize(Decimal("0.01"))
+        normalized = require_non_negative_decimal(
+            value,
+            "Credit limit amount",
+            message="Credit limit amount cannot be negative.",
+        )
+        return normalized.quantize(Decimal("0.01")) if normalized is not None else None
 
     def _normalize_create_command(self, command: CreateCustomerCommand) -> CreateCustomerCommand:
         return CreateCustomerCommand(
@@ -546,6 +562,7 @@ class CustomerService:
             credit_limit_amount=row.credit_limit_amount,
             is_active=row.is_active,
             updated_at=row.updated_at,
+            withholds_vat=bool(getattr(row, "withholds_vat", False)),
         )
 
     def _to_customer_detail_dto(
@@ -605,3 +622,28 @@ class CustomerService:
             )
         except Exception:
             pass  # Audit must not break business operations
+
+    def _record_state_transition(
+        self,
+        company_id: int,
+        entity_type: str,
+        entity_id: int | None,
+        from_state: str | None,
+        to_state: str,
+        description: str,
+    ) -> None:
+        if self._audit_service is None:
+            return
+        from seeker_accounting.modules.audit.event_type_catalog import MODULE_CUSTOMERS
+        try:
+            self._audit_service.record_state_transition(
+                company_id,
+                module_code=MODULE_CUSTOMERS,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                from_state=from_state,
+                to_state=to_state,
+                description=description,
+            )
+        except Exception:
+            pass

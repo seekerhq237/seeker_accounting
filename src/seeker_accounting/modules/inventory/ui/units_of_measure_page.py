@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -19,8 +20,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -34,8 +33,23 @@ from seeker_accounting.modules.inventory.dto.inventory_reference_commands import
 )
 from seeker_accounting.modules.inventory.dto.inventory_reference_dto import UnitOfMeasureDTO
 from seeker_accounting.platform.exceptions import ConflictError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+UOM_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="code", title="Code"),
+    DataTableColumn(key="name", title="Name"),
+    DataTableColumn(key="category", title="Category"),
+    DataTableColumn(key="ratio", title="Ratio"),
+    DataTableColumn(key="description", title="Description"),
+    DataTableColumn(key="active", title="Active"),
+)
+
 
 _log = logging.getLogger(__name__)
 
@@ -58,7 +72,7 @@ class _UomDialog(QDialog):
         is_edit = uom_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Unit of Measure — {company_name}")
         self.setModal(True)
-        self.resize(420, 340)
+        apply_window_size(self, "modules.inventory.ui.units.of.measure.page.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -209,7 +223,7 @@ class UnitsOfMeasurePage(QWidget):
     def reload(self) -> None:
         active_company = self._service_registry.company_context_service.get_active_company()
         if active_company is None:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_company_state)
             return
@@ -218,7 +232,7 @@ class UnitsOfMeasurePage(QWidget):
                 active_company.company_id
             )
         except Exception as exc:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             show_error(self, "Units of Measure", f"Could not load data.\n\n{exc}")
@@ -277,13 +291,23 @@ class UnitsOfMeasurePage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(("Code", "Name", "Category", "Ratio", "Description", "Active"))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_edit())
+
+        self._model = QStandardItemModel(0, len(UOM_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in UOM_COLUMNS])
+
+        self._table = DataTable(
+            columns=UOM_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No units of measure to display.",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 5)
+        self._table.row_activated.connect(lambda _row: self._on_edit())
         layout.addWidget(self._table)
         return card
 
@@ -324,31 +348,34 @@ class UnitsOfMeasurePage(QWidget):
         layout.addStretch(1)
         return card
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
     def _populate(self, rows: list[UnitOfMeasureDTO]) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._rows: list[UnitOfMeasureDTO] = list(rows)
+        self._model.removeRows(0, self._model.rowCount())
         for row in rows:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            code_item = QTableWidgetItem(row.code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._table.setItem(ri, 0, code_item)
-            self._table.setItem(ri, 1, QTableWidgetItem(row.name))
-            self._table.setItem(ri, 2, QTableWidgetItem(row.category_code or ""))
-            ratio_item = QTableWidgetItem(str(row.ratio_to_base))
-            ratio_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(ri, 3, ratio_item)
-            self._table.setItem(ri, 4, QTableWidgetItem(row.description or ""))
-            self._table.setItem(ri, 5, QTableWidgetItem("Yes" if row.is_active else "No"))
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(row.code, user_data=row.id),
+                self._make_item(row.name),
+                self._make_item(row.category_code or ""),
+                self._make_numeric(row.ratio_to_base),
+                self._make_item(row.description or ""),
+                self._make_item("active" if row.is_active else "inactive"),
+            ])
         count = len(rows)
         self._count_label.setText(f"{count} record" if count == 1 else f"{count} records")
 
@@ -376,13 +403,13 @@ class UnitsOfMeasurePage(QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        idx = rows[0]
+        if not (0 <= idx < len(getattr(self, "_rows", []))):
             return
-        uom_id = item.data(Qt.ItemDataRole.UserRole)
+        uom_id = self._rows[idx].id
         dialog = _UomDialog(
             self._service_registry, company.company_id, company.company_name, uom_id=uom_id, parent=self
         )

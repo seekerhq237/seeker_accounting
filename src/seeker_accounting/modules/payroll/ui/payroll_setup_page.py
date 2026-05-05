@@ -130,7 +130,7 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         self._configure_btn.clicked.connect(self._on_configure_settings)
         layout.addWidget(self._configure_btn)
 
-        self._seed_btn = QPushButton("Apply Statutory Pack…", card)
+        self._seed_btn = QPushButton("Apply statutory pack...", card)
         self._seed_btn.setProperty("variant", "secondary")
         self._seed_btn.clicked.connect(self._on_seed_cameroon)
         layout.addWidget(self._seed_btn)
@@ -150,7 +150,7 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
 
         self._tabs.addTab(self._build_settings_tab(), "Company Settings")
         self._tabs.addTab(self._build_employees_tab(), "Employees")
-        self._tabs.addTab(self._build_components_tab(), "Payroll Components")
+        self._tabs.addTab(self._build_components_tab(), "Payroll components")
         self._tabs.addTab(self._build_rules_tab(), "Payroll Rules")
         return self._tabs
 
@@ -192,7 +192,7 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         field_defs = [
             ("pay_frequency",    "Default Pay Frequency"),
             ("currency",         "Default Currency"),
-            ("statutory_pack",   "Statutory Pack Version"),
+            ("statutory_pack",   "Statutory pack version"),
             ("cnps_regime",      "CNPS Regime"),
             ("accident_class",   "Accident Risk Class"),
             ("overtime_mode",    "Overtime Policy Mode"),
@@ -207,7 +207,8 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
             row_layout.setSpacing(12)
             lbl = QLabel(label_text, row)
             lbl.setProperty("role", "caption")
-            lbl.setFixedWidth(200)
+            from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _tok
+            lbl.setFixedWidth(_tok.sizes.form_label_w_medium)
             val = QLabel("—", row)
             self._settings_fields[key] = val
             row_layout.addWidget(lbl)
@@ -505,8 +506,9 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
             return
         try:
             ws = self._sr.payroll_setup_service.get_payroll_setup_workspace(company.company_id)
-        except Exception as exc:
-            show_error(self, "Payroll Setup", f"Could not load payroll settings.\n\n{exc}")
+        except Exception:
+            _log.exception("Failed to load payroll settings for company %s", company.company_id)
+            show_error(self, "Payroll Setup", "Could not load payroll settings. See application log for details.")
             self._settings_stack.setCurrentWidget(self._settings_empty)
             return
         if ws.settings is None:
@@ -540,8 +542,9 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
             rows = self._sr.employee_service.list_employees(
                 company.company_id, active_only=active_only, query=query
             )
-        except Exception as exc:
-            show_error(self, "Employees", f"Could not load employees.\n\n{exc}")
+        except Exception:
+            _log.exception("Failed to load employees for company %s", company.company_id)
+            show_error(self, "Employees", "Could not load employees. See application log for details.")
             self._emp_table.setRowCount(0)
             self._emp_stack.setCurrentWidget(self._emp_empty)
             return
@@ -561,8 +564,9 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
             rows = self._sr.payroll_component_service.list_components(
                 company.company_id, active_only=active_only
             )
-        except Exception as exc:
-            show_error(self, "Payroll Components", f"Could not load components.\n\n{exc}")
+        except Exception:
+            _log.exception("Failed to load payroll components for company %s", company.company_id)
+            show_error(self, "Payroll components", "Could not load components. See application log for details.")
             self._comp_table.setRowCount(0)
             self._comp_stack.setCurrentWidget(self._comp_empty)
             return
@@ -582,8 +586,9 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
             rows = self._sr.payroll_rule_service.list_rule_sets(
                 company.company_id, active_only=active_only
             )
-        except Exception as exc:
-            show_error(self, "Payroll Rules", f"Could not load rule sets.\n\n{exc}")
+        except Exception:
+            _log.exception("Failed to load payroll rule sets for company %s", company.company_id)
+            show_error(self, "Payroll Rules", "Could not load rule sets. See application log for details.")
             self._rule_table.setRowCount(0)
             self._rule_stack.setCurrentWidget(self._rule_empty)
             return
@@ -898,7 +903,7 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
     def _on_new_component(self) -> None:
         company = self._active_company()
         if company is None:
-            show_error(self, "Payroll Components", "Select an active company first.")
+            show_error(self, "Payroll components", "Select an active company first.")
             return
         dialog = PayrollComponentFormDialog(
             self._sr, company.company_id, company.company_name, parent=self
@@ -933,7 +938,7 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         comp_id = item.data(Qt.ItemDataRole.UserRole)
         comp_code = item.text()
         reply = QMessageBox.question(
-            self, "Deactivate Component",
+            self, "Deactivate payroll component",
             f"Deactivate payroll component '{comp_code}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -955,7 +960,7 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
             )
             self._sr.payroll_component_service.update_component(company.company_id, comp_id, cmd)
         except (ValidationError, NotFoundError) as exc:
-            show_error(self, "Payroll Components", str(exc))
+            show_error(self, "Payroll components", str(exc))
             return
         self._reload_components()
 

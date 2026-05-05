@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -14,8 +16,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -27,18 +27,48 @@ from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.treasury.dto.treasury_transaction_dto import TreasuryTransactionListItemDTO
 from seeker_accounting.modules.treasury.ui.treasury_transaction_dialog import TreasuryTransactionDialog
 from seeker_accounting.app.navigation.workflow_resume_service import ResumeTokenPayload
-from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
+from seeker_accounting.platform.exceptions import AppError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
+from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
 from seeker_accounting.shared.ui.register import RegisterPage
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
 from seeker_accounting.shared.workflow.document_sequence_preflight import (
     consume_resume_payload_for_workflows,
     handle_document_sequence_error,
     run_document_sequence_preflight,
 )
+
+
+_log = logging.getLogger(__name__)
+
+
+TREASURY_TRANSACTION_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="transaction_number", title="Transaction #"),
+    DataTableColumn(key="type", title="Type"),
+    DataTableColumn(key="date", title="Date"),
+    DataTableColumn(key="account", title="Account"),
+    DataTableColumn(key="currency", title="Currency"),
+    DataTableColumn(key="total", title="Total", is_numeric=True),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="posted_at", title="Posted At"),
+)
+
+
+# Ribbon command ids surfaced from this page.
+_CMD_NEW = "treasury_transactions.new"
+_CMD_EDIT = "treasury_transactions.edit"
+_CMD_CANCEL = "treasury_transactions.cancel"
+_CMD_POST = "treasury_transactions.post"
+_CMD_REFRESH = "treasury_transactions.refresh"
+_CMD_PRINT = "treasury_transactions.print"
+_CMD_EXPORT_LIST = "treasury_transactions.export_list"
 
 
 class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
@@ -52,6 +82,16 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(250)
         self._search_debounce.timeout.connect(lambda: self.reload_transactions(reset_page=True))
+
+        self._command_enabled: dict[str, bool] = {
+            _CMD_NEW: False,
+            _CMD_EDIT: False,
+            _CMD_CANCEL: False,
+            _CMD_POST: False,
+            _CMD_REFRESH: True,
+            _CMD_PRINT: False,
+            _CMD_EXPORT_LIST: False,
+        }
 
         self.setObjectName("TreasuryTransactionsPage")
 
@@ -85,7 +125,7 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
         if active_company is None:
             self._transactions = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._transactions_model.removeRows(0, self._transactions_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
@@ -108,7 +148,7 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
         except Exception as exc:
             self._transactions = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._transactions_model.removeRows(0, self._transactions_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
@@ -219,23 +259,27 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        self._table = QTableWidget(container)
-        self._table.setObjectName("TreasuryTransactionsTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels((
-            "Transaction #",
-            "Type",
-            "Date",
-            "Account",
-            "Currency",
-            "Total",
-            "Status",
-            "Posted At",
-        ))
-        configure_dense_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+        self._transactions_model = QStandardItemModel(0, len(TREASURY_TRANSACTION_COLUMNS), self)
+        self._transactions_model.setHorizontalHeaderLabels(
+            [c.title for c in TREASURY_TRANSACTION_COLUMNS]
+        )
+
+        self._table = DataTable(
+            columns=TREASURY_TRANSACTION_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No treasury transactions to display.",
+            parent=container,
+        )
+        self._table.set_model(self._transactions_model)
+        self._transactions_status_delegate = apply_status_chip_to_column(
+            self._table.view(), 6
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
         layout.addWidget(self._table, 1)
 
         self._pager = Pager(container, default_page_size=100)
@@ -245,75 +289,14 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
         return container
 
     def _build_empty_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("No treasury transactions yet", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Create the first treasury transaction to record a cash or bank receipt or payment, "
-            "then post when the transaction is complete.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        create_button = QPushButton("Create Transaction", actions)
-        create_button.setProperty("variant", "primary")
-        create_button.clicked.connect(self._open_create_dialog)
-        actions_layout.addWidget(create_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("treasury.transactions.empty", parent=self)
+        state.primary_clicked.connect(self._open_create_dialog)
+        return state
 
     def _build_no_active_company_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("Select an active company first", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Treasury transactions are company-scoped. Choose the active company before creating or posting transactions.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        companies_button = QPushButton("Open Companies", actions)
-        companies_button.setProperty("variant", "secondary")
-        companies_button.clicked.connect(self._open_companies_workspace)
-        actions_layout.addWidget(companies_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("treasury.no_company", parent=self)
+        state.primary_clicked.connect(self._open_companies_workspace)
+        return state
 
     # ------------------------------------------------------------------
     # State helpers
@@ -339,45 +322,39 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
-    def _populate_table(self) -> None:
-        self._table.setUpdatesEnabled(False)
-        self._table.setSortingEnabled(False)
-        try:
-            self._table.setRowCount(len(self._transactions))
-            for row_index, txn in enumerate(self._transactions):
-                values = (
-                    txn.transaction_number,
-                    txn.transaction_type_code.replace("_", " ").title(),
-                    self._format_date(txn.transaction_date),
-                    txn.financial_account_name,
-                    txn.currency_code,
-                    self._format_amount(txn.total_amount),
-                    txn.status_code.title(),
-                    self._format_datetime(txn.posted_at),
-                )
-                for col, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if col == 0:
-                        item.setData(Qt.ItemDataRole.UserRole, txn.id)
-                    if col in {2, 4, 6, 7}:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    if col == 5:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                    self._table.setItem(row_index, col, item)
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
-            self._table.resizeColumnsToContents()
-            header = self._table.horizontalHeader()
-            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        finally:
-            self._table.setSortingEnabled(True)
-            self._table.setUpdatesEnabled(True)
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
+
+    def _populate_table(self) -> None:
+        self._transactions_model.removeRows(0, self._transactions_model.rowCount())
+        for txn in self._transactions:
+            type_label = txn.transaction_type_code.replace("_", " ").title()
+            items = [
+                self._make_item(txn.transaction_number, user_data=txn.id),
+                self._make_item(type_label),
+                self._make_item(self._format_date(txn.transaction_date)),
+                self._make_item(txn.financial_account_name),
+                self._make_item(txn.currency_code),
+                self._make_numeric(txn.total_amount),
+                self._make_item(txn.status_code),
+                self._make_item(self._format_datetime(txn.posted_at)),
+            ]
+            self._transactions_model.appendRow(items)
 
         search_text = self._search_input.text().strip()
         total = self._total_count
@@ -395,68 +372,91 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
         return
 
     def _restore_selection(self, selected_transaction_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._transactions:
             return
         if selected_transaction_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, t in enumerate(self._transactions) if t.id == selected_transaction_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_transaction_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._transactions_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_transaction(self) -> TreasuryTransactionListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        transaction_id = item.data(Qt.ItemDataRole.UserRole)
-        for txn in self._transactions:
-            if txn.id == transaction_id:
-                return txn
+        idx = rows[0]
+        if 0 <= idx < len(self._transactions):
+            return self._transactions[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        selected = self._selected_transaction()
+        if selected is not None and selected.status_code == "draft":
+            self._open_edit_dialog()
+
+    def _set_command_enabled(self, command_id: str, enabled: bool) -> None:
+        self._command_enabled[command_id] = bool(enabled)
 
     def _update_action_state(self) -> None:
         active_company = self._active_company()
         selected = self._selected_transaction()
         has_company = active_company is not None
         is_draft = has_company and selected is not None and selected.status_code == "draft"
+        perm = self._service_registry.permission_service
 
-        self._new_button.setEnabled(has_company)
-        self._edit_button.setEnabled(is_draft)
-        self._cancel_button.setEnabled(is_draft)
-        self._post_button.setEnabled(is_draft)
-        self._print_button.setEnabled(has_company and selected is not None)
-        self._export_list_button.setEnabled(has_company and bool(self._transactions))
+        self._set_command_enabled(_CMD_NEW, has_company and perm.has_permission("treasury.transactions.create"))
+        self._set_command_enabled(_CMD_EDIT, is_draft and perm.has_permission("treasury.transactions.edit"))
+        self._set_command_enabled(_CMD_CANCEL, is_draft and perm.has_permission("treasury.transactions.cancel"))
+        self._set_command_enabled(_CMD_POST, is_draft and perm.has_permission("treasury.transactions.post"))
+        self._set_command_enabled(_CMD_PRINT, has_company and selected is not None)
+        self._set_command_enabled(_CMD_EXPORT_LIST, has_company and bool(self._transactions))
+        self._set_command_enabled(_CMD_REFRESH, True)
+
+        # Keep legacy action-band buttons in sync (band is hidden but buttons exist).
+        self._new_button.setEnabled(self._command_enabled[_CMD_NEW])
+        self._edit_button.setEnabled(self._command_enabled[_CMD_EDIT])
+        self._cancel_button.setEnabled(self._command_enabled[_CMD_CANCEL])
+        self._post_button.setEnabled(self._command_enabled[_CMD_POST])
+        self._print_button.setEnabled(self._command_enabled[_CMD_PRINT])
+        self._export_list_button.setEnabled(self._command_enabled[_CMD_EXPORT_LIST])
+
         self._notify_ribbon_state_changed()
 
     # ── IRibbonHost ───────────────────────────────────────────────────
 
     def _ribbon_commands(self):
         return {
-            "treasury_transactions.new": self._open_create_dialog,
-            "treasury_transactions.edit": self._open_edit_dialog,
-            "treasury_transactions.cancel": self._cancel_selected_draft,
-            "treasury_transactions.post": self._post_selected_transaction,
-            "treasury_transactions.refresh": self.reload_transactions,
-            "treasury_transactions.print": self._print_selected_transaction,
-            "treasury_transactions.export_list": self._export_transaction_list,
+            _CMD_NEW: self._open_create_dialog,
+            _CMD_EDIT: self._open_edit_dialog,
+            _CMD_CANCEL: self._cancel_selected_draft,
+            _CMD_POST: self._post_selected_transaction,
+            _CMD_REFRESH: self.reload_transactions,
+            _CMD_PRINT: self._print_selected_transaction,
+            _CMD_EXPORT_LIST: self._export_transaction_list,
         }
 
     def ribbon_state(self):
-        return {
-            "treasury_transactions.new": self._new_button.isEnabled(),
-            "treasury_transactions.edit": self._edit_button.isEnabled(),
-            "treasury_transactions.cancel": self._cancel_button.isEnabled(),
-            "treasury_transactions.post": self._post_button.isEnabled(),
-            "treasury_transactions.refresh": True,
-            "treasury_transactions.print": self._print_button.isEnabled(),
-            "treasury_transactions.export_list": self._export_list_button.isEnabled(),
-        }
+        return dict(self._command_enabled)
 
     # ------------------------------------------------------------------
     # Actions
@@ -477,8 +477,12 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
                 active_company.company_id, selected.id, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Treasury Transactions", f"Export failed.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Treasury Transactions")
+            show_error(self, "Treasury Transactions", "An unexpected error occurred. See application log for details.")
 
     def _export_transaction_list(self) -> None:
         active_company = self._active_company()
@@ -492,10 +496,17 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
                 active_company.company_id, self._transactions, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Treasury Transactions", f"Export failed.\n\n{exc}")
 
+        except Exception:
+            _log.exception("Treasury Transactions")
+            show_error(self, "Treasury Transactions", "An unexpected error occurred. See application log for details.")
+
     def _open_create_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.transactions.create"):
+            self._show_permission_denied("treasury.transactions.create")
+            return
         active_company = self._active_company()
         if active_company is None:
             show_info(self, "Treasury Transactions", "Select an active company before creating transactions.")
@@ -517,6 +528,9 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
             self.reload_transactions(selected_transaction_id=result.id)
 
     def _open_edit_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.transactions.edit"):
+            self._show_permission_denied("treasury.transactions.edit")
+            return
         active_company = self._active_company()
         selected = self._selected_transaction()
         if active_company is None or selected is None:
@@ -537,6 +551,9 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
             self.reload_transactions(selected_transaction_id=result.id)
 
     def _cancel_selected_draft(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.transactions.cancel"):
+            self._show_permission_denied("treasury.transactions.cancel")
+            return
         active_company = self._active_company()
         selected = self._selected_transaction()
         if active_company is None or selected is None:
@@ -562,6 +579,9 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
         self.reload_transactions()
 
     def _post_selected_transaction(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.transactions.post"):
+            self._show_permission_denied("treasury.transactions.post")
+            return
         active_company = self._active_company()
         selected = self._selected_transaction()
         if active_company is None or selected is None:
@@ -615,6 +635,13 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
     def _open_companies_workspace(self) -> None:
         self._service_registry.navigation_service.navigate(nav_ids.COMPANIES)
 
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Permission Denied",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
     # ------------------------------------------------------------------
     # Formatting
     # ------------------------------------------------------------------
@@ -633,6 +660,7 @@ class TreasuryTransactionsPage(RibbonHostMixin, QWidget):
     # ------------------------------------------------------------------
 
     def _handle_item_double_clicked(self, *_args: object) -> None:
+        # Backward-compatible no-op; double-click is now wired via DataTable.row_activated.
         selected = self._selected_transaction()
         if selected is None:
             return

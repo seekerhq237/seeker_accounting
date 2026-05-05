@@ -22,7 +22,11 @@ from seeker_accounting.modules.payroll.dto.payroll_remittance_dto import (
 )
 from seeker_accounting.shared.ui.message_boxes import show_configuration_error, show_error
 
-_AUTHORITIES = [
+# Legacy fallback used only when the authority registry is empty (e.g. before a
+# statutory pack has been applied).  Once authorities exist, they fully replace
+# this hardcoded list.  See ``PayrollAuthorityService`` (P5.S1) and
+# Cameroon pack seed (P5.S2).
+_LEGACY_AUTHORITIES = [
     ("dgi", "DGI — Tax Authority"),
     ("cnps", "CNPS — Social Insurance"),
     ("other", "Other"),
@@ -46,7 +50,7 @@ class PayrollRemittanceBatchDialog(QDialog):
         self._company_id = company_id
         self._payroll_run_id = payroll_run_id
 
-        self.setWindowTitle("Create Remittance Batch")
+        self.setWindowTitle("Create remittance")
         self.setMinimumWidth(420)
         self.setModal(True)
 
@@ -77,9 +81,9 @@ class PayrollRemittanceBatchDialog(QDialog):
         form.addRow("Period End:", self._period_end)
 
         self._authority = QComboBox()
-        for code, label in _AUTHORITIES:
+        for code, label in self._load_authority_choices():
             self._authority.addItem(label, code)
-        form.addRow("Authority:", self._authority)
+        form.addRow("Statutory authority:", self._authority)
 
         self._amount_due = QDoubleSpinBox()
         self._amount_due.setRange(0, 999_999_999.99)
@@ -103,6 +107,18 @@ class PayrollRemittanceBatchDialog(QDialog):
         from seeker_accounting.shared.ui.help_button import install_help_button
         install_help_button(self, "dialog.payroll_remittance_batch", dialog=True)
 
+    def _load_authority_choices(self) -> list[tuple[str, str]]:
+        """Load authority choices from the registry; fall back to legacy codes."""
+        try:
+            authorities = self._registry.payroll_authority_service.list_authorities(
+                self._company_id, active_only=True,
+            )
+        except Exception:
+            authorities = []
+        if authorities:
+            return [(a.code, f"{a.code} — {a.name}") for a in authorities]
+        return list(_LEGACY_AUTHORITIES)
+
     def _on_accept(self) -> None:
         try:
             self._registry.payroll_remittance_service.create_batch(
@@ -123,11 +139,11 @@ class PayrollRemittanceBatchDialog(QDialog):
                 from seeker_accounting.app.navigation import nav_ids
                 if show_configuration_error(
                     self,
-                    "Remittance Batch",
+                    "Remittance",
                     f"{error_msg}\n\nConfigure it in Accounting Setup \u2192 Document Sequences.",
                     "Open Document Sequences",
                 ):
                     self._registry.navigation_service.navigate(nav_ids.DOCUMENT_SEQUENCES)
                     self.reject()
             else:
-                show_error(self, "Remittance Batch", error_msg)
+                show_error(self, "Remittance", error_msg)

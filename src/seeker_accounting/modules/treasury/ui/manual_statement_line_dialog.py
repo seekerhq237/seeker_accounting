@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
@@ -41,7 +42,7 @@ class ManualStatementLineDialog(QDialog):
 
         self.setWindowTitle(f"Add Manual Statement Line — {company_name}")
         self.setModal(True)
-        self.resize(500, 400)
+        apply_window_size(self, "modules.treasury.ui.manual.statement.line.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

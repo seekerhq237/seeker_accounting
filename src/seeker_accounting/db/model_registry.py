@@ -6,6 +6,10 @@ from seeker_accounting.modules.accounting.fiscal_periods.models.fiscal_period im
 from seeker_accounting.modules.accounting.fiscal_periods.models.fiscal_year import FiscalYear
 from seeker_accounting.modules.accounting.journals.models.journal_entry import JournalEntry
 from seeker_accounting.modules.accounting.journals.models.journal_entry_line import JournalEntryLine
+from seeker_accounting.modules.accounting.deferrals.models.deferral_schedule import (
+    DeferralSchedule,
+    DeferralScheduleLine,
+)
 from seeker_accounting.modules.accounting.reference_data.models.account_class import AccountClass
 from seeker_accounting.modules.accounting.reference_data.models.account_role_mapping import AccountRoleMapping
 from seeker_accounting.modules.accounting.reference_data.models.account_type import AccountType
@@ -49,11 +53,19 @@ from seeker_accounting.modules.taxation.models.posted_tax_line import PostedTaxL
 from seeker_accounting.modules.taxation.models.withholding_tax_certificate import (
     WithholdingTaxCertificate,
 )
+from seeker_accounting.modules.taxation.models.vat_period_lock import VatPeriodLock
 from seeker_accounting.modules.companies.models.company_preference import CompanyPreference
 from seeker_accounting.modules.companies.models.company_project_preference import CompanyProjectPreference
 from seeker_accounting.modules.companies.models.system_admin_credential import SystemAdminCredential
 from seeker_accounting.modules.contracts_projects.models.contract import Contract
+from seeker_accounting.modules.contracts_projects.models.contract_billing_schedule_item import ContractBillingScheduleItem
 from seeker_accounting.modules.contracts_projects.models.contract_change_order import ContractChangeOrder
+from seeker_accounting.modules.contracts_projects.models.contract_customer_advance import ContractCustomerAdvance
+from seeker_accounting.modules.contracts_projects.models.contract_line import ContractLine
+from seeker_accounting.modules.contracts_projects.models.contract_progress_claim import ContractProgressClaim
+from seeker_accounting.modules.contracts_projects.models.contract_progress_claim_line import ContractProgressClaimLine
+from seeker_accounting.modules.contracts_projects.models.contract_receipt_allocation import ContractReceiptAllocation
+from seeker_accounting.modules.contracts_projects.models.contract_retention_movement import ContractRetentionMovement
 from seeker_accounting.modules.contracts_projects.models.project import Project
 from seeker_accounting.modules.contracts_projects.models.project_job import ProjectJob
 from seeker_accounting.modules.contracts_projects.models.project_cost_code import ProjectCostCode
@@ -98,6 +110,7 @@ from seeker_accounting.modules.treasury.models.bank_statement_import_batch impor
 from seeker_accounting.modules.treasury.models.bank_statement_line import BankStatementLine
 from seeker_accounting.modules.treasury.models.bank_reconciliation_session import BankReconciliationSession
 from seeker_accounting.modules.treasury.models.bank_reconciliation_match import BankReconciliationMatch
+from seeker_accounting.modules.inventory.models.price_list import PriceList, PriceListLine
 from seeker_accounting.modules.inventory.models.unit_of_measure import UnitOfMeasure
 from seeker_accounting.modules.inventory.models.uom_category import UomCategory
 from seeker_accounting.modules.inventory.models.item_category import ItemCategory
@@ -106,6 +119,28 @@ from seeker_accounting.modules.inventory.models.item import Item
 from seeker_accounting.modules.inventory.models.inventory_document import InventoryDocument
 from seeker_accounting.modules.inventory.models.inventory_document_line import InventoryDocumentLine
 from seeker_accounting.modules.inventory.models.inventory_cost_layer import InventoryCostLayer
+from seeker_accounting.modules.inventory.models.inventory_document_type import InventoryDocumentType
+from seeker_accounting.modules.inventory.models.inventory_reason_code import InventoryReasonCode
+from seeker_accounting.modules.inventory.models.item_uom_conversion import ItemUomConversion
+from seeker_accounting.modules.inventory.models.item_account_override import ItemAccountOverride
+from seeker_accounting.modules.inventory.models.stock_ledger_entry import StockLedgerEntry
+from seeker_accounting.modules.inventory.models.stock_ledger_balance import StockLedgerBalance
+from seeker_accounting.modules.inventory.models.cost_layer_consumption import CostLayerConsumption
+from seeker_accounting.modules.inventory.models.price_list import PriceList
+from seeker_accounting.modules.inventory.models.stock_reservation import StockReservation
+from seeker_accounting.modules.inventory.models.item_batch import ItemBatch
+from seeker_accounting.modules.inventory.models.item_serial import ItemSerial
+from seeker_accounting.modules.inventory.models.inventory_document_line_serial import InventoryDocumentLineSerial
+from seeker_accounting.modules.inventory.models.item_attribute_definition import ItemAttributeDefinition
+from seeker_accounting.modules.inventory.models.item_variant import ItemVariant
+from seeker_accounting.modules.inventory.models.bill_of_material import BillOfMaterial
+from seeker_accounting.modules.inventory.models.bom_component import BomComponent
+from seeker_accounting.modules.inventory.models.stock_count_plan import StockCountPlan, StockCountPlanLocation
+from seeker_accounting.modules.inventory.models.stock_count_session import StockCountSession
+from seeker_accounting.modules.inventory.models.stock_count_line import StockCountLine, StockCountRecount
+from seeker_accounting.modules.inventory.models.stock_count_variance import StockCountVariance
+from seeker_accounting.modules.inventory.models.inventory_import_job import InventoryImportJob, InventoryImportJobRow
+from seeker_accounting.modules.inventory.models.production_order import ProductionOrder
 from seeker_accounting.modules.fixed_assets.models.asset_category import AssetCategory
 from seeker_accounting.modules.fixed_assets.models.asset import Asset
 from seeker_accounting.modules.fixed_assets.models.asset_depreciation_run import AssetDepreciationRun
@@ -122,6 +157,9 @@ from seeker_accounting.modules.payroll.models.company_payroll_setting import Com
 from seeker_accounting.modules.payroll.models.department import Department
 from seeker_accounting.modules.payroll.models.position import Position
 from seeker_accounting.modules.payroll.models.employee import Employee
+from seeker_accounting.modules.payroll.models.employee_onboarding_draft import (
+    EmployeeOnboardingDraft,
+)
 from seeker_accounting.modules.payroll.models.payroll_component import PayrollComponent
 from seeker_accounting.modules.payroll.models.payroll_rule_set import PayrollRuleSet
 from seeker_accounting.modules.payroll.models.payroll_rule_bracket import PayrollRuleBracket
@@ -135,9 +173,20 @@ from seeker_accounting.modules.payroll.models.payroll_run_employee_project_alloc
     PayrollRunEmployeeProjectAllocation,
 )
 from seeker_accounting.modules.payroll.models.payroll_run_line import PayrollRunLine
+from seeker_accounting.modules.payroll.models.employee_payroll_correction import (
+    EmployeePayrollCorrection,
+)
+from seeker_accounting.modules.payroll.models.payroll_calculation_trace import (
+    PayrollCalculationTrace,
+)
 from seeker_accounting.modules.payroll.models.payroll_payment_record import PayrollPaymentRecord
 from seeker_accounting.modules.payroll.models.payroll_remittance_batch import PayrollRemittanceBatch
 from seeker_accounting.modules.payroll.models.payroll_remittance_line import PayrollRemittanceLine
+from seeker_accounting.modules.payroll.models.payroll_authority import PayrollAuthority
+from seeker_accounting.modules.payroll.models.payroll_approver_config import PayrollApproverConfig
+from seeker_accounting.modules.payroll.models.payroll_component_authority_map import (
+    PayrollComponentAuthorityMap,
+)
 from seeker_accounting.modules.audit.models.audit_event import AuditEvent
 from seeker_accounting.platform.wizards.persistence.wizard_run import WizardRun
 
@@ -175,6 +224,8 @@ MODEL_REGISTRY = (
     FiscalPeriod,
     JournalEntry,
     JournalEntryLine,
+    DeferralSchedule,
+    DeferralScheduleLine,
     CustomerGroup,
     Customer,
     SalesInvoice,
@@ -189,6 +240,13 @@ MODEL_REGISTRY = (
     CustomerReceiptAllocation,
     Contract,
     ContractChangeOrder,
+    ContractLine,
+    ContractBillingScheduleItem,
+    ContractProgressClaim,
+    ContractProgressClaimLine,
+    ContractCustomerAdvance,
+    ContractRetentionMovement,
+    ContractReceiptAllocation,
     Project,
     ProjectJob,
     ProjectCostCode,
@@ -215,11 +273,18 @@ MODEL_REGISTRY = (
     UnitOfMeasure,
     UomCategory,
     ItemCategory,
+    PriceList,
+    PriceListLine,
     InventoryLocation,
     Item,
     InventoryDocument,
     InventoryDocumentLine,
     InventoryCostLayer,
+    InventoryDocumentType,
+    InventoryReasonCode,
+    ItemUomConversion,
+    ItemAccountOverride,
+    PriceList,
     AssetCategory,
     Asset,
     AssetDepreciationRun,
@@ -247,9 +312,14 @@ MODEL_REGISTRY = (
     PayrollRunEmployee,
     PayrollRunEmployeeProjectAllocation,
     PayrollRunLine,
+    EmployeePayrollCorrection,
+    PayrollCalculationTrace,
     PayrollPaymentRecord,
     PayrollRemittanceBatch,
     PayrollRemittanceLine,
+    PayrollAuthority,
+    PayrollApproverConfig,
+    PayrollComponentAuthorityMap,
     AuditEvent,
     WizardRun,
 )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtWidgets import (
@@ -45,7 +46,7 @@ class EmployeeFormDialog(QDialog):
         is_edit = employee_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Employee — {company_name}")
         self.setModal(True)
-        self.resize(500, 560)
+        apply_window_size(self, "modules.payroll.ui.dialogs.employee.form.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

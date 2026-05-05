@@ -33,6 +33,7 @@ class CreatePurchaseCreditNoteCommand:
     project_id: int | None
     lines: list[PurchaseCreditNoteLineCommand]
     actor_user_id: int | None = None
+    tax_point_date: date | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,3 +51,4 @@ class UpdatePurchaseCreditNoteCommand:
     project_id: int | None
     lines: list[PurchaseCreditNoteLineCommand]
     actor_user_id: int | None = None
+    tax_point_date: date | None = None

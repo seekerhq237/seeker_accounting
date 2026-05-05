@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 import csv
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +59,9 @@ from seeker_accounting.shared.ui.forms import create_field_block, create_label_v
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.searchable_combo_box import SearchableComboBox
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -409,7 +415,7 @@ class ChartCustomizationWizardDialog(BaseDialog):
 
         super().__init__("Customize Chart of Accounts", parent)
         self.setObjectName("ChartCustomizationWizardDialog")
-        self.resize(1180, 820)
+        apply_window_size(self, "modules.accounting.chart.of.accounts.ui.chart.customization.wizard.dialog.0")
 
         intro = QLabel(
             "Study the current chart, apply the safest OHADA baseline strategy, then finish the control-account and tax mapping work before posting gaps show up later.",
@@ -1173,8 +1179,12 @@ class ChartCustomizationWizardDialog(BaseDialog):
 
         try:
             check_write_or_raise(self._service_registry.license_service)
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Customize Chart", str(exc))
+            return
+        except Exception:
+            _log.exception("Customize Chart")
+            show_error(self, "Customize Chart", "An unexpected error occurred. See application log for details.")
             return
 
         baseline_applied = False

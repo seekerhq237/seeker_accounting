@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QButtonGroup,
     QDialog,
     QDialogButtonBox,
@@ -13,8 +16,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -25,8 +26,16 @@ from seeker_accounting.modules.fixed_assets.dto.depreciation_dto import (
     DepreciationScheduleDTO,
     DepreciationScheduleLineDTO,
 )
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+_SCHEDULE_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="period", title="Period"),
+    DataTableColumn(key="opening_nbv", title="Opening NBV"),
+    DataTableColumn(key="depreciation", title="Depreciation"),
+    DataTableColumn(key="accum", title="Accum. Depreciation"),
+    DataTableColumn(key="closing_nbv", title="Closing NBV"),
+)
 
 _METHOD_LABELS = {
     "straight_line": "Straight Line",
@@ -45,6 +54,9 @@ _METHOD_LABELS = {
     "macrs": "MACRS (GDS)",
     "amortization": "Amortization",
 }
+
+
+_log = logging.getLogger(__name__)
 
 
 def _fmt(value) -> str:
@@ -73,7 +85,7 @@ class DepreciationSchedulePreviewDialog(QDialog):
 
         self.setWindowTitle("Depreciation Schedule Preview")
         self.setModal(True)
-        self.resize(860, 620)
+        apply_window_size(self, "modules.fixed.assets.ui.depreciation.schedule.preview.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -169,14 +181,19 @@ class DepreciationSchedulePreviewDialog(QDialog):
 
         table_layout.addWidget(toolbar)
 
-        self._table = QTableWidget(table_card)
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels((
-            "Period", "Opening NBV", "Depreciation", "Accum. Depreciation", "Closing NBV",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._model = QStandardItemModel(0, len(_SCHEDULE_COLUMNS), table_card)
+        self._model.setHorizontalHeaderLabels([c.title for c in _SCHEDULE_COLUMNS])
+        self._table = DataTable(
+            columns=_SCHEDULE_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=False,
+            selection_mode="single",
+            empty_state_text="No schedule lines.",
+            parent=table_card,
+        )
+        self._table.set_model(self._model)
         table_layout.addWidget(self._table)
         layout.addWidget(table_card, 1)
 
@@ -198,8 +215,12 @@ class DepreciationSchedulePreviewDialog(QDialog):
             schedule = self._service_registry.depreciation_schedule_service.generate_schedule_for_asset(
                 self._company_id, self._asset_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Depreciation Schedule", str(exc))
+            return
+        except Exception:
+            _log.exception("Depreciation Schedule")
+            show_error(self, "Depreciation Schedule", "An unexpected error occurred. See application log for details.")
             return
         self._schedule = schedule
         self._populate_summary(schedule)
@@ -235,11 +256,26 @@ class DepreciationSchedulePreviewDialog(QDialog):
         self._tbl_title.setText("Yearly Schedule" if self._yearly_mode else "Monthly Schedule")
         self._refresh_table()
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
     def _refresh_table(self) -> None:
         if self._schedule is None:
             return
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         if self._yearly_mode:
             rows = self._aggregate_yearly(self._schedule.lines)
@@ -255,19 +291,21 @@ class DepreciationSchedulePreviewDialog(QDialog):
                     line.closing_nbv,
                 )
 
-        self._table.resizeColumnsToContents()
-        hdr = self._table.horizontalHeader()
-        for col in range(1, 5):
-            hdr.setSectionResizeMode(col, hdr.ResizeMode.Stretch)
-
     def _insert_row(self, label: str, opening, charge, accum, closing) -> None:
-        ri = self._table.rowCount()
-        self._table.insertRow(ri)
-        self._table.setItem(ri, 0, QTableWidgetItem(label))
-        for col, val in enumerate((opening, charge, accum, closing), start=1):
-            item = QTableWidgetItem(_fmt(val))
+        # Use _fmt for consistency with the existing display style
+        def _num(value) -> QStandardItem:
+            item = QStandardItem(_fmt(value))
+            item.setEditable(False)
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(ri, col, item)
+            return item
+
+        self._model.appendRow([
+            self._make_item(label),
+            _num(opening),
+            _num(charge),
+            _num(accum),
+            _num(closing),
+        ])
 
     @staticmethod
     def _aggregate_yearly(

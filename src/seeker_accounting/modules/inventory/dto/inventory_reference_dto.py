@@ -55,3 +55,33 @@ class InventoryLocationDTO:
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryDocumentTypeDTO:
+    """Read-only DTO of an inventory document type. Slice 1.4."""
+
+    id: int
+    company_id: int
+    code: str
+    name: str
+    description: str | None
+    direction_sign: int
+    is_transfer: bool
+    is_reversal: bool
+    requires_unit_cost_on_line: bool
+    requires_reason_code: bool
+    posts_to_inventory_account: bool
+    is_active: bool
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryReasonCodeDTO:
+    """Read-only DTO of a reason-code row. Slice 1.4."""
+
+    id: int
+    company_id: int
+    code: str
+    name: str
+    description: str | None
+    is_active: bool

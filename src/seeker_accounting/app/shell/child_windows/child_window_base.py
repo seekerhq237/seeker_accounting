@@ -13,6 +13,7 @@ discard hooks, and the dirty tracking.
 
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
@@ -62,7 +63,7 @@ class ChildWindowBase(QWidget):
         super().__init__(parent, Qt.WindowType.Window)
         self.setObjectName("ChildWindowRoot")
         self.setWindowTitle(title)
-        self.resize(1080, 720)
+        apply_window_size(self, "app.shell.child.windows.child.window.base.0")
 
         self._window_key = window_key
         self._surface_key = surface_key

@@ -533,6 +533,7 @@ BASELINE_SYSTEM_ROLES: tuple[RoleDefinition, ...] = (
                 "treasury.",
                 "inventory.",
                 "assets.",
+                "taxation.",
                 "reports.",
                 "management.",
             ),
@@ -554,6 +555,7 @@ BASELINE_SYSTEM_ROLES: tuple[RoleDefinition, ...] = (
                 "suppliers.",
                 "sales.",
                 "purchases.",
+                "taxation.",
                 "reports.",
             ),
             (
@@ -637,3 +639,93 @@ BASELINE_SYSTEM_ROLES: tuple[RoleDefinition, ...] = (
 )
 
 BASELINE_SYSTEM_ROLE_CODES: tuple[str, ...] = tuple(role.code for role in BASELINE_SYSTEM_ROLES)
+
+# ── Payroll-specific SoD roles (T43/P7) ──────────────────────────────────────
+
+from seeker_accounting.modules.payroll.payroll_permissions import (  # noqa: E402
+    PAYROLL_APPROVER_CONFIG_MANAGE,
+    PAYROLL_AUDIT_VIEW,
+    PAYROLL_COMPONENT_MANAGE,
+    PAYROLL_CORRECTION_MANAGE,
+    PAYROLL_EMPLOYEE_MANAGE,
+    PAYROLL_IMPORT,
+    PAYROLL_INPUT_MANAGE,
+    PAYROLL_PACK_APPLY,
+    PAYROLL_PAYMENT_MANAGE,
+    PAYROLL_PRINT,
+    PAYROLL_REMITTANCE_MANAGE,
+    PAYROLL_RULE_MANAGE,
+    PAYROLL_RUN_APPROVE,
+    PAYROLL_RUN_CALCULATE,
+    PAYROLL_RUN_CREATE,
+    PAYROLL_RUN_POST,
+    PAYROLL_RUN_REVERSE,
+    PAYROLL_RUN_SEND_BACK,
+    PAYROLL_RUN_SUBMIT,
+    PAYROLL_SETUP_MANAGE,
+)
+
+_ALL_PAYROLL_CODES: tuple[str, ...] = tuple(code for code, _, _ in ALL_PAYROLL_PERMISSIONS)
+
+PAYROLL_ROLE_DEFINITIONS: tuple[RoleDefinition, ...] = (
+    _role(
+        "payroll_preparer",
+        "Payroll Preparer",
+        "Creates payroll runs, manages variable inputs, corrects payroll data, and submits runs for approval.",
+        (
+            PAYROLL_RUN_CREATE,
+            PAYROLL_RUN_CALCULATE,
+            PAYROLL_RUN_SUBMIT,
+            PAYROLL_CORRECTION_MANAGE,
+            PAYROLL_INPUT_MANAGE,
+            PAYROLL_EMPLOYEE_MANAGE,
+            PAYROLL_PRINT,
+            PAYROLL_AUDIT_VIEW,
+        ),
+    ),
+    _role(
+        "payroll_approver",
+        "Payroll Approver",
+        "Reviews submitted payroll runs, approves or sends back for correction.",
+        (
+            PAYROLL_RUN_APPROVE,
+            PAYROLL_RUN_SEND_BACK,
+            PAYROLL_PRINT,
+            PAYROLL_AUDIT_VIEW,
+            PAYROLL_APPROVER_CONFIG_MANAGE,
+        ),
+    ),
+    _role(
+        "payroll_poster",
+        "Payroll Poster",
+        "Posts approved payroll runs to the general ledger and reverses posted runs.",
+        (
+            PAYROLL_RUN_POST,
+            PAYROLL_RUN_REVERSE,
+            PAYROLL_PRINT,
+            PAYROLL_AUDIT_VIEW,
+        ),
+    ),
+    _role(
+        "payroll_payer",
+        "Payroll Payer",
+        "Records employee payment disbursements and manages statutory remittances.",
+        (
+            PAYROLL_PAYMENT_MANAGE,
+            PAYROLL_REMITTANCE_MANAGE,
+            PAYROLL_PRINT,
+            PAYROLL_AUDIT_VIEW,
+        ),
+    ),
+    _role(
+        "payroll_admin",
+        "Payroll Administrator",
+        "Full payroll administration: setup, rules, employees, runs, approvals, posting, payments, and reporting.",
+        _ALL_PAYROLL_CODES,
+    ),
+)
+
+PAYROLL_ROLE_CODES: tuple[str, ...] = tuple(role.code for role in PAYROLL_ROLE_DEFINITIONS)
+
+ALL_SYSTEM_ROLES: tuple[RoleDefinition, ...] = BASELINE_SYSTEM_ROLES + PAYROLL_ROLE_DEFINITIONS
+ALL_SYSTEM_ROLE_CODES: tuple[str, ...] = tuple(role.code for role in ALL_SYSTEM_ROLES)

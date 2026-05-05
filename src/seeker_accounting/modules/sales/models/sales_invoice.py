@@ -33,6 +33,7 @@ class SalesInvoice(TimestampMixin, Base):
     )
     invoice_date: Mapped[date] = mapped_column(Date(), nullable=False)
     due_date: Mapped[date] = mapped_column(Date(), nullable=False)
+    tax_point_date: Mapped[date | None] = mapped_column(Date(), nullable=True)
     currency_code: Mapped[str] = mapped_column(
         String(3),
         ForeignKey("currencies.code", ondelete="RESTRICT"),
@@ -47,6 +48,12 @@ class SalesInvoice(TimestampMixin, Base):
     subtotal_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    # T37: VAT withheld at source (précompte) by a government body or
+    # designated large taxpayer. When non-zero, the seller's net VAT
+    # payable (L40) is reduced by this amount (L45 on DGI form).
+    withheld_vat_amount: Mapped[Decimal] = mapped_column(
+        Numeric(18, 2), nullable=False, default=Decimal("0.00")
+    )
     posted_journal_entry_id: Mapped[int | None] = mapped_column(
         Integer,
         ForeignKey("journal_entries.id", ondelete="RESTRICT"),

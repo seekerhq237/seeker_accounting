@@ -250,11 +250,14 @@ def main() -> int:
 
     # ---- Bootstrap ----
     app = QApplication([])
-    # Grant all payroll permissions for testing
-    from seeker_accounting.modules.payroll.payroll_permissions import ALL_PAYROLL_PERMISSIONS
+    # Grant all system permissions: R4 exercises company creation, chart seeding,
+    # fiscal calendar, numbering, account-role mapping, etc. — not just payroll.
+    from seeker_accounting.modules.administration.rbac_catalog import (
+        ALL_SYSTEM_PERMISSION_CODES,
+    )
     bootstrap = bootstrap_script_runtime(
         app,
-        permission_snapshot=(p[0] for p in ALL_PAYROLL_PERMISSIONS),
+        permission_snapshot=ALL_SYSTEM_PERMISSION_CODES,
     )
     settings = bootstrap.settings
     app_context = bootstrap.app_context
@@ -597,15 +600,24 @@ def main() -> int:
         else:
             h.check("emp1_cnps_employee_line_present", False, "EMPLOYEE_CNPS line missing")
 
-        # Taxable salary base: max((gross - CNPS_employee) * 0.70 - 500000/12, 0)
-        #   = max((500000 - 21000) * 0.70 - 41666.67, 0)
-        #   = max(335300 - 41666.67, 0) = 293633.33
+        # Taxable salary base per DGI methodology:
+        #   max((gross - CNPS_emp - CFC - FNE_emp) * (1 - abattement) - minimum_vital/12, 0)
+        #   CFC = 1% gross = 5,000 ; FNE_emp = 1% gross = 5,000
+        #   = max((500000 - 21000 - 5000 - 5000) * 0.70 - 41666.67, 0)
+        #   = max(469000 * 0.70 - 41666.67, 0)
+        #   = max(328300 - 41666.67, 0) = 286633.33
+        expected_cfc = _round_xaf(_q("500000") * _q("0.01"))
+        expected_fne_emp = _round_xaf(_q("500000") * _q("0.01"))
         expected_taxable = _round_xaf(
-            max((_q("500000") - expected_cnps_emp) * _q("0.70") - _q("500000") / 12, _q("0"))
+            max(
+                (_q("500000") - expected_cnps_emp - expected_cfc - expected_fne_emp)
+                * _q("0.70") - _q("500000") / 12,
+                _q("0"),
+            )
         )
         h.check_decimal_close("emp1_taxable_salary_base", emp1_detail.taxable_salary_base,
                                expected_taxable, tolerance=_q("2"),
-                               message=f"(500k-{expected_cnps_emp})*0.7 - 41666.67")
+                               message=f"(500k-CNPS-CFC-FNE)*0.7 - 41666.67")
 
         h.check("emp1_net_payable_positive", emp1_detail.net_payable > 0,
                  f"net={emp1_detail.net_payable}")
@@ -886,11 +898,21 @@ def main() -> int:
         else:
             h.check("B1_cnps_employer_line", False, "Missing EMPLOYER_CNPS line")
 
-        # B2: Taxable salary for 1.5M employee
-        # taxable = max((1500000 - 31500) * 0.70 - 41666.67, 0) = max(1027950 - 41666.67, 0) = 986283.33
+        # B2: Taxable salary for 1.5M employee — DGI methodology:
+        #   max((gross - CNPS_emp - CFC - FNE_emp) * 0.70 - minimum_vital/12, 0)
+        #   CNPS_emp capped at 31,500 ; CFC = 15,000 ; FNE_emp = 15,000
+        #   = max((1500000 - 31500 - 15000 - 15000) * 0.70 - 41666.67, 0)
+        #   = max(1438500 * 0.70 - 41666.67, 0)
+        #   = max(1006950 - 41666.67, 0) = 965283.33
         expected_cnps = _q("31500")
+        expected_cfc_high = _round_xaf(_q("1500000") * _q("0.01"))
+        expected_fne_emp_high = _round_xaf(_q("1500000") * _q("0.01"))
         expected_taxable_high = _round_xaf(
-            max((_q("1500000") - expected_cnps) * _q("0.70") - _q("500000") / 12, _q("0"))
+            max(
+                (_q("1500000") - expected_cnps - expected_cfc_high - expected_fne_emp_high)
+                * _q("0.70") - _q("500000") / 12,
+                _q("0"),
+            )
         )
         h.check_decimal_close("B2_taxable_base_high_salary", high_detail.taxable_salary_base,
                                expected_taxable_high, tolerance=_q("2"),
@@ -953,13 +975,13 @@ def main() -> int:
                                    expected_accident, tolerance=_q("2"),
                                    message="1.75% of 1.5M")
 
-        # FNE employer: 1% of gross
+        # FNE employer: 2.5% of gross (verified against DGI barème DSSI)
         fne_er_line = [l for l in high_detail.lines if l.component_code == "FNE"]
         if fne_er_line:
-            expected_fne = _round_xaf(_q("1500000") * _q("0.01"))
+            expected_fne = _round_xaf(_q("1500000") * _q("0.025"))
             h.check_decimal_close("B7_fne_employer", fne_er_line[0].component_amount,
                                    expected_fne, tolerance=_q("2"),
-                                   message="1% of 1.5M")
+                                   message="2.5% of 1.5M")
 
         # Family allowances: 7% of gross (GENERAL regime), capped at 750k contributory base
         af_line = [l for l in high_detail.lines if l.component_code == "EMPLOYER_AF"]
@@ -1001,7 +1023,10 @@ def main() -> int:
     emp2_feb_re = [re for re in feb_employees if re.employee_number == "EMP002"]
     if emp2_feb_re:
         emp2_feb_detail = reg.payroll_run_service.get_run_employee_detail(cid, emp2_feb_re[0].id)
-        # 50k salary: taxable base = max((50000 - 2100) * 0.70 - 41666.67, 0) = max(33530 - 41666.67, 0) = 0
+        # 50k salary: CNPS=2100, CFC=500, FNE_emp=500
+        # taxable = max((50000 - 2100 - 500 - 500) * 0.70 - 41666.67, 0)
+        #         = max(46900 * 0.70 - 41666.67, 0)
+        #         = max(32830 - 41666.67, 0) = 0
         h.check_decimal_close("B9_below_threshold_taxable", emp2_feb_detail.taxable_salary_base,
                                _q("0"), tolerance=_q("1"),
                                message="50k salary → taxable base = 0")

@@ -4,17 +4,14 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QPlainTextEdit,
-    QTableWidget,
-    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -39,10 +36,27 @@ from seeker_accounting.modules.contracts_projects.ui.contract_change_order_dialo
 )
 from seeker_accounting.modules.contracts_projects.ui.contract_form_dialog import ContractFormDialog
 from seeker_accounting.modules.contracts_projects.ui.project_form_dialog import ProjectFormDialog
+from seeker_accounting.modules.contracts_projects.ui.contract_lines_panel import ContractLinesPanel
+from seeker_accounting.modules.contracts_projects.ui.contract_billing_schedule_panel import (
+    ContractBillingSchedulePanel,
+)
+from seeker_accounting.modules.contracts_projects.ui.contract_progress_claims_panel import (
+    ContractProgressClaimsPanel,
+)
+from seeker_accounting.modules.contracts_projects.ui.contract_customer_advances_panel import (
+    ContractCustomerAdvancesPanel,
+)
+from seeker_accounting.modules.contracts_projects.ui.contract_retention_panel import (
+    ContractRetentionPanel,
+)
+from seeker_accounting.modules.contracts_projects.ui.contract_receipt_allocations_panel import (
+    ContractReceiptAllocationsPanel,
+)
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 
 _CO_DRAFT = "draft"
@@ -75,6 +89,12 @@ class ContractWorkspaceWindow(ChildWindowBase):
     _TAB_OVERVIEW = 0
     _TAB_CHANGE_ORDERS = 1
     _TAB_PROJECTS = 2
+    _TAB_LINES = 3
+    _TAB_SCHEDULE = 4
+    _TAB_CLAIMS = 5
+    _TAB_ADVANCES = 6
+    _TAB_RETENTION = 7
+    _TAB_RECEIPTS = 8
 
     def __init__(
         self,
@@ -101,6 +121,14 @@ class ContractWorkspaceWindow(ChildWindowBase):
         self._value_labels: dict[str, QLabel] = {}
         self._change_orders: list[ContractChangeOrderListItemDTO] = []
         self._projects: list[ProjectListItemDTO] = []
+
+        # Commercial + billing panels (created before body so body can reference them)
+        self._lines_panel = ContractLinesPanel(service_registry, company_id, contract_id)
+        self._schedule_panel = ContractBillingSchedulePanel(service_registry, company_id, contract_id)
+        self._claims_panel = ContractProgressClaimsPanel(service_registry, company_id, contract_id)
+        self._advances_panel = ContractCustomerAdvancesPanel(service_registry, company_id, contract_id)
+        self._retention_panel = ContractRetentionPanel(service_registry, company_id, contract_id)
+        self._receipts_panel = ContractReceiptAllocationsPanel(service_registry, company_id, contract_id)
 
         self.set_body(self._build_body())
         self._reload_detail()
@@ -136,6 +164,12 @@ class ContractWorkspaceWindow(ChildWindowBase):
         self._tabs.addTab(self._build_overview_tab(), "Overview")
         self._tabs.addTab(self._build_change_orders_tab(), "Change Orders")
         self._tabs.addTab(self._build_projects_tab(), "Projects")
+        self._tabs.addTab(self._lines_panel, "Lines")
+        self._tabs.addTab(self._schedule_panel, "Schedule")
+        self._tabs.addTab(self._claims_panel, "Claims")
+        self._tabs.addTab(self._advances_panel, "Advances")
+        self._tabs.addTab(self._retention_panel, "Retention")
+        self._tabs.addTab(self._receipts_panel, "Receipts")
         self._tabs.currentChanged.connect(self._handle_tab_changed)
         layout.addWidget(self._tabs, 1)
         return body
@@ -222,17 +256,28 @@ class ContractWorkspaceWindow(ChildWindowBase):
         header.addWidget(self._co_count_label)
         layout.addLayout(header)
 
-        self._co_table = QTableWidget(0, 7, card)
-        self._co_table.setHorizontalHeaderLabels(
-            ["Number", "Date", "Type", "Amount Delta", "Days", "Status", "Description"]
+        self._co_model = QStandardItemModel(0, 7, card)
+        self._co_table = DataTable(
+            columns=(
+                DataTableColumn(key="number", title="Number"),
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="amount_delta", title="Amount Delta", is_numeric=True),
+                DataTableColumn(key="days", title="Days"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="description", title="Description"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
         )
-        self._co_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._co_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._co_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._co_table.verticalHeader().setVisible(False)
-        self._co_table.setAlternatingRowColors(True)
-        self._co_table.itemSelectionChanged.connect(self.refresh_ribbon_state)
-        self._co_table.itemDoubleClicked.connect(self._on_co_double_clicked)
+        self._co_table.set_model(self._co_model)
+        self._co_status_delegate = apply_status_chip_to_column(self._co_table.view(), 5)
+        self._co_table.selection_changed.connect(lambda _: self.refresh_ribbon_state())
+        self._co_table.view().doubleClicked.connect(self._on_co_double_clicked)
         layout.addWidget(self._co_table, 1)
         return card
 
@@ -254,17 +299,27 @@ class ContractWorkspaceWindow(ChildWindowBase):
         header.addWidget(self._project_count_label)
         layout.addLayout(header)
 
-        self._projects_table = QTableWidget(0, 6, card)
-        self._projects_table.setHorizontalHeaderLabels(
-            ["Code", "Name", "Type", "Status", "Start", "Planned End"]
+        self._projects_model = QStandardItemModel(0, 6, card)
+        self._projects_table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="start", title="Start"),
+                DataTableColumn(key="planned_end", title="Planned End"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
         )
-        self._projects_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._projects_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._projects_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._projects_table.verticalHeader().setVisible(False)
-        self._projects_table.setAlternatingRowColors(True)
-        self._projects_table.itemSelectionChanged.connect(self.refresh_ribbon_state)
-        self._projects_table.itemDoubleClicked.connect(self._on_project_double_clicked)
+        self._projects_table.set_model(self._projects_model)
+        self._projects_status_delegate = apply_status_chip_to_column(self._projects_table.view(), 3)
+        self._projects_table.selection_changed.connect(lambda _: self.refresh_ribbon_state())
+        self._projects_table.view().doubleClicked.connect(self._on_project_double_clicked)
         layout.addWidget(self._projects_table, 1)
         return card
 
@@ -379,6 +434,18 @@ class ContractWorkspaceWindow(ChildWindowBase):
             self._reload_change_orders()
         elif index == self._TAB_PROJECTS:
             self._reload_projects()
+        elif index == self._TAB_LINES:
+            self._lines_panel.reload()
+        elif index == self._TAB_SCHEDULE:
+            self._schedule_panel.reload()
+        elif index == self._TAB_CLAIMS:
+            self._claims_panel.reload()
+        elif index == self._TAB_ADVANCES:
+            self._advances_panel.reload()
+        elif index == self._TAB_RETENTION:
+            self._retention_panel.reload()
+        elif index == self._TAB_RECEIPTS:
+            self._receipts_panel.reload()
         self.refresh_ribbon_state()
 
     # ------------------------------------------------------------------
@@ -450,47 +517,20 @@ class ContractWorkspaceWindow(ChildWindowBase):
         self.refresh_ribbon_state()
 
     def _populate_co_table(self, *, selected_id: int | None) -> None:
-        table = self._co_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._co_model.removeRows(0, self._co_model.rowCount())
         for co in self._change_orders:
-            row = table.rowCount()
-            table.insertRow(row)
             delta_str = "" if co.contract_amount_delta is None else f"{co.contract_amount_delta:,.2f}"
             days_str = "" if co.days_extension is None else str(co.days_extension)
-            values = (
-                co.change_order_number,
-                _fmt_date(co.change_order_date),
-                _humanize(co.change_type_code),
-                delta_str,
-                days_str,
-                _humanize(co.status_code),
-                (co.description or "")[:80],
-            )
-            for col, text in enumerate(values):
-                item = QTableWidgetItem(text)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, co.id)
-                if col == 3:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                if col in {2, 4, 5}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                table.setItem(row, col, item)
-
-        header = table.horizontalHeader()
-        for i in range(6):
-            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
-        table.setSortingEnabled(True)
-
-        if selected_id is not None:
-            for row in range(table.rowCount()):
-                item = table.item(row, 0)
-                if item and item.data(Qt.ItemDataRole.UserRole) == selected_id:
-                    table.selectRow(row)
-                    return
-        if table.rowCount() > 0:
-            table.selectRow(0)
+            self._co_model.appendRow([
+                self._make_item(co.change_order_number, user_data=co.id),
+                self._make_item(_fmt_date(co.change_order_date)),
+                self._make_item(_humanize(co.change_type_code)),
+                self._make_item(delta_str),
+                self._make_item(days_str),
+                self._make_item(co.status_code),
+                self._make_item((co.description or "")[:80]),
+            ])
+        self._co_select_by_id(selected_id)
 
     def _reload_projects(self, *, selected_id: int | None = None) -> None:
         try:
@@ -516,43 +556,70 @@ class ContractWorkspaceWindow(ChildWindowBase):
         self._populate_projects_table(selected_id=selected_id)
         self.refresh_ribbon_state()
 
-    def _populate_projects_table(self, *, selected_id: int | None) -> None:
-        table = self._projects_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
-        for project in self._projects:
-            row = table.rowCount()
-            table.insertRow(row)
-            values = (
-                project.project_code,
-                project.project_name,
-                _humanize(project.project_type_code),
-                _humanize(project.status_code),
-                _fmt_date(project.start_date),
-                _fmt_date(project.planned_end_date),
+    def _co_select_by_id(self, target_id: int | None) -> None:
+        if not self._change_orders:
+            return
+        if target_id is not None:
+            target_idx = next(
+                (i for i, co in enumerate(self._change_orders) if co.id == target_id), 0
             )
-            for col, text in enumerate(values):
-                item = QTableWidgetItem(text)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, project.id)
-                if col in {2, 3}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                table.setItem(row, col, item)
+        else:
+            target_idx = 0
+        proxy = self._co_table.view().model()
+        if proxy is None:
+            return
+        src_index = self._co_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._co_table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._co_table.view().scrollTo(proxy_index)
 
-        header = table.horizontalHeader()
-        for i in range(6):
-            header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        table.setSortingEnabled(True)
+    def _populate_projects_table(self, *, selected_id: int | None) -> None:
+        self._projects_model.removeRows(0, self._projects_model.rowCount())
+        for project in self._projects:
+            self._projects_model.appendRow([
+                self._make_item(project.project_code, user_data=project.id),
+                self._make_item(project.project_name),
+                self._make_item(_humanize(project.project_type_code)),
+                self._make_item(project.status_code),
+                self._make_item(_fmt_date(project.start_date)),
+                self._make_item(_fmt_date(project.planned_end_date)),
+            ])
+        self._project_select_by_id(selected_id)
 
-        if selected_id is not None:
-            for row in range(table.rowCount()):
-                item = table.item(row, 0)
-                if item and item.data(Qt.ItemDataRole.UserRole) == selected_id:
-                    table.selectRow(row)
-                    return
-        if table.rowCount() > 0:
-            table.selectRow(0)
+    def _project_select_by_id(self, target_id: int | None) -> None:
+        if not self._projects:
+            return
+        if target_id is not None:
+            target_idx = next(
+                (i for i, p in enumerate(self._projects) if p.id == target_id), 0
+            )
+        else:
+            target_idx = 0
+        proxy = self._projects_table.view().model()
+        if proxy is None:
+            return
+        src_index = self._projects_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._projects_table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._projects_table.view().scrollTo(proxy_index)
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     # ------------------------------------------------------------------
     # Selection helpers
@@ -561,13 +628,13 @@ class ContractWorkspaceWindow(ChildWindowBase):
     def _selected_change_order(self) -> ContractChangeOrderListItemDTO | None:
         if not hasattr(self, "_co_table"):
             return None
-        row = self._co_table.currentRow()
-        if row < 0:
+        rows = self._co_table.selected_rows()
+        if not rows:
             return None
-        item = self._co_table.item(row, 0)
-        if item is None:
+        id_item = self._co_model.item(rows[0], 0)
+        if id_item is None:
             return None
-        co_id = item.data(Qt.ItemDataRole.UserRole)
+        co_id = id_item.data(Qt.ItemDataRole.UserRole)
         for co in self._change_orders:
             if co.id == co_id:
                 return co
@@ -576,13 +643,13 @@ class ContractWorkspaceWindow(ChildWindowBase):
     def _selected_project(self) -> ProjectListItemDTO | None:
         if not hasattr(self, "_projects_table"):
             return None
-        row = self._projects_table.currentRow()
-        if row < 0:
+        rows = self._projects_table.selected_rows()
+        if not rows:
             return None
-        item = self._projects_table.item(row, 0)
-        if item is None:
+        id_item = self._projects_model.item(rows[0], 0)
+        if id_item is None:
             return None
-        project_id = item.data(Qt.ItemDataRole.UserRole)
+        project_id = id_item.data(Qt.ItemDataRole.UserRole)
         for project in self._projects:
             if project.id == project_id:
                 return project
@@ -730,7 +797,7 @@ class ContractWorkspaceWindow(ChildWindowBase):
         if refresh_detail:
             self._reload_detail()
 
-    def _on_co_double_clicked(self, _item) -> None:
+    def _on_co_double_clicked(self, _index) -> None:
         selected = self._selected_change_order()
         if selected is None:
             return
@@ -787,5 +854,5 @@ class ContractWorkspaceWindow(ChildWindowBase):
 
         manager.open_document("project_workspace", selected.id, _factory)
 
-    def _on_project_double_clicked(self, _item) -> None:
+    def _on_project_double_clicked(self, _index) -> None:
         self._project_open_workspace()

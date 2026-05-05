@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -48,7 +49,7 @@ class ChartImportDialog(BaseDialog):
 
         super().__init__("Import Chart Template", parent, help_key="dialog.chart_import")
         self.setObjectName("ChartImportDialog")
-        self.resize(760, 620)
+        apply_window_size(self, "modules.accounting.chart.of.accounts.ui.chart.import.dialog.0")
 
         intro_label = QLabel(
             "Preview a chart template before import. The default behavior is add-missing-only, so existing account definitions are never overwritten silently.",

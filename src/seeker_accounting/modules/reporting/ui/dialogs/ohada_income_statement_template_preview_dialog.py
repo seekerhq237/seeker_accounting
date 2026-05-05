@@ -3,15 +3,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -22,6 +20,7 @@ from seeker_accounting.modules.reporting.dto.ohada_income_statement_dto import (
 from seeker_accounting.modules.reporting.dto.ohada_income_statement_template_dto import (
     OhadaIncomeStatementTemplateDTO,
 )
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
 
@@ -76,27 +75,39 @@ class OhadaIncomeStatementTemplatePreviewDialog(QDialog):
         return card
 
     def _build_preview_table(self) -> QWidget:
-        table = QTableWidget(self)
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
-        table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(28)
-        table.setWordWrap(False)
-        table.setShowGrid(False)
-        table.setAlternatingRowColors(False)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.setStyleSheet(f"background: {self._template_dto.statement_background};")
-        table.setColumnWidth(0, 90)
-        table.setColumnWidth(1, 470)
-        table.setColumnWidth(2, 170)
+        self._preview_model = QStandardItemModel(0, 3, self)
+        self._preview_model.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
+        table = DataTable(
+            columns=(
+                DataTableColumn(key="ref", title="Ref"),
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        table.set_model(self._preview_model)
+        view = table.view()
+        view.verticalHeader().setVisible(False)
+        view.verticalHeader().setDefaultSectionSize(28)
+        view.setWordWrap(False)
+        view.setShowGrid(False)
+        view.setAlternatingRowColors(False)
+        view.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        view.setStyleSheet(f"background: {self._template_dto.statement_background};")
+        view.setColumnWidth(0, 90)
+        view.setColumnWidth(1, 470)
+        view.setColumnWidth(2, 170)
 
         rows = self._build_rows()
-        table.setRowCount(len(rows))
+        self._preview_model.setRowCount(len(rows))
         for row_index, row in enumerate(rows):
-            self._bind_row(table, row_index, row)
-            table.setRowHeight(row_index, self._template_dto.row_height)
+            self._bind_row(self._preview_model, row_index, row)
+            view.verticalHeader().resizeSection(row_index, self._template_dto.row_height)
         return table
 
     def _build_rows(self) -> list[tuple[str, str | None, str, Decimal | None]]:
@@ -115,14 +126,17 @@ class OhadaIncomeStatementTemplatePreviewDialog(QDialog):
 
     def _bind_row(
         self,
-        table: QTableWidget,
+        model: QStandardItemModel,
         row_index: int,
         row_data: tuple[str, str | None, str, Decimal | None],
     ) -> None:
         row_type, ref, label, amount = row_data
-        ref_item = QTableWidgetItem(ref or "")
-        label_item = QTableWidgetItem(label)
-        amount_item = QTableWidgetItem("" if amount is None else self._fmt(amount))
+        ref_item = QStandardItem(ref or "")
+        ref_item.setEditable(False)
+        label_item = QStandardItem(label)
+        label_item.setEditable(False)
+        amount_item = QStandardItem("" if amount is None else self._fmt(amount))
+        amount_item.setEditable(False)
         amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         if row_type == "section":
@@ -132,15 +146,15 @@ class OhadaIncomeStatementTemplatePreviewDialog(QDialog):
         else:
             self._apply_row_style(ref_item, label_item, amount_item, False, self._template_dto.statement_background)
 
-        table.setItem(row_index, 0, ref_item)
-        table.setItem(row_index, 1, label_item)
-        table.setItem(row_index, 2, amount_item)
+        model.setItem(row_index, 0, ref_item)
+        model.setItem(row_index, 1, label_item)
+        model.setItem(row_index, 2, amount_item)
 
     def _apply_row_style(
         self,
-        ref_item: QTableWidgetItem,
-        label_item: QTableWidgetItem,
-        amount_item: QTableWidgetItem,
+        ref_item: QStandardItem,
+        label_item: QStandardItem,
+        amount_item: QStandardItem,
         bold: bool,
         color_hex: str,
     ) -> None:

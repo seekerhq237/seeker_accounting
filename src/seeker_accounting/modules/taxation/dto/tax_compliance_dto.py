@@ -118,6 +118,7 @@ class TaxReturnLineDTO:
     label: str
     amount: Decimal
     sort_order: int
+    base_amount: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +140,10 @@ class TaxReturnDTO:
     lines: tuple[TaxReturnLineDTO, ...] = ()
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    is_amended: bool = False
+    amends_return_id: int | None = None
+    credit_brought_forward: Decimal = Decimal("0.00")
+    withholding_vat_amount: Decimal = Decimal("0.00")
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +177,14 @@ class FileTaxReturnCommand:
     return_id: int
     otp_reference: str | None = None
     external_reference: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AmendVATReturnCommand:
+    """T35: command to create a corrective amendment for a filed return."""
+    obligation_id: int
+    original_return_id: int
+    notes: str | None = None
 
 
 # ───────────────────────── Payments ─────────────────────────

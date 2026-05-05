@@ -51,6 +51,7 @@ from seeker_accounting.platform.exceptions import (
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,7 +90,7 @@ class PayrollActivationWizardDialog(BaseDialog):
 
     _STEP_LABELS = (
         "1. Settings",
-        "2. Statutory Pack",
+        "2. Statutory pack",
         "3. Structure",
         "4. GL Mapping",
         "5. Review",
@@ -116,7 +117,7 @@ class PayrollActivationWizardDialog(BaseDialog):
             help_key="wizard.payroll_activation",
         )
         self.setObjectName("PayrollActivationWizardDialog")
-        self.resize(680, 580)
+        apply_window_size(self, "modules.payroll.ui.wizards.payroll.activation.wizard.0")
 
         intro = QLabel(
             "Set up payroll for this company in a few guided steps.",
@@ -258,7 +259,7 @@ class PayrollActivationWizardDialog(BaseDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
 
-        card = self._card("Statutory Pack")
+        card = self._card("Statutory pack")
         hint = QLabel(
             "Applying a pack creates the standard payroll components "
             "(CNPS, IRPP, TDL, CRTV, …) and their calculation rules. "

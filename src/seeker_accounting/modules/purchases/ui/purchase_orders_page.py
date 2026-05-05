@@ -3,9 +3,9 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -14,14 +14,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
+from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.purchases.dto.purchase_order_dto import PurchaseOrderListItemDTO
 from seeker_accounting.modules.purchases.ui.purchase_order_dialog import (
@@ -29,8 +28,13 @@ from seeker_accounting.modules.purchases.ui.purchase_order_dialog import (
     PurchaseOrderDialog,
 )
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.register import RegisterPage
 
 
 _STATUS_LABELS: dict[str, str] = {
@@ -42,11 +46,53 @@ _STATUS_LABELS: dict[str, str] = {
 }
 
 
-class PurchaseOrdersPage(QWidget):
+ORDER_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="order_number", title="Order #"),
+    DataTableColumn(key="order_date", title="Date"),
+    DataTableColumn(key="expected_delivery_date", title="Expected Delivery"),
+    DataTableColumn(key="supplier_name", title="Supplier"),
+    DataTableColumn(key="currency_code", title="Currency"),
+    DataTableColumn(key="subtotal_amount", title="Subtotal", is_numeric=True),
+    DataTableColumn(key="tax_amount", title="Tax", is_numeric=True),
+    DataTableColumn(key="total_amount", title="Total", is_numeric=True),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="bill", title="Bill"),
+)
+_STATUS_COLUMN_INDEX = 8
+
+
+_CMD_NEW = "purchase_orders.new"
+_CMD_EDIT = "purchase_orders.edit"
+_CMD_CANCEL = "purchase_orders.cancel"
+_CMD_SEND = "purchase_orders.send"
+_CMD_ACKNOWLEDGE = "purchase_orders.acknowledge"
+_CMD_CONVERT = "purchase_orders.convert"
+_CMD_REFRESH = "purchase_orders.refresh"
+_CMD_PRINT = "purchase_orders.print"
+_CMD_EXPORT_LIST = "purchase_orders.export_list"
+
+
+class PurchaseOrdersPage(RibbonHostMixin, QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
         self._orders: list[PurchaseOrderListItemDTO] = []
+        self._command_enabled: dict[str, bool] = {
+            _CMD_NEW: False,
+            _CMD_EDIT: False,
+            _CMD_CANCEL: False,
+            _CMD_SEND: False,
+            _CMD_ACKNOWLEDGE: False,
+            _CMD_CONVERT: False,
+            _CMD_REFRESH: True,
+            _CMD_PRINT: False,
+            _CMD_EXPORT_LIST: False,
+        }
+
+        self._search_debounce = QTimer(self)
+        self._search_debounce.setSingleShot(True)
+        self._search_debounce.setInterval(250)
+        self._search_debounce.timeout.connect(self._apply_search_filter)
 
         self.setObjectName("PurchaseOrdersPage")
 
@@ -54,8 +100,14 @@ class PurchaseOrdersPage(QWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        root_layout.addWidget(self._build_action_bar())
-        root_layout.addWidget(self._build_content_stack(), 1)
+        self._register = RegisterPage(self)
+        self._populate_toolbar_strip(self._register)
+        # Action band is owned by the ribbon now; the visible toolbar above
+        # carries the legacy buttons. ActionBand stays hidden for visual
+        # consistency with other migrated registers.
+        self._register.action_band.hide()
+        self._register.set_table_widget(self._build_content_stack())
+        root_layout.addWidget(self._register)
 
         self._service_registry.active_company_context.active_company_changed.connect(
             self._handle_active_company_changed
@@ -71,7 +123,7 @@ class PurchaseOrdersPage(QWidget):
 
         if active_company is None:
             self._orders = []
-            self._table.setRowCount(0)
+            self._orders_model.removeRows(0, self._orders_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -84,7 +136,7 @@ class PurchaseOrdersPage(QWidget):
             )
         except Exception as exc:
             self._orders = []
-            self._table.setRowCount(0)
+            self._orders_model.removeRows(0, self._orders_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -97,35 +149,27 @@ class PurchaseOrdersPage(QWidget):
         self._restore_selection(selected_order_id)
         self._update_action_state()
 
+    def _handle_search_text_changed(self, _text: str) -> None:
+        self._search_debounce.start()
+
     # ------------------------------------------------------------------
     # UI building
     # ------------------------------------------------------------------
 
-    def _build_action_bar(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageToolbar")
-        card.setProperty("card", True)
+    def _populate_toolbar_strip(self, register: RegisterPage) -> None:
+        strip_layout = register.toolbar_strip_layout
 
-        layout = QHBoxLayout(card)
-        layout.setContentsMargins(8, 2, 8, 2)
-        layout.setSpacing(6)
-
-        title = QLabel('Purchase Order Register', card)
+        title = QLabel("Purchase Order Register", register.toolbar_strip)
         title.setObjectName("ToolbarTitle")
-        layout.addWidget(title)
+        strip_layout.addWidget(title)
 
-        self._record_count_label = QLabel(card)
-        self._record_count_label.setObjectName("ToolbarMeta")
-        layout.addWidget(self._record_count_label)
+        self._search_input = QLineEdit(register.toolbar_strip)
+        self._search_input.setPlaceholderText("Search orders…")
+        self._search_input.setFixedWidth(200)
+        self._search_input.textChanged.connect(self._handle_search_text_changed)
+        strip_layout.addWidget(self._search_input)
 
-        layout.addStretch(1)
-        self._search_input = QLineEdit(card)
-        self._search_input.setPlaceholderText("Search orders...")
-        self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
-        layout.addWidget(self._search_input)
-
-        self._status_filter_combo = QComboBox(card)
+        self._status_filter_combo = QComboBox(register.toolbar_strip)
         self._status_filter_combo.addItem("All statuses", None)
         self._status_filter_combo.addItem("Draft", "draft")
         self._status_filter_combo.addItem("Sent", "sent")
@@ -133,44 +177,48 @@ class PurchaseOrdersPage(QWidget):
         self._status_filter_combo.addItem("Cancelled", "cancelled")
         self._status_filter_combo.addItem("Converted", "converted")
         self._status_filter_combo.currentIndexChanged.connect(lambda _index: self.reload_orders())
-        layout.addWidget(self._status_filter_combo)
+        strip_layout.addWidget(self._status_filter_combo)
 
-        self._new_button = QPushButton("New Order", card)
+        strip_layout.addStretch(1)
+
+        self._record_count_label = QLabel(register.toolbar_strip)
+        self._record_count_label.setObjectName("StatusRailText")
+        strip_layout.addWidget(self._record_count_label)
+
+        self._new_button = QPushButton("New Order", register.toolbar_strip)
         self._new_button.setProperty("variant", "primary")
         self._new_button.clicked.connect(self._open_create_dialog)
-        layout.addWidget(self._new_button)
+        strip_layout.addWidget(self._new_button)
 
-        self._edit_button = QPushButton("Edit Draft", card)
+        self._edit_button = QPushButton("Edit Draft", register.toolbar_strip)
         self._edit_button.setProperty("variant", "secondary")
         self._edit_button.clicked.connect(self._open_edit_dialog)
-        layout.addWidget(self._edit_button)
+        strip_layout.addWidget(self._edit_button)
 
-        self._send_button = QPushButton("Send Order", card)
+        self._send_button = QPushButton("Send Order", register.toolbar_strip)
         self._send_button.setProperty("variant", "secondary")
         self._send_button.clicked.connect(self._send_selected_order)
-        layout.addWidget(self._send_button)
+        strip_layout.addWidget(self._send_button)
 
-        self._acknowledge_button = QPushButton("Acknowledge", card)
+        self._acknowledge_button = QPushButton("Acknowledge", register.toolbar_strip)
         self._acknowledge_button.setProperty("variant", "secondary")
         self._acknowledge_button.clicked.connect(self._acknowledge_selected_order)
-        layout.addWidget(self._acknowledge_button)
+        strip_layout.addWidget(self._acknowledge_button)
 
-        self._convert_button = QPushButton("Convert to Bill", card)
+        self._convert_button = QPushButton("Convert to Bill", register.toolbar_strip)
         self._convert_button.setProperty("variant", "secondary")
         self._convert_button.clicked.connect(self._convert_selected_order)
-        layout.addWidget(self._convert_button)
+        strip_layout.addWidget(self._convert_button)
 
-        self._cancel_button = QPushButton("Cancel Order", card)
+        self._cancel_button = QPushButton("Cancel Order", register.toolbar_strip)
         self._cancel_button.setProperty("variant", "secondary")
         self._cancel_button.clicked.connect(self._cancel_selected_order)
-        layout.addWidget(self._cancel_button)
+        strip_layout.addWidget(self._cancel_button)
 
-        self._refresh_button = QPushButton("Refresh", card)
+        self._refresh_button = QPushButton("Refresh", register.toolbar_strip)
         self._refresh_button.setProperty("variant", "ghost")
         self._refresh_button.clicked.connect(lambda: self.reload_orders())
-        layout.addWidget(self._refresh_button)
-
-        return card
+        strip_layout.addWidget(self._refresh_button)
 
     def _build_content_stack(self) -> QWidget:
         self._stack = QStackedWidget(self)
@@ -183,33 +231,48 @@ class PurchaseOrdersPage(QWidget):
         return self._stack
 
     def _build_table_surface(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
+        container = QWidget(self)
+        layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setObjectName("PurchaseOrdersTable")
-        self._table.setColumnCount(10)
-        self._table.setHorizontalHeaderLabels((
-            "Order #",
-            "Date",
-            "Expected Delivery",
-            "Supplier",
-            "Currency",
-            "Subtotal",
-            "Tax",
-            "Total",
-            "Status",
-            "Bill",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        layout.addWidget(self._table)
-        return card
+        layout.setSpacing(4)
+
+        self._orders_model = QStandardItemModel(0, len(ORDER_COLUMNS), self)
+        self._orders_model.setHorizontalHeaderLabels([c.title for c in ORDER_COLUMNS])
+
+        self._table = DataTable(
+            columns=ORDER_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No orders match the current filters.",
+            parent=container,
+        )
+        self._table.set_model(self._orders_model)
+        self._orders_status_delegate = apply_status_chip_to_column(
+            self._table.view(), _STATUS_COLUMN_INDEX
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
+        layout.addWidget(self._table, 1)
+        return container
+
+    @staticmethod
+    def _make_item(text: str, *, user_data=None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
 
     def _build_empty_state(self) -> QWidget:
         card = QFrame(self)
@@ -303,88 +366,87 @@ class PurchaseOrdersPage(QWidget):
         self._stack.setCurrentWidget(self._empty_state)
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-
+        self._orders_model.removeRows(0, self._orders_model.rowCount())
         for order in self._orders:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                order.order_number,
-                self._format_date(order.order_date),
-                self._format_date(order.expected_delivery_date) if order.expected_delivery_date else "—",
-                order.supplier_name,
-                order.currency_code,
-                self._format_amount(order.subtotal_amount),
-                self._format_amount(order.tax_amount),
-                self._format_amount(order.total_amount),
-                _STATUS_LABELS.get(order.status_code, order.status_code.title()),
-                "✓" if order.converted_to_bill_id else "",
-            )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, order.id)
-                if col in {1, 2, 4, 5, 6, 7, 8, 9}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, col, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(8, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(9, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            row_items = [
+                self._make_item(order.order_number, user_data=order.id),
+                self._make_item(self._format_date(order.order_date)),
+                self._make_item(
+                    self._format_date(order.expected_delivery_date)
+                    if order.expected_delivery_date
+                    else "—"
+                ),
+                self._make_item(order.supplier_name),
+                self._make_item(order.currency_code),
+                self._make_numeric(order.subtotal_amount),
+                self._make_numeric(order.tax_amount),
+                self._make_numeric(order.total_amount),
+                self._make_item(order.status_code or ""),
+                self._make_item("✓" if order.converted_to_bill_id else ""),
+            ]
+            self._orders_model.appendRow(row_items)
 
         count = len(self._orders)
         self._record_count_label.setText(f"{count} order" if count == 1 else f"{count} orders")
 
     def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                item = self._table.item(row, col)
-                if item is not None and query in item.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        query = self._search_input.text().strip()
+        setter = getattr(proxy, "set_search_text", None)
+        if callable(setter):
+            setter(query)
 
     def _restore_selection(self, selected_order_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._orders:
             return
         if selected_order_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, o in enumerate(self._orders) if o.id == selected_order_id),
+                -1,
+            )
+        if target_idx < 0:
+            target_idx = 0
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_order_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._orders_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_order(self) -> PurchaseOrderListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        order_id = item.data(Qt.ItemDataRole.UserRole)
-        for order in self._orders:
-            if order.id == order_id:
-                return order
+        idx = rows[0]
+        if 0 <= idx < len(self._orders):
+            return self._orders[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        selected = self._selected_order()
+        if selected is None:
+            return
+        if selected.status_code == "draft":
+            self._open_edit_dialog()
+
+    def _set_command_enabled(self, command_id: str, enabled: bool) -> None:
+        self._command_enabled[command_id] = bool(enabled)
 
     def _update_action_state(self) -> None:
         active_company = self._active_company()
@@ -394,28 +456,48 @@ class PurchaseOrdersPage(QWidget):
 
         status = selected.status_code if selected else ""
 
-        self._new_button.setEnabled(has_company and perm.has_permission("purchases.orders.create"))
-        self._edit_button.setEnabled(
+        new_enabled = has_company and perm.has_permission("purchases.orders.create")
+        edit_enabled = (
             has_company and selected is not None and status == "draft"
             and perm.has_permission("purchases.orders.edit")
         )
-        self._send_button.setEnabled(
+        send_enabled = (
             has_company and selected is not None and status == "draft"
             and perm.has_permission("purchases.orders.send")
         )
-        self._acknowledge_button.setEnabled(
+        acknowledge_enabled = (
             has_company and selected is not None and status == "sent"
             and perm.has_permission("purchases.orders.acknowledge")
         )
-        self._convert_button.setEnabled(
+        convert_enabled = (
             has_company and selected is not None and status == "acknowledged"
             and perm.has_permission("purchases.orders.convert")
             and perm.has_permission("purchases.bills.create")
         )
-        self._cancel_button.setEnabled(
+        cancel_enabled = (
             has_company and selected is not None and status in {"draft", "sent"}
             and perm.has_permission("purchases.orders.cancel")
         )
+        print_enabled = has_company and selected is not None
+        export_enabled = has_company and bool(self._orders)
+
+        self._new_button.setEnabled(new_enabled)
+        self._edit_button.setEnabled(edit_enabled)
+        self._send_button.setEnabled(send_enabled)
+        self._acknowledge_button.setEnabled(acknowledge_enabled)
+        self._convert_button.setEnabled(convert_enabled)
+        self._cancel_button.setEnabled(cancel_enabled)
+
+        self._set_command_enabled(_CMD_NEW, new_enabled)
+        self._set_command_enabled(_CMD_EDIT, edit_enabled)
+        self._set_command_enabled(_CMD_CANCEL, cancel_enabled)
+        self._set_command_enabled(_CMD_SEND, send_enabled)
+        self._set_command_enabled(_CMD_ACKNOWLEDGE, acknowledge_enabled)
+        self._set_command_enabled(_CMD_CONVERT, convert_enabled)
+        self._set_command_enabled(_CMD_REFRESH, True)
+        self._set_command_enabled(_CMD_PRINT, print_enabled)
+        self._set_command_enabled(_CMD_EXPORT_LIST, export_enabled)
+        self._notify_ribbon_state_changed()
 
     def _show_permission_denied(self, permission_code: str) -> None:
         show_error(
@@ -424,19 +506,28 @@ class PurchaseOrdersPage(QWidget):
             self._service_registry.permission_service.build_denied_message(permission_code),
         )
 
+    # ── IRibbonHost ───────────────────────────────────────────────────
+
+    def _ribbon_commands(self):
+        return {
+            _CMD_NEW: self._open_create_dialog,
+            _CMD_EDIT: self._open_edit_dialog,
+            _CMD_CANCEL: self._cancel_selected_order,
+            _CMD_SEND: self._send_selected_order,
+            _CMD_ACKNOWLEDGE: self._acknowledge_selected_order,
+            _CMD_CONVERT: self._convert_selected_order,
+            _CMD_REFRESH: self.reload_orders,
+        }
+
+    def ribbon_state(self):
+        return dict(self._command_enabled)
+
     # ------------------------------------------------------------------
     # Event dispatchers
     # ------------------------------------------------------------------
 
     def _handle_active_company_changed(self) -> None:
         self.reload_orders()
-
-    def _handle_item_double_clicked(self) -> None:
-        selected = self._selected_order()
-        if selected is None:
-            return
-        if selected.status_code == "draft":
-            self._open_edit_dialog()
 
     # ------------------------------------------------------------------
     # Actions

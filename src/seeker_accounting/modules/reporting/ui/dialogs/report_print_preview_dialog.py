@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -8,8 +9,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -18,6 +17,7 @@ from seeker_accounting.modules.reporting.dto.print_preview_dto import (
     PrintPreviewMetaDTO,
     PrintPreviewRowDTO,
 )
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 
 class ReportPrintPreviewDialog(QDialog):
@@ -74,30 +74,39 @@ class ReportPrintPreviewDialog(QDialog):
         return header_card
 
     def _build_rows_table(self, rows: tuple[PrintPreviewRowDTO, ...]) -> QWidget:
-        table = QTableWidget(self)
         amount_headers = self._resolve_amount_headers(rows)
         headers = ["Ref", "Line", *amount_headers]
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(headers)
-        table.setRowCount(len(rows))
-        table.verticalHeader().setVisible(False)
-        table.verticalHeader().setDefaultSectionSize(28)
-        table.setWordWrap(False)
-        table.setAlternatingRowColors(False)
-        table.setShowGrid(False)
-        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        table.horizontalHeader().setStretchLastSection(False)
-        table.setColumnWidth(0, 90)
-        table.setColumnWidth(1, 470)
+        columns = tuple(DataTableColumn(key=str(i), title=h) for i, h in enumerate(headers))
+        dt = DataTable(
+            columns=columns,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        model = QStandardItemModel(0, len(headers), self)
+        model.setHorizontalHeaderLabels(list(headers))
+        dt.set_model(model)
+        view = dt.view()
+        view.verticalHeader().setVisible(False)
+        view.verticalHeader().setDefaultSectionSize(28)
+        view.setWordWrap(False)
+        view.setAlternatingRowColors(False)
+        view.setShowGrid(False)
+        view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        view.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        view.horizontalHeader().setStretchLastSection(False)
+        view.setColumnWidth(0, 90)
+        view.setColumnWidth(1, 470)
         for column in range(2, len(headers)):
-            table.setColumnWidth(column, 160)
+            view.setColumnWidth(column, 160)
 
-        for row_index, row in enumerate(rows):
-            self._bind_row(table, row_index, row, len(amount_headers))
+        for row in rows:
+            self._bind_row(model, row, len(amount_headers))
 
-        return table
+        return dt
 
     def _build_placeholder_canvas(self) -> QWidget:
         canvas = QFrame(self)
@@ -124,20 +133,22 @@ class ReportPrintPreviewDialog(QDialog):
 
     def _bind_row(
         self,
-        table: QTableWidget,
-        row_index: int,
+        model: QStandardItemModel,
         row: PrintPreviewRowDTO,
         amount_column_count: int,
     ) -> None:
-        ref_item = QTableWidgetItem(row.reference_code or "")
-        label_item = QTableWidgetItem(row.label)
+        ref_item = QStandardItem(row.reference_code or "")
+        ref_item.setEditable(False)
+        label_item = QStandardItem(row.label)
+        label_item.setEditable(False)
         amount_items = [
-            QTableWidgetItem(row.amount_text or ""),
-            QTableWidgetItem(row.secondary_amount_text or ""),
-            QTableWidgetItem(row.tertiary_amount_text or ""),
-            QTableWidgetItem(row.quaternary_amount_text or ""),
+            QStandardItem(row.amount_text or ""),
+            QStandardItem(row.secondary_amount_text or ""),
+            QStandardItem(row.tertiary_amount_text or ""),
+            QStandardItem(row.quaternary_amount_text or ""),
         ][:amount_column_count]
         for amount_item in amount_items:
+            amount_item.setEditable(False)
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         if row.row_type == "section":
@@ -156,10 +167,7 @@ class ReportPrintPreviewDialog(QDialog):
             for amount_item in amount_items:
                 amount_item.setFont(font)
 
-        table.setItem(row_index, 0, ref_item)
-        table.setItem(row_index, 1, label_item)
-        for offset, amount_item in enumerate(amount_items, start=2):
-            table.setItem(row_index, offset, amount_item)
+        model.appendRow([ref_item, label_item, *amount_items])
 
     def _resolve_amount_headers(self, rows: tuple[PrintPreviewRowDTO, ...]) -> tuple[str, ...]:
         has_secondary = any((row.secondary_amount_text or "").strip() for row in rows)

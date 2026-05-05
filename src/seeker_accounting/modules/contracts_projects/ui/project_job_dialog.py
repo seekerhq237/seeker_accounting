@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDateEdit,
@@ -19,8 +20,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -38,7 +37,7 @@ from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 
 # ── Job Form Dialog ───────────────────────────────────────────────────────
@@ -67,7 +66,7 @@ class ProjectJobFormDialog(BaseDialog):
         title = "New Job" if job_id is None else "Edit Job"
         super().__init__(title, parent, help_key="dialog.project_job")
         self.setObjectName("ProjectJobFormDialog")
-        self.resize(600, 520)
+        apply_window_size(self, "modules.contracts.projects.ui.project.job.dialog.0")
 
         intro = QLabel(f"Job for project {project_code}.", self)
         intro.setObjectName("PageSummary")
@@ -354,7 +353,7 @@ class ProjectJobsDialog(BaseDialog):
         self._jobs: list[ProjectJobListItemDTO] = []
 
         self.setObjectName("ProjectJobsDialog")
-        self.resize(900, 560)
+        apply_window_size(self, "modules.contracts.projects.ui.project.job.dialog.1")
 
         self.body_layout.addWidget(self._build_toolbar())
         self.body_layout.addWidget(self._build_table_card(), 1)
@@ -429,16 +428,28 @@ class ProjectJobsDialog(BaseDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("ProjectJobsTable")
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels(
-            ("Code", "Name", "Parent", "Seq", "Status", "Start", "Planned End")
+        self._model = QStandardItemModel(0, 7, card)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="parent", title="Parent"),
+                DataTableColumn(key="seq", title="Seq"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="start", title="Start"),
+                DataTableColumn(key="planned_end", title="Planned End"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._open_edit)
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 4)
+        self._table.selection_changed.connect(lambda _: self._update_action_state())
+        self._table.view().doubleClicked.connect(self._on_double_clicked)
         layout.addWidget(self._table)
         return card
 
@@ -459,64 +470,61 @@ class ProjectJobsDialog(BaseDialog):
         self._count_label.setText(f"{count} job{'s' if count != 1 else ''}")
 
         if selected_id is not None:
-            for row in range(self._table.rowCount()):
-                item = self._table.item(row, 0)
-                if item and item.data(Qt.ItemDataRole.UserRole) == selected_id:
-                    self._table.selectRow(row)
-                    self._update_action_state()
-                    return
-
-        if self._table.rowCount() > 0:
-            self._table.selectRow(0)
+            target_idx = next(
+                (i for i, j in enumerate(self._jobs) if j.id == selected_id), 0
+            )
+        else:
+            target_idx = 0
+        proxy = self._table.view().model()
+        if proxy is None:
+            self._update_action_state()
+            return
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if proxy_index.isValid():
+            sm = self._table.view().selectionModel()
+            if sm is not None:
+                sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+                self._table.view().scrollTo(proxy_index)
         self._update_action_state()
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for job in self._jobs:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            values = (
-                job.job_code,
-                job.job_name,
-                job.parent_job_code or "",
-                str(job.sequence_number),
-                job.status_code,
-                str(job.start_date) if job.start_date else "",
-                str(job.planned_end_date) if job.planned_end_date else "",
-            )
-            for col, val in enumerate(values):
-                item = QTableWidgetItem(val)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, job.id)
-                if col in {3, 4}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row, col, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(job.job_code, user_data=job.id),
+                self._make_item(job.job_name),
+                self._make_item(job.parent_job_code or ""),
+                self._make_item(str(job.sequence_number)),
+                self._make_item(job.status_code),
+                self._make_item(str(job.start_date) if job.start_date else ""),
+                self._make_item(str(job.planned_end_date) if job.planned_end_date else ""),
+            ])
 
     def _selected_job(self) -> ProjectJobListItemDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
-        if item is None:
+        id_item = self._model.item(rows[0], 0)
+        if id_item is None:
             return None
-        job_id = item.data(Qt.ItemDataRole.UserRole)
+        job_id = id_item.data(Qt.ItemDataRole.UserRole)
         for j in self._jobs:
             if j.id == job_id:
                 return j
         return None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _on_double_clicked(self, _index) -> None:
+        self._open_edit()
 
     def _update_action_state(self) -> None:
         selected = self._selected_job()

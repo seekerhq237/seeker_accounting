@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -22,9 +23,12 @@ from seeker_accounting.modules.reporting.ui.dialogs.journal_source_detail_dialog
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class GeneralLedgerTab(QWidget):
@@ -119,24 +123,30 @@ class GeneralLedgerTab(QWidget):
         self._account_header.setObjectName("InfoCardTitle")
         layout.addWidget(self._account_header)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(9)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Date",
-                "Entry #",
-                "Reference",
-                "Description",
-                "Line Memo",
-                "Debit",
-                "Credit",
-                "Running Balance",
-                "Source",
-            ]
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="entry_num", title="Entry #"),
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="line_memo", title="Line Memo"),
+                DataTableColumn(key="debit", title="Debit"),
+                DataTableColumn(key="credit", title="Credit"),
+                DataTableColumn(key="running_balance", title="Running Balance"),
+                DataTableColumn(key="source", title="Source"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
         )
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._model = QStandardItemModel(0, 9, panel)
+        self._model.setHorizontalHeaderLabels(
+            ["Date", "Entry #", "Reference", "Description", "Line Memo", "Debit", "Credit", "Running Balance", "Source"]
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table, 1)
 
         self._totals_bar = self._build_totals_bar(panel)
@@ -198,7 +208,7 @@ class GeneralLedgerTab(QWidget):
         company_id = filter_dto.company_id
         if not isinstance(company_id, int) or company_id <= 0:
             self._stack.setCurrentIndex(1)
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             return
 
         self._reload_accounts(company_id, preserve_selection=True)
@@ -218,8 +228,12 @@ class GeneralLedgerTab(QWidget):
             show_error(self, "General Ledger", str(exc))
             self._stack.setCurrentIndex(4)
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "General Ledger", str(exc))
+
+        except Exception:
+            _log.exception("General Ledger")
+            show_error(self, "General Ledger", "An unexpected error occurred. See application log for details.")
             self._stack.setCurrentIndex(4)
             return
 
@@ -234,7 +248,7 @@ class GeneralLedgerTab(QWidget):
         assert report is not None
 
         if not report.accounts:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentIndex(3)
             return
 
@@ -272,32 +286,29 @@ class GeneralLedgerTab(QWidget):
         header_text = f"{account.account_code} · {account.account_name}"
         self._account_header.setText(header_text)
 
-        # Bulk populate: suspend paint + sorting for large ledgers.
-        self._table.setUpdatesEnabled(False)
-        self._table.setSortingEnabled(False)
+        self._model.blockSignals(True)
         try:
-            self._table.setRowCount(len(account.lines))
-            for row_idx, line in enumerate(account.lines):
-                self._set_text_item(row_idx, 0, line.entry_date.strftime("%Y-%m-%d"))
-                self._set_text_item(row_idx, 1, line.entry_number or "—")
-                self._set_text_item(row_idx, 2, line.reference_text or "—")
-                self._set_text_item(row_idx, 3, line.journal_description or "—")
-                self._set_text_item(row_idx, 4, line.line_description or "—")
-                self._set_amount_item(row_idx, 5, line.debit_amount)
-                self._set_amount_item(row_idx, 6, line.credit_amount)
-                self._set_amount_item(row_idx, 7, line.running_balance)
-
+            self._model.removeRows(0, self._model.rowCount())
+            for line in account.lines:
                 source_parts = []
                 if line.source_module_code:
                     source_parts.append(line.source_module_code)
                 if line.source_document_type:
                     source_parts.append(line.source_document_type)
                 source = " / ".join(source_parts) if source_parts else "—"
-                item = QTableWidgetItem(source)
-                item.setData(Qt.ItemDataRole.UserRole, line.journal_entry_id)
-                self._table.setItem(row_idx, 8, item)
+                self._model.appendRow([
+                    self._make_item(line.entry_date.strftime("%Y-%m-%d")),
+                    self._make_item(line.entry_number or "—"),
+                    self._make_item(line.reference_text or "—"),
+                    self._make_item(line.journal_description or "—"),
+                    self._make_item(line.line_description or "—"),
+                    self._make_amount_item(line.debit_amount),
+                    self._make_amount_item(line.credit_amount),
+                    self._make_amount_item(line.running_balance),
+                    self._make_item(source, user_data=line.journal_entry_id),
+                ])
         finally:
-            self._table.setUpdatesEnabled(True)
+            self._model.blockSignals(False)
 
         self._update_totals(account)
 
@@ -307,14 +318,19 @@ class GeneralLedgerTab(QWidget):
         self._totals_labels["period_credit"].setText(self._fmt(account.period_credit))
         self._totals_labels["closing_balance"].setText(self._fmt(account.closing_balance))
 
-    def _set_text_item(self, row_index: int, col_index: int, text: str) -> None:
-        item = QTableWidgetItem(text)
-        self._table.setItem(row_index, col_index, item)
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
-    def _set_amount_item(self, row_index: int, col_index: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+    def _make_amount_item(self, amount: Decimal) -> QStandardItem:
+        item = QStandardItem(self._fmt(amount))
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row_index, col_index, item)
+        return item
 
     @staticmethod
     def _fmt(amount: Decimal) -> str:
@@ -336,8 +352,13 @@ class GeneralLedgerTab(QWidget):
         if self._current_filter is not None:
             self.apply_filter(self._current_filter)
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        entry_item = self._table.item(row, 8)
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        entry_item = self._model.item(row, 8)
         if entry_item is None:
             return
         entry_id = entry_item.data(Qt.ItemDataRole.UserRole)

@@ -3,8 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -12,8 +12,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -25,9 +23,9 @@ from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.contracts_projects.dto.contract_dto import ContractListItemDTO
 from seeker_accounting.modules.contracts_projects.ui.contract_change_order_dialog import ContractChangeOrdersDialog
 from seeker_accounting.modules.contracts_projects.ui.contract_form_dialog import ContractFormDialog
-from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
 class ContractsPage(RibbonHostMixin, QWidget):
@@ -57,7 +55,7 @@ class ContractsPage(RibbonHostMixin, QWidget):
 
         if active_company is None:
             self._contracts = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -69,7 +67,7 @@ class ContractsPage(RibbonHostMixin, QWidget):
             )
         except Exception as exc:
             self._contracts = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -189,16 +187,28 @@ class ContractsPage(RibbonHostMixin, QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("ContractsTable")
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels(
-            ("Contract #", "Title", "Customer", "Type", "Amount", "Currency", "Status")
+        self._model = QStandardItemModel(0, 7, card)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="contract_num", title="Contract #"),
+                DataTableColumn(key="title", title="Title"),
+                DataTableColumn(key="customer", title="Customer"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="amount", title="Amount", is_numeric=True),
+                DataTableColumn(key="currency", title="Currency"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 6)
+        self._table.selection_changed.connect(lambda _: self._update_action_state())
+        self._table.view().doubleClicked.connect(self._on_double_clicked)
         layout.addWidget(self._table)
         return card
 
@@ -280,6 +290,13 @@ class ContractsPage(RibbonHostMixin, QWidget):
     def _active_company(self) -> ActiveCompanyDTO | None:
         return self._service_registry.company_context_service.get_active_company()
 
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Permission Denied",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
     def _sync_surface_state(self, active_company: ActiveCompanyDTO | None) -> None:
         if active_company is None:
             self._stack.setCurrentWidget(self._no_active_company_state)
@@ -294,94 +311,65 @@ class ContractsPage(RibbonHostMixin, QWidget):
     # ------------------------------------------------------------------
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for contract in self._contracts:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                contract.contract_number,
-                contract.contract_title,
-                contract.customer_display_name,
-                contract.contract_type_code,
-                self._format_amount(contract.base_contract_amount),
-                contract.currency_code,
-                contract.status_code,
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, contract.id)
-                if column_index in {4}:
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
-                if column_index in {5, 6}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, column_index, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(contract.contract_number, user_data=contract.id),
+                self._make_item(contract.contract_title),
+                self._make_item(contract.customer_display_name),
+                self._make_item(contract.contract_type_code),
+                self._make_item(self._format_amount(contract.base_contract_amount)),
+                self._make_item(contract.currency_code),
+                self._make_item(contract.status_code),
+            ])
 
     def _apply_search_filter(self) -> None:
-        query = self._search_edit.text().strip().lower()
-        visible_count = 0
-        for row_index in range(self._table.rowCount()):
-            matches = not query or any(
-                query in (self._table.item(row_index, col).text().lower() if self._table.item(row_index, col) else "")
-                for col in range(self._table.columnCount())
-            )
-            self._table.setRowHidden(row_index, not matches)
-            if matches:
-                visible_count += 1
-
+        query = self._search_edit.text().strip()
+        proxy = self._table.view().model()
+        if proxy is not None:
+            proxy.set_search_text(query)
         total_count = len(self._contracts)
-        if query:
-            self._record_count_label.setText(f"{visible_count} shown of {total_count} contracts")
-        else:
-            self._record_count_label.setText(
-                f"{total_count} contract" if total_count == 1 else f"{total_count} contracts"
-            )
+        self._record_count_label.setText(
+            f"{total_count} contract" if total_count == 1 else f"{total_count} contracts"
+        )
         self._update_action_state()
 
     def _restore_selection(self, selected_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._contracts:
             return
         if selected_id is None:
-            self._select_first_visible_row()
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, c in enumerate(self._contracts) if c.id == selected_id), 0
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_id:
-                if not self._table.isRowHidden(row_index):
-                    self._table.selectRow(row_index)
-                    return
-        self._select_first_visible_row()
-
-    def _select_first_visible_row(self) -> None:
-        for row_index in range(self._table.rowCount()):
-            if not self._table.isRowHidden(row_index):
-                self._table.selectRow(row_index)
-                return
-        self._table.clearSelection()
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            if proxy.rowCount() > 0:
+                first = proxy.index(0, 0)
+                sm = self._table.view().selectionModel()
+                if sm is not None:
+                    sm.select(first, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_contract(self) -> ContractListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0 or self._table.isRowHidden(current_row):
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
+        id_item = self._model.item(rows[0], 0)
+        if id_item is None:
             return None
-        contract_id = item.data(Qt.ItemDataRole.UserRole)
+        contract_id = id_item.data(Qt.ItemDataRole.UserRole)
         for contract in self._contracts:
             if contract.id == contract_id:
                 return contract
@@ -391,27 +379,33 @@ class ContractsPage(RibbonHostMixin, QWidget):
         active_company = self._active_company()
         selected = self._selected_contract()
         has_active_company = active_company is not None
+        perm = self._service_registry.permission_service
+        can_create = perm.has_permission("contracts.create")
+        can_edit = perm.has_permission("contracts.edit")
+        can_close = perm.has_permission("contracts.close")
 
-        self._new_button.setEnabled(has_active_company)
-        self._edit_button.setEnabled(selected is not None and has_active_company)
+        self._new_button.setEnabled(has_active_company and can_create)
+        self._edit_button.setEnabled(selected is not None and has_active_company and can_edit)
         self._activate_button.setEnabled(
-            selected is not None and has_active_company and selected.status_code == "draft"
+            selected is not None and has_active_company and selected.status_code == "draft" and can_edit
         )
         self._cancel_button.setEnabled(
             selected is not None
             and has_active_company
             and selected.status_code in {"draft", "active", "on_hold"}
+            and can_edit
         )
         self._hold_button.setEnabled(
-            selected is not None and has_active_company and selected.status_code == "active"
+            selected is not None and has_active_company and selected.status_code == "active" and can_edit
         )
         self._complete_button.setEnabled(
             selected is not None
             and has_active_company
             and selected.status_code in {"active", "on_hold"}
+            and can_edit
         )
         self._close_button.setEnabled(
-            selected is not None and has_active_company and selected.status_code == "completed"
+            selected is not None and has_active_company and selected.status_code == "completed" and can_close
         )
         self._change_orders_button.setEnabled(selected is not None and has_active_company)
         self._open_workspace_button.setEnabled(selected is not None and has_active_company)
@@ -457,6 +451,9 @@ class ContractsPage(RibbonHostMixin, QWidget):
     # ------------------------------------------------------------------
 
     def _open_create_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("contracts.create"):
+            self._show_permission_denied("contracts.create")
+            return
         active_company = self._active_company()
         if active_company is None:
             show_info(self, "Contracts", "Select an active company before creating contracts.")
@@ -472,6 +469,9 @@ class ContractsPage(RibbonHostMixin, QWidget):
         self.reload_contracts(selected_contract_id=contract.id)
 
     def _open_edit_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("contracts.edit"):
+            self._show_permission_denied("contracts.edit")
+            return
         active_company = self._active_company()
         selected = self._selected_contract()
         if active_company is None or selected is None:
@@ -489,6 +489,9 @@ class ContractsPage(RibbonHostMixin, QWidget):
         self.reload_contracts(selected_contract_id=updated.id)
 
     def _activate_selected_contract(self) -> None:
+        if not self._service_registry.permission_service.has_permission("contracts.edit"):
+            self._show_permission_denied("contracts.edit")
+            return
         self._change_selected_status(
             title="Activate Contract",
             prompt="Activate contract '{code}'?",
@@ -496,6 +499,9 @@ class ContractsPage(RibbonHostMixin, QWidget):
         )
 
     def _hold_selected_contract(self) -> None:
+        if not self._service_registry.permission_service.has_permission("contracts.edit"):
+            self._show_permission_denied("contracts.edit")
+            return
         self._change_selected_status(
             title="Put Contract On Hold",
             prompt="Put contract '{code}' on hold?",
@@ -503,6 +509,9 @@ class ContractsPage(RibbonHostMixin, QWidget):
         )
 
     def _complete_selected_contract(self) -> None:
+        if not self._service_registry.permission_service.has_permission("contracts.edit"):
+            self._show_permission_denied("contracts.edit")
+            return
         self._change_selected_status(
             title="Complete Contract",
             prompt="Mark contract '{code}' as completed?",
@@ -510,6 +519,9 @@ class ContractsPage(RibbonHostMixin, QWidget):
         )
 
     def _close_selected_contract(self) -> None:
+        if not self._service_registry.permission_service.has_permission("contracts.close"):
+            self._show_permission_denied("contracts.close")
+            return
         self._change_selected_status(
             title="Close Contract",
             prompt="Close contract '{code}'?",
@@ -517,6 +529,9 @@ class ContractsPage(RibbonHostMixin, QWidget):
         )
 
     def _cancel_selected_contract(self) -> None:
+        if not self._service_registry.permission_service.has_permission("contracts.edit"):
+            self._show_permission_denied("contracts.edit")
+            return
         self._change_selected_status(
             title="Cancel Contract",
             prompt="Cancel contract '{code}'? This cannot be undone.",
@@ -598,7 +613,15 @@ class ContractsPage(RibbonHostMixin, QWidget):
     def _format_amount(self, value: Decimal | None) -> str:
         return "" if value is None else f"{value:,.2f}"
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _on_double_clicked(self, _index) -> None:
         self._open_workspace()
 
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:

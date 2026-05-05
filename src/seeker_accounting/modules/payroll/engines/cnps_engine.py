@@ -21,13 +21,17 @@ Total PVID is 8.4 % split equally: employee 4.2 % + employer 4.2 %.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from seeker_accounting.modules.payroll.engines.engine_types import (
     EngineContext,
     EngineLineResult,
     RuleSetInput,
+    quantize_xaf,
 )
+
+logger = logging.getLogger(__name__)
 
 _CNPS_EMPLOYEE_RULE = "CNPS_EMPLOYEE_MAIN"
 _CNPS_EMPLOYER_RULE = "CNPS_EMPLOYER_MAIN"
@@ -61,9 +65,13 @@ def run_cnps_engine(
     if employee_comp is not None:
         emp_rate, emp_base_cap, emp_result_cap = _resolve_rate_cap(ctx.rule_sets.get(_CNPS_EMPLOYEE_RULE))
         if emp_rate is None:
+            logger.warning(
+                "Rule set '%s' not found for company %s; using fallback CNPS employee rate %s.",
+                _CNPS_EMPLOYEE_RULE, ctx.company_id, _DEFAULT_EMPLOYEE_RATE,
+            )
             emp_rate, emp_base_cap, emp_result_cap = _DEFAULT_EMPLOYEE_RATE, _DEFAULT_CAP, None
         capped_base = min(cnps_contributory_base, emp_base_cap) if emp_base_cap else cnps_contributory_base
-        amount = max((capped_base * emp_rate).quantize(Decimal("0.0001")), Decimal("0"))
+        amount = max(quantize_xaf(capped_base * emp_rate), Decimal("0"))
         if emp_result_cap and emp_result_cap > 0:
             amount = min(amount, emp_result_cap)
         results.append(
@@ -79,9 +87,13 @@ def run_cnps_engine(
     if employer_comp is not None:
         er_rate, er_base_cap, er_result_cap = _resolve_rate_cap(ctx.rule_sets.get(_CNPS_EMPLOYER_RULE))
         if er_rate is None:
+            logger.warning(
+                "Rule set '%s' not found for company %s; using fallback CNPS employer rate %s.",
+                _CNPS_EMPLOYER_RULE, ctx.company_id, _DEFAULT_EMPLOYER_RATE,
+            )
             er_rate, er_base_cap, er_result_cap = _DEFAULT_EMPLOYER_RATE, _DEFAULT_CAP, None
         capped_base = min(cnps_contributory_base, er_base_cap) if er_base_cap else cnps_contributory_base
-        amount = max((capped_base * er_rate).quantize(Decimal("0.0001")), Decimal("0"))
+        amount = max(quantize_xaf(capped_base * er_rate), Decimal("0"))
         if er_result_cap and er_result_cap > 0:
             amount = min(amount, er_result_cap)
         results.append(

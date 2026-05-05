@@ -415,6 +415,7 @@ with Session(engine) as S:
                 if proj_ids:
                     proj_id = RNG.choice(proj_ids)
                     alloc = PayrollRunEmployeeProjectAllocation(
+                        company_id=run_emp.company_id,
                         payroll_run_employee_id=run_emp.id,
                         line_number=1,
                         project_id=proj_id,

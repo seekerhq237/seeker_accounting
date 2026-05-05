@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
+from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.inventory.dto.inventory_reference_commands import (
     CreateItemCategoryCommand,
@@ -29,11 +30,13 @@ class ItemCategoryService:
         unit_of_work_factory: UnitOfWorkFactory,
         company_repository_factory: CompanyRepositoryFactory,
         item_category_repository_factory: ItemCategoryRepositoryFactory,
+        permission_service: PermissionService,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._company_repository_factory = company_repository_factory
         self._repo_factory = item_category_repository_factory
+        self._permission_service = permission_service
         self._audit_service = audit_service
 
     def list_item_categories(self, company_id: int, active_only: bool = False) -> list[ItemCategoryDTO]:
@@ -52,6 +55,7 @@ class ItemCategoryService:
             return self._to_dto(cat)
 
     def create_item_category(self, company_id: int, command: CreateItemCategoryCommand) -> ItemCategoryDTO:
+        self._permission_service.require_permission("inventory.categories.create")
         self._validate_fields(command.code, command.name)
         with self._unit_of_work_factory() as uow:
             self._require_company(uow.session, company_id)
@@ -76,6 +80,7 @@ class ItemCategoryService:
     def update_item_category(
         self, company_id: int, category_id: int, command: UpdateItemCategoryCommand
     ) -> ItemCategoryDTO:
+        self._permission_service.require_permission("inventory.categories.edit")
         self._validate_fields(command.code, command.name)
         with self._unit_of_work_factory() as uow:
             self._require_company(uow.session, company_id)
@@ -100,6 +105,7 @@ class ItemCategoryService:
             return self._to_dto(cat)
 
     def deactivate_item_category(self, company_id: int, category_id: int) -> None:
+        self._permission_service.require_permission("inventory.categories.deactivate")
         with self._unit_of_work_factory() as uow:
             self._require_company(uow.session, company_id)
             repo = self._repo_factory(uow.session)

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -12,8 +14,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -23,10 +23,29 @@ from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.treasury.dto.financial_account_dto import FinancialAccountListItemDTO
 from seeker_accounting.modules.treasury.ui.financial_account_dialog import FinancialAccountDialog
-from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
+from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+FINANCIAL_ACCOUNT_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="account_code", title="Code"),
+    DataTableColumn(key="name", title="Name"),
+    DataTableColumn(key="type", title="Type"),
+    DataTableColumn(key="gl_account", title="GL Account"),
+    DataTableColumn(key="currency", title="Currency"),
+    DataTableColumn(key="active", title="Active"),
+    DataTableColumn(key="updated_at", title="Updated At"),
+)
+
+
+_log = logging.getLogger(__name__)
 
 
 class FinancialAccountsPage(QWidget):
@@ -58,7 +77,7 @@ class FinancialAccountsPage(QWidget):
 
         if active_company is None:
             self._accounts = []
-            self._table.setRowCount(0)
+            self._accounts_model.removeRows(0, self._accounts_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -70,7 +89,7 @@ class FinancialAccountsPage(QWidget):
             )
         except Exception as exc:
             self._accounts = []
-            self._table.setRowCount(0)
+            self._accounts_model.removeRows(0, self._accounts_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -78,8 +97,8 @@ class FinancialAccountsPage(QWidget):
             return
 
         self._populate_table()
-        self._apply_search_filter()
         self._sync_surface_state(active_company)
+        self._update_record_count_label()
         self._restore_selection(selected_account_id)
         self._update_action_state()
 
@@ -108,7 +127,7 @@ class FinancialAccountsPage(QWidget):
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search accounts...")
         self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self._search_input)
 
         self._new_button = QPushButton("New Account", card)
@@ -154,95 +173,40 @@ class FinancialAccountsPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setObjectName("FinancialAccountsTable")
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels((
-            "Code",
-            "Name",
-            "Type",
-            "GL Account",
-            "Currency",
-            "Active",
-            "Updated At",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+
+        self._accounts_model = QStandardItemModel(0, len(FINANCIAL_ACCOUNT_COLUMNS), self)
+        self._accounts_model.setHorizontalHeaderLabels(
+            [c.title for c in FINANCIAL_ACCOUNT_COLUMNS]
+        )
+
+        self._table = DataTable(
+            columns=FINANCIAL_ACCOUNT_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No financial accounts to display.",
+            parent=card,
+        )
+        self._table.set_model(self._accounts_model)
+        self._accounts_status_delegate = apply_status_chip_to_column(
+            self._table.view(), 5
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
         layout.addWidget(self._table)
         return card
 
     def _build_empty_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("No financial accounts yet", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Create the first financial account for the active company to begin managing "
-            "bank and cash positions.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        create_button = QPushButton("Create Account", actions)
-        create_button.setProperty("variant", "primary")
-        create_button.clicked.connect(self._open_create_dialog)
-        actions_layout.addWidget(create_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("treasury.financial_accounts.empty", parent=self)
+        state.primary_clicked.connect(self._open_create_dialog)
+        return state
 
     def _build_no_active_company_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("Select an active company first", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Financial accounts are company-scoped. Choose the active company before managing accounts.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        companies_button = QPushButton("Open Companies", actions)
-        companies_button.setProperty("variant", "secondary")
-        companies_button.clicked.connect(self._open_companies_workspace)
-        actions_layout.addWidget(companies_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("treasury.no_company", parent=self)
+        state.primary_clicked.connect(self._open_companies_workspace)
+        return state
 
     # ------------------------------------------------------------------
     # State helpers
@@ -250,6 +214,13 @@ class FinancialAccountsPage(QWidget):
 
     def _active_company(self) -> ActiveCompanyDTO | None:
         return self._service_registry.company_context_service.get_active_company()
+
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Permission Denied",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
 
     def _sync_surface_state(self, active_company: ActiveCompanyDTO | None) -> None:
         if active_company is None:
@@ -260,92 +231,99 @@ class FinancialAccountsPage(QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-
+        self._accounts_model.removeRows(0, self._accounts_model.rowCount())
         for acct in self._accounts:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                acct.account_code,
-                acct.name,
-                acct.financial_account_type_code.replace("_", " ").title(),
-                f"{acct.gl_account_code} — {acct.gl_account_name}",
-                acct.currency_code,
-                "Active" if acct.is_active else "Inactive",
-                self._format_datetime(acct.updated_at),
+            type_label = acct.financial_account_type_code.replace("_", " ").title()
+            gl_label = f"{acct.gl_account_code} — {acct.gl_account_name}"
+            items = [
+                self._make_item(acct.account_code, user_data=acct.id),
+                self._make_item(acct.name),
+                self._make_item(type_label),
+                self._make_item(gl_label),
+                self._make_item(acct.currency_code),
+                self._make_item("active" if acct.is_active else "inactive"),
+                self._make_item(self._format_datetime(acct.updated_at)),
+            ]
+            self._accounts_model.appendRow(items)
+
+    def _on_search_text_changed(self, text: str) -> None:
+        self._table.set_search_text(text)
+        self._update_record_count_label()
+
+    def _update_record_count_label(self) -> None:
+        total = len(self._accounts)
+        query = self._search_input.text().strip()
+        if query:
+            proxy = self._table.view().model()
+            visible = proxy.rowCount() if proxy is not None else total
+            self._record_count_label.setText(
+                f"{visible} shown of {total} accounts"
             )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, acct.id)
-                if col in {2, 4, 5, 6}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, col, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
-
-        count = len(self._accounts)
-        self._record_count_label.setText(f"{count} account" if count == 1 else f"{count} accounts")
-
-    def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                item = self._table.item(row, col)
-                if item is not None and query in item.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
+        else:
+            self._record_count_label.setText(
+                f"{total} account" if total == 1 else f"{total} accounts"
+            )
 
     def _restore_selection(self, selected_account_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._accounts:
             return
         if selected_account_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, a in enumerate(self._accounts) if a.id == selected_account_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_account_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._accounts_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_account(self) -> FinancialAccountListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        account_id = item.data(Qt.ItemDataRole.UserRole)
-        for acct in self._accounts:
-            if acct.id == account_id:
-                return acct
+        idx = rows[0]
+        if 0 <= idx < len(self._accounts):
+            return self._accounts[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        if self._selected_account() is not None:
+            self._open_edit_dialog()
 
     def _update_action_state(self) -> None:
         active_company = self._active_company()
         selected = self._selected_account()
         has_company = active_company is not None
+        perm = self._service_registry.permission_service
 
-        self._new_button.setEnabled(has_company)
-        self._edit_button.setEnabled(has_company and selected is not None)
-        self._toggle_active_button.setEnabled(has_company and selected is not None)
+        self._new_button.setEnabled(has_company and perm.has_permission("treasury.financial_accounts.create"))
+        self._edit_button.setEnabled(has_company and selected is not None and perm.has_permission("treasury.financial_accounts.edit"))
+        self._toggle_active_button.setEnabled(has_company and selected is not None and perm.has_permission("treasury.financial_accounts.deactivate"))
         self._export_list_button.setEnabled(has_company and bool(self._accounts))
 
     # ------------------------------------------------------------------
@@ -364,10 +342,17 @@ class FinancialAccountsPage(QWidget):
                 active_company.company_id, self._accounts, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Financial Accounts", f"Export failed.\n\n{exc}")
 
+        except Exception:
+            _log.exception("Financial Accounts")
+            show_error(self, "Financial Accounts", "An unexpected error occurred. See application log for details.")
+
     def _open_create_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.financial_accounts.create"):
+            self._show_permission_denied("treasury.financial_accounts.create")
+            return
         active_company = self._active_company()
         if active_company is None:
             show_info(self, "Financial Accounts", "Select an active company before creating accounts.")
@@ -383,6 +368,9 @@ class FinancialAccountsPage(QWidget):
             self.reload_accounts(selected_account_id=result.id)
 
     def _open_edit_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.financial_accounts.edit"):
+            self._show_permission_denied("treasury.financial_accounts.edit")
+            return
         active_company = self._active_company()
         selected = self._selected_account()
         if active_company is None or selected is None:
@@ -400,6 +388,9 @@ class FinancialAccountsPage(QWidget):
             self.reload_accounts(selected_account_id=result.id)
 
     def _toggle_active(self) -> None:
+        if not self._service_registry.permission_service.has_permission("treasury.financial_accounts.deactivate"):
+            self._show_permission_denied("treasury.financial_accounts.deactivate")
+            return
         active_company = self._active_company()
         selected = self._selected_account()
         if active_company is None or selected is None:
@@ -441,11 +432,6 @@ class FinancialAccountsPage(QWidget):
     # ------------------------------------------------------------------
     # Signals
     # ------------------------------------------------------------------
-
-    def _handle_item_double_clicked(self, *_args: object) -> None:
-        selected = self._selected_account()
-        if selected is not None:
-            self._open_edit_dialog()
 
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:
         _ = company_id, company_name

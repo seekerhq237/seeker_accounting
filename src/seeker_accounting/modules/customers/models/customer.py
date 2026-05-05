@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from seeker_accounting.db.base import ActiveFlagMixin, Base, TimestampMixin
@@ -48,6 +48,15 @@ class Customer(TimestampMixin, ActiveFlagMixin, Base):
     )
     credit_limit_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    # T37: indicates this customer is a government body or designated
+    # large taxpayer that retains VAT at source (précompte / withholds).
+    withholds_vat: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
+    # P6 / Slice 7.1 – default price list for this customer
+    price_list_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("price_lists.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
 
     company: Mapped["Company"] = relationship("Company")
     customer_group: Mapped["CustomerGroup | None"] = relationship("CustomerGroup", back_populates="customers")

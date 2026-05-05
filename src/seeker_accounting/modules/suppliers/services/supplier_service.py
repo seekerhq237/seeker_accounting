@@ -30,6 +30,7 @@ from seeker_accounting.modules.suppliers.models.supplier_group import SupplierGr
 from seeker_accounting.modules.suppliers.repositories.supplier_group_repository import SupplierGroupRepository
 from seeker_accounting.modules.suppliers.repositories.supplier_repository import SupplierRepository
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.validation import require_code, require_text
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -139,6 +140,7 @@ class SupplierService:
             group = repository.get_by_id(company_id, group_id)
             if group is None:
                 raise NotFoundError(f"Supplier group with id {group_id} was not found.")
+            from_state = "active" if group.is_active else "inactive"
             group.is_active = False
             repository.save(group)
             try:
@@ -148,6 +150,14 @@ class SupplierService:
 
             from seeker_accounting.modules.audit.event_type_catalog import SUPPLIER_GROUP_DEACTIVATED
             self._record_audit(company_id, SUPPLIER_GROUP_DEACTIVATED, "SupplierGroup", group.id, "Deactivated supplier group")
+            self._record_state_transition(
+                company_id,
+                "SupplierGroup",
+                group.id,
+                from_state,
+                "inactive",
+                "Supplier group deactivated.",
+            )
     def list_suppliers(
         self,
         company_id: int,
@@ -366,6 +376,7 @@ class SupplierService:
             supplier = repository.get_by_id(company_id, supplier_id)
             if supplier is None:
                 raise NotFoundError(f"Supplier with id {supplier_id} was not found.")
+            from_state = "active" if supplier.is_active else "inactive"
             supplier.is_active = False
             repository.save(supplier)
             try:
@@ -375,6 +386,14 @@ class SupplierService:
 
             from seeker_accounting.modules.audit.event_type_catalog import SUPPLIER_DEACTIVATED
             self._record_audit(company_id, SUPPLIER_DEACTIVATED, "Supplier", supplier_id, "Deactivated supplier")
+            self._record_state_transition(
+                company_id,
+                "Supplier",
+                supplier_id,
+                from_state,
+                "inactive",
+                "Supplier deactivated.",
+            )
     def _validate_supplier_dependencies(
         self,
         *,
@@ -421,14 +440,10 @@ class SupplierService:
         return self._supplier_repository_factory(session)
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _require_code(self, value: str, label: str) -> str:
-        normalized = self._require_text(value, label).upper()
-        return normalized.replace(" ", "")
+        return require_code(value, label, remove_spaces=True)
 
     def _normalize_optional_text(self, value: str | None) -> str | None:
         if value is None:
@@ -586,3 +601,28 @@ class SupplierService:
             )
         except Exception:
             pass  # Audit must not break business operations
+
+    def _record_state_transition(
+        self,
+        company_id: int,
+        entity_type: str,
+        entity_id: int | None,
+        from_state: str | None,
+        to_state: str,
+        description: str,
+    ) -> None:
+        if self._audit_service is None:
+            return
+        from seeker_accounting.modules.audit.event_type_catalog import MODULE_SUPPLIERS
+        try:
+            self._audit_service.record_state_transition(
+                company_id,
+                module_code=MODULE_SUPPLIERS,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                from_state=from_state,
+                to_state=to_state,
+                description=description,
+            )
+        except Exception:
+            pass

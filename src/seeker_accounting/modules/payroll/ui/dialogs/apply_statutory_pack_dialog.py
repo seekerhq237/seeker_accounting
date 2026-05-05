@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.payroll.dto.payroll_statutory_pack_dto import ApplyPackResultDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 
 class ApplyStatutoryPackDialog(QDialog):
@@ -39,9 +40,9 @@ class ApplyStatutoryPackDialog(QDialog):
         self._company_id = company_id
         self._result: ApplyPackResultDTO | None = None
 
-        self.setWindowTitle(f"Apply Statutory Pack — {company_name}")
+        self.setWindowTitle(f"Apply statutory pack - {company_name}")
         self.setModal(True)
-        self.resize(520, 420)
+        apply_window_size(self, "modules.payroll.ui.dialogs.apply.statutory.pack.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -54,7 +55,7 @@ class ApplyStatutoryPackDialog(QDialog):
         sel_layout.setContentsMargins(18, 16, 18, 16)
         sel_layout.setSpacing(10)
 
-        sel_hdr = QLabel("Select Statutory Pack", sel_card)
+        sel_hdr = QLabel("Select statutory pack", sel_card)
         sel_hdr.setObjectName("CardTitle")
         sel_layout.addWidget(sel_hdr)
 
@@ -79,7 +80,8 @@ class ApplyStatutoryPackDialog(QDialog):
         pack_rl.setSpacing(8)
         pack_lbl = QLabel("Pack to apply:", pack_row)
         pack_lbl.setProperty("role", "caption")
-        pack_lbl.setFixedWidth(120)
+        from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _tok
+        pack_lbl.setFixedWidth(_tok.sizes.form_label_w_small)
         pack_rl.addWidget(pack_lbl)
         self._pack_combo = QComboBox(pack_row)
         try:

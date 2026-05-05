@@ -40,6 +40,7 @@ from seeker_accounting.modules.accounting.fiscal_periods.repositories.fiscal_yea
 )
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.validation import require_code, require_text
 
 FiscalYearRepositoryFactory = Callable[[Session], FiscalYearRepository]
 FiscalPeriodRepositoryFactory = Callable[[Session], FiscalPeriodRepository]
@@ -357,16 +358,10 @@ class FiscalCalendarService:
         return start_a <= end_b and start_b <= end_a
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _require_code(self, value: str, label: str) -> str:
-        normalized = self._require_text(value, label).upper().replace(" ", "")
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_code(value, label, remove_spaces=True)
 
     def _normalize_status(self, value: str, allowed_values: set[str]) -> str:
         normalized = self._require_text(value, "Status").upper()

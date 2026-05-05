@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -14,8 +13,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -25,9 +22,27 @@ from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.inventory.dto.item_dto import ItemListItemDTO
 from seeker_accounting.modules.inventory.ui.item_dialog import ItemDialog
-from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
+from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+ITEM_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="item_code", title="Item Code"),
+    DataTableColumn(key="item_name", title="Item Name"),
+    DataTableColumn(key="type", title="Type"),
+    DataTableColumn(key="uom", title="UoM"),
+    DataTableColumn(key="cost_method", title="Cost Method"),
+    DataTableColumn(key="tracking", title="Tracking"),
+    DataTableColumn(key="variant", title="Variant"),
+    DataTableColumn(key="reorder_level", title="Reorder Lvl"),
+    DataTableColumn(key="active", title="Active"),
+)
 
 
 class ItemsPage(QWidget):
@@ -59,7 +74,7 @@ class ItemsPage(QWidget):
 
         if active_company is None:
             self._items = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -74,7 +89,7 @@ class ItemsPage(QWidget):
             )
         except Exception as exc:
             self._items = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -82,7 +97,6 @@ class ItemsPage(QWidget):
             return
 
         self._populate_table()
-        self._apply_search_filter()
         self._sync_surface_state(active_company)
         self._restore_selection(selected_item_id)
         self._update_action_state()
@@ -112,7 +126,7 @@ class ItemsPage(QWidget):
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search items...")
         self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self._search_input)
 
         self._type_filter_combo = QComboBox(card)
@@ -167,95 +181,36 @@ class ItemsPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setObjectName("ItemsTable")
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels((
-            "Item Code",
-            "Item Name",
-            "Type",
-            "UoM",
-            "Cost Method",
-            "Reorder Lvl",
-            "Active",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+
+        self._model = QStandardItemModel(0, len(ITEM_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in ITEM_COLUMNS])
+
+        self._table = DataTable(
+            columns=ITEM_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No items to display.",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 8)
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
         layout.addWidget(self._table)
         return card
 
     def _build_empty_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("No items yet", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Create items to use in inventory documents. Stock items track inventory "
-            "on hand and require costing configuration.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        create_button = QPushButton("Create Item", actions)
-        create_button.setProperty("variant", "primary")
-        create_button.clicked.connect(self._open_create_dialog)
-        actions_layout.addWidget(create_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("inventory.items.empty", parent=self)
+        state.primary_clicked.connect(self._open_create_dialog)
+        return state
 
     def _build_no_active_company_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("Select an active company first", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Items are company-scoped. Choose the active company before managing items.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        companies_button = QPushButton("Open Companies", actions)
-        companies_button.setProperty("variant", "secondary")
-        companies_button.clicked.connect(self._open_companies_workspace)
-        actions_layout.addWidget(companies_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("inventory.no_company", parent=self)
+        state.primary_clicked.connect(self._open_companies_workspace)
+        return state
 
     # ------------------------------------------------------------------
     # State helpers
@@ -281,93 +236,114 @@ class ItemsPage(QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for item in self._items:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                item.item_code,
-                item.item_name,
-                item.item_type_code.replace("_", " ").title(),
-                item.unit_of_measure_code,
-                (item.inventory_cost_method_code or "").replace("_", " ").title(),
-                self._format_qty(item.reorder_level_quantity),
-                "Yes" if item.is_active else "No",
-            )
-            for col, value in enumerate(values):
-                cell = QTableWidgetItem(value)
-                if col == 0:
-                    cell.setData(Qt.ItemDataRole.UserRole, item.id)
-                if col in {2, 3, 4, 5, 6}:
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, col, cell)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            type_label = item.item_type_code.replace("_", " ").title()
+            cost_label = (item.inventory_cost_method_code or "").replace("_", " ").title()
+            row_items = [
+                self._make_item(item.item_code, user_data=item.id),
+                self._make_item(item.item_name),
+                self._make_item(type_label),
+                self._make_item(item.unit_of_measure_code),
+                self._make_item(cost_label),
+                self._make_item((item.tracking_mode_code or "none").replace("_", " ").title()),
+                self._make_item("Variant" if item.is_variant else "Parent" if item.parent_item_id is None else "Child"),
+                self._make_numeric(item.reorder_level_quantity),
+                self._make_item("active" if item.is_active else "inactive"),
+            ]
+            self._model.appendRow(row_items)
 
         count = len(self._items)
         self._record_count_label.setText(f"{count} item" if count == 1 else f"{count} items")
 
-    def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                cell = self._table.item(row, col)
-                if cell is not None and query in cell.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
+    def _on_search_text_changed(self, text: str) -> None:
+        self._table.set_search_text(text)
 
     def _restore_selection(self, selected_item_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._items:
             return
         if selected_item_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, it in enumerate(self._items) if it.id == selected_item_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            cell = self._table.item(row, 0)
-            if cell is not None and cell.data(Qt.ItemDataRole.UserRole) == selected_item_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_item(self) -> ItemListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        cell = self._table.item(current_row, 0)
-        if cell is None:
-            return None
-        item_id = cell.data(Qt.ItemDataRole.UserRole)
-        for item in self._items:
-            if item.id == item_id:
-                return item
+        idx = rows[0]
+        if 0 <= idx < len(self._items):
+            return self._items[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        self._handle_item_double_clicked()
+
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Items",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
 
     def _update_action_state(self) -> None:
         active_company = self._active_company()
         selected = self._selected_item()
         has_company = active_company is not None
+        permission_service = self._service_registry.permission_service
 
-        self._new_button.setEnabled(has_company)
-        self._edit_button.setEnabled(has_company and selected is not None)
+        self._new_button.setEnabled(
+            has_company and permission_service.has_permission("inventory.items.create")
+        )
+        self._edit_button.setEnabled(
+            has_company
+            and selected is not None
+            and permission_service.has_permission("inventory.items.edit")
+        )
         self._deactivate_button.setEnabled(
-            has_company and selected is not None and selected.is_active
+            has_company
+            and selected is not None
+            and selected.is_active
+            and permission_service.has_permission("inventory.items.deactivate")
         )
 
     # ------------------------------------------------------------------
@@ -378,6 +354,9 @@ class ItemsPage(QWidget):
         active_company = self._active_company()
         if active_company is None:
             show_info(self, "Items", "Select an active company before creating items.")
+            return
+        if not self._service_registry.permission_service.has_permission("inventory.items.create"):
+            self._show_permission_denied("inventory.items.create")
             return
         result = ItemDialog.create_item(
             self._service_registry,
@@ -394,6 +373,9 @@ class ItemsPage(QWidget):
         if active_company is None or selected is None:
             show_info(self, "Items", "Select an item to edit.")
             return
+        if not self._service_registry.permission_service.has_permission("inventory.items.edit"):
+            self._show_permission_denied("inventory.items.edit")
+            return
         result = ItemDialog.edit_item(
             self._service_registry,
             company_id=active_company.company_id,
@@ -409,6 +391,9 @@ class ItemsPage(QWidget):
         selected = self._selected_item()
         if active_company is None or selected is None:
             return
+        if not self._service_registry.permission_service.has_permission("inventory.items.deactivate"):
+            self._show_permission_denied("inventory.items.deactivate")
+            return
 
         choice = QMessageBox.question(
             self,
@@ -422,6 +407,9 @@ class ItemsPage(QWidget):
             self._service_registry.item_service.deactivate_item(
                 active_company.company_id, selected.id
             )
+        except PermissionDeniedError:
+            self._show_permission_denied("inventory.items.deactivate")
+            return
         except (ValidationError, NotFoundError) as exc:
             show_error(self, "Items", str(exc))
             self.reload_items(selected_item_id=selected.id)
@@ -452,6 +440,7 @@ class ItemsPage(QWidget):
             nav_ids.ITEM_DETAIL,
             context={"item_id": item.id},
         )
+
 
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:
         _ = company_id, company_name

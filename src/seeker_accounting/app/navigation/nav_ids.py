@@ -39,6 +39,10 @@ INVENTORY_LOCATIONS: Final = "inventory_locations"
 ITEMS: Final = "items"
 INVENTORY_DOCUMENTS: Final = "inventory_documents"
 STOCK_POSITION: Final = "stock_position"
+INVENTORY_DASHBOARD: Final = "inventory_dashboard"
+PRICE_LISTS: Final = "price_lists"
+REORDER_PLANNING: Final = "reorder_planning"
+INVENTORY_REPORTS: Final = "inventory_reports"
 ASSET_CATEGORIES: Final = "asset_categories"
 ASSETS: Final = "assets"
 DEPRECIATION_RUNS: Final = "depreciation_runs"
@@ -56,6 +60,7 @@ ROLES: Final = "roles"
 AUDIT_LOG: Final = "audit_log"
 ORGANISATION_SETTINGS: Final = "organisation_settings"
 BACKUP_RESTORE: Final = "backup_restore"
+DEFERRALS: Final = "deferrals"
 
 # ── Entity detail workspaces (Phase 3) ─────────────────────────────────
 CUSTOMER_DETAIL: Final = "customer_detail"
@@ -103,6 +108,10 @@ ALL_NAV_IDS: Final[tuple[str, ...]] = (
     ITEMS,
     INVENTORY_DOCUMENTS,
     STOCK_POSITION,
+    INVENTORY_DASHBOARD,
+    PRICE_LISTS,
+    REORDER_PLANNING,
+    INVENTORY_REPORTS,
     ASSET_CATEGORIES,
     ASSETS,
     DEPRECIATION_RUNS,
@@ -128,6 +137,7 @@ ALL_NAV_IDS: Final[tuple[str, ...]] = (
     # Phase 5 document detail workspaces
     SALES_INVOICE_DETAIL,
     PURCHASE_BILL_DETAIL,
+    DEFERRALS,
 )
 
 DEFAULT_NAV_ID: Final = DASHBOARD

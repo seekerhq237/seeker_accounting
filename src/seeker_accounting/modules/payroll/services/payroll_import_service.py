@@ -436,7 +436,7 @@ class PayrollImportService:
             if currency_code and not context.currency_repo.exists_active(currency_code):
                 add("currency_code", f"Currency '{currency_code}' was not found or is inactive.")
             if employee and effective_from and context.profile_repo.check_duplicate(company_id, employee.id, effective_from):
-                add("effective_from", f"Compensation profile for employee '{employee_number}' on {effective_from} already exists and will be skipped.", "warning")
+                add("effective_from", f"Compensation for employee '{employee_number}' on {effective_from} already exists and will be skipped.", "warning")
             return issues
 
         if entity_type == "employee_component_assignments":
@@ -620,7 +620,7 @@ class PayrollImportService:
 
         effective_from = self._parse_date_value(row.get("effective_from"))
         if effective_from and context.profile_repo.check_duplicate(company_id, employee.id, effective_from):
-            return "skipped", f"Compensation profile for employee '{employee_number}' already exists for {effective_from}."
+            return "skipped", f"Compensation for employee '{employee_number}' already exists for {effective_from}."
 
         context.profile_repo.save(
             EmployeeCompensationProfile(

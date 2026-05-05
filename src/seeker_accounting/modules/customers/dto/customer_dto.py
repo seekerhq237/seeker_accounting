@@ -38,6 +38,7 @@ class CustomerListItemDTO:
     credit_limit_amount: Decimal | None
     is_active: bool
     updated_at: datetime
+    withholds_vat: bool = False
 
 
 @dataclass(frozen=True, slots=True)

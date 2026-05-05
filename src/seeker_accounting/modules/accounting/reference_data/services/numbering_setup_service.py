@@ -36,6 +36,7 @@ _VALID_DOCUMENT_TYPE_CODES = frozenset({
     "treasury_transaction",
     "journal_entry",
     "inventory_document",
+    "inventory_document_draft",
     "asset",
     "depreciation_run",
     "payroll_run",

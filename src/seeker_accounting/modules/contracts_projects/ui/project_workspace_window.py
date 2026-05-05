@@ -4,19 +4,15 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -36,7 +32,7 @@ from seeker_accounting.modules.job_costing.ui.project_commitment_dialog import P
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 
 def _fmt_date(value: datetime | date | None) -> str:
@@ -287,12 +283,24 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         open_btn.clicked.connect(self._open_jobs)
         header.addWidget(open_btn)
 
-        self._jobs_table = QTableWidget(0, 5, card)
-        self._jobs_table.setHorizontalHeaderLabels(["Code", "Name", "Status", "Start", "Planned End"])
-        configure_compact_table(self._jobs_table)
-        self._jobs_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._jobs_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._jobs_table.doubleClicked.connect(lambda *_: self._open_jobs())
+        self._jobs_model = QStandardItemModel(0, 5, card)
+        self._jobs_table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="start", title="Start"),
+                DataTableColumn(key="planned_end", title="Planned End"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="none",
+            parent=card,
+        )
+        self._jobs_table.set_model(self._jobs_model)
+        self._jobs_table.view().doubleClicked.connect(lambda *_: self._open_jobs())
         self._jobs_table.setMaximumHeight(200)
         outer.addWidget(self._jobs_table)
         return card
@@ -320,14 +328,24 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         header.addWidget(self._manage_versions_btn)
 
         # Table shows *lines* of the current approved version (or latest draft fallback)
-        self._budgets_table = QTableWidget(0, 5, card)
-        self._budgets_table.setHorizontalHeaderLabels(
-            ["#", "Job", "Cost Code", "Description", "Amount"]
+        self._budgets_model = QStandardItemModel(0, 5, card)
+        self._budgets_table = DataTable(
+            columns=(
+                DataTableColumn(key="num", title="#", is_numeric=True),
+                DataTableColumn(key="job", title="Job"),
+                DataTableColumn(key="cost_code", title="Cost Code"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="amount", title="Amount", is_numeric=True),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="none",
+            parent=card,
         )
-        configure_compact_table(self._budgets_table)
-        self._budgets_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._budgets_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._budgets_table.doubleClicked.connect(lambda *_: self._open_revise_budget())
+        self._budgets_table.set_model(self._budgets_model)
+        self._budgets_table.view().doubleClicked.connect(lambda *_: self._open_revise_budget())
         self._budgets_table.setMaximumHeight(200)
         outer.addWidget(self._budgets_table)
         return card
@@ -343,12 +361,24 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         open_btn.clicked.connect(self._open_commitments)
         header.addWidget(open_btn)
 
-        self._commitments_table = QTableWidget(0, 5, card)
-        self._commitments_table.setHorizontalHeaderLabels(["Number", "Supplier", "Type", "Status", "Total"])
-        configure_compact_table(self._commitments_table)
-        self._commitments_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self._commitments_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._commitments_table.doubleClicked.connect(lambda *_: self._open_commitments())
+        self._commitments_model = QStandardItemModel(0, 5, card)
+        self._commitments_table = DataTable(
+            columns=(
+                DataTableColumn(key="number", title="Number"),
+                DataTableColumn(key="supplier", title="Supplier"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="total", title="Total", is_numeric=True),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="none",
+            parent=card,
+        )
+        self._commitments_table.set_model(self._commitments_model)
+        self._commitments_table.view().doubleClicked.connect(lambda *_: self._open_commitments())
         self._commitments_table.setMaximumHeight(200)
         outer.addWidget(self._commitments_table)
         return card
@@ -369,11 +399,20 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         variance_btn.clicked.connect(self._open_variance)
         header.addWidget(variance_btn)
 
-        self._costs_table = QTableWidget(0, 2, card)
-        self._costs_table.setHorizontalHeaderLabels(["Source", "Amount"])
-        configure_compact_table(self._costs_table)
-        self._costs_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self._costs_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._costs_model = QStandardItemModel(0, 2, card)
+        self._costs_table = DataTable(
+            columns=(
+                DataTableColumn(key="source", title="Source"),
+                DataTableColumn(key="amount", title="Amount", is_numeric=True),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="none",
+            parent=card,
+        )
+        self._costs_table.set_model(self._costs_model)
         self._costs_table.setMaximumHeight(200)
         outer.addWidget(self._costs_table)
         return card
@@ -552,7 +591,7 @@ class ProjectWorkspaceWindow(ChildWindowBase):
 
     def _populate_jobs(self) -> None:
         detail = self._detail
-        self._jobs_table.setRowCount(0)
+        self._jobs_model.removeRows(0, self._jobs_model.rowCount())
         if detail is None:
             return
         try:
@@ -560,19 +599,18 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         except NotFoundError:
             jobs = []
         self._jobs_subtitle.setText(f"{len(jobs)} job{'s' if len(jobs) != 1 else ''}")
-        self._jobs_table.setSortingEnabled(False)
-        self._jobs_table.setRowCount(len(jobs))
-        for row, job in enumerate(jobs):
-            self._jobs_table.setItem(row, 0, QTableWidgetItem(job.job_code or ""))
-            self._jobs_table.setItem(row, 1, QTableWidgetItem(job.job_name or ""))
-            self._jobs_table.setItem(row, 2, QTableWidgetItem(_status_label(job.status_code)))
-            self._jobs_table.setItem(row, 3, QTableWidgetItem(_fmt_date(job.start_date)))
-            self._jobs_table.setItem(row, 4, QTableWidgetItem(_fmt_date(job.planned_end_date)))
-        self._jobs_table.setSortingEnabled(True)
+        for job in jobs:
+            self._jobs_model.appendRow([
+                self._make_item(job.job_code or ""),
+                self._make_item(job.job_name or ""),
+                self._make_item(_status_label(job.status_code)),
+                self._make_item(_fmt_date(job.start_date)),
+                self._make_item(_fmt_date(job.planned_end_date)),
+            ])
 
     def _populate_budgets(self) -> None:
         detail = self._detail
-        self._budgets_table.setRowCount(0)
+        self._budgets_model.removeRows(0, self._budgets_model.rowCount())
         if detail is None:
             self._budgets_subtitle.setText("No budget")
             self._new_budget_btn.setVisible(True)
@@ -624,25 +662,19 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         except NotFoundError:
             lines = []
 
-        self._budgets_table.setSortingEnabled(False)
-        self._budgets_table.setRowCount(len(lines))
+        self._budgets_model.removeRows(0, self._budgets_model.rowCount())
         for row, line in enumerate(lines):
-            num_item = QTableWidgetItem(str(line.line_number))
-            num_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._budgets_table.setItem(row, 0, num_item)
-            self._budgets_table.setItem(row, 1, QTableWidgetItem(line.project_job_code or "—"))
-            self._budgets_table.setItem(
-                row, 2, QTableWidgetItem(line.project_cost_code_name or "—")
-            )
-            self._budgets_table.setItem(row, 3, QTableWidgetItem(line.description or ""))
-            amount_item = QTableWidgetItem(_fmt_amount(line.line_amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._budgets_table.setItem(row, 4, amount_item)
-        self._budgets_table.setSortingEnabled(True)
+            self._budgets_model.appendRow([
+                self._make_item(str(line.line_number)),
+                self._make_item(line.project_job_code or "—"),
+                self._make_item(line.project_cost_code_name or "—"),
+                self._make_item(line.description or ""),
+                self._make_item(_fmt_amount(line.line_amount)),
+            ])
 
     def _populate_commitments(self) -> None:
         detail = self._detail
-        self._commitments_table.setRowCount(0)
+        self._commitments_model.removeRows(0, self._commitments_model.rowCount())
         if detail is None:
             return
         try:
@@ -661,21 +693,19 @@ class ProjectWorkspaceWindow(ChildWindowBase):
             f"{len(commitments)} · open {_fmt_amount(open_total, detail.currency_code)}"
         )
 
-        self._commitments_table.setSortingEnabled(False)
-        self._commitments_table.setRowCount(len(commitments))
-        for row, c in enumerate(commitments):
-            self._commitments_table.setItem(row, 0, QTableWidgetItem(c.commitment_number or ""))
-            self._commitments_table.setItem(row, 1, QTableWidgetItem(c.supplier_name or "—"))
-            self._commitments_table.setItem(row, 2, QTableWidgetItem(_status_label(c.commitment_type_code)))
-            self._commitments_table.setItem(row, 3, QTableWidgetItem(_status_label(c.status_code)))
-            amount_item = QTableWidgetItem(_fmt_amount(c.total_amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._commitments_table.setItem(row, 4, amount_item)
-        self._commitments_table.setSortingEnabled(True)
+        self._commitments_model.removeRows(0, self._commitments_model.rowCount())
+        for c in commitments:
+            self._commitments_model.appendRow([
+                self._make_item(c.commitment_number or ""),
+                self._make_item(c.supplier_name or "—"),
+                self._make_item(_status_label(c.commitment_type_code)),
+                self._make_item(_status_label(c.status_code)),
+                self._make_item(_fmt_amount(c.total_amount)),
+            ])
 
     def _populate_costs_and_kpis(self) -> None:
         detail = self._detail
-        self._costs_table.setRowCount(0)
+        self._costs_model.removeRows(0, self._costs_model.rowCount())
         if detail is None:
             return
         currency = detail.currency_code
@@ -692,14 +722,12 @@ class ProjectWorkspaceWindow(ChildWindowBase):
             actual_total = Decimal("0")
 
         self._costs_subtitle.setText(_fmt_amount(actual_total, currency))
-        self._costs_table.setSortingEnabled(False)
-        self._costs_table.setRowCount(len(source_totals))
-        for row, src in enumerate(source_totals):
-            self._costs_table.setItem(row, 0, QTableWidgetItem(src.source_type_label or src.source_type_code))
-            amount_item = QTableWidgetItem(_fmt_amount(src.amount))
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._costs_table.setItem(row, 1, amount_item)
-        self._costs_table.setSortingEnabled(True)
+        self._costs_model.removeRows(0, self._costs_model.rowCount())
+        for src in source_totals:
+            self._costs_model.appendRow([
+                self._make_item(src.source_type_label or src.source_type_code),
+                self._make_item(_fmt_amount(src.amount)),
+            ])
 
         # Variance KPIs
         try:
@@ -733,6 +761,22 @@ class ProjectWorkspaceWindow(ChildWindowBase):
             except Exception:
                 color = "#111827"
             variance_label.setStyleSheet(f"color: {color};")
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     # ------------------------------------------------------------------ actions
     def _open_edit_dialog(self) -> None:

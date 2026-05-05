@@ -24,6 +24,7 @@ from seeker_accounting.modules.accounting.reference_data.repositories.account_ro
 from seeker_accounting.modules.accounting.reference_data.repositories.tax_code_account_mapping_repository import (
     TaxCodeAccountMappingRepository,
 )
+from seeker_accounting.modules.budgeting.services.budget_control_service import BudgetControlService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.purchases.dto.purchase_bill_dto import PurchasePostingResultDTO
 from seeker_accounting.modules.purchases.repositories.purchase_bill_repository import (
@@ -48,6 +49,10 @@ from seeker_accounting.modules.administration.services.permission_service import
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
 
+from seeker_accounting.modules.taxation.repositories.vat_period_lock_repository import (
+    VatPeriodLockRepository,
+)
+
 AccountRepositoryFactory = Callable[[Session], AccountRepository]
 FiscalPeriodRepositoryFactory = Callable[[Session], FiscalPeriodRepository]
 JournalEntryRepositoryFactory = Callable[[Session], JournalEntryRepository]
@@ -56,6 +61,7 @@ PurchaseBillRepositoryFactory = Callable[[Session], PurchaseBillRepository]
 AccountRoleMappingRepositoryFactory = Callable[[Session], AccountRoleMappingRepository]
 TaxCodeAccountMappingRepositoryFactory = Callable[[Session], TaxCodeAccountMappingRepository]
 SupplierPaymentAllocationRepositoryFactory = Callable[[Session], SupplierPaymentAllocationRepository]
+VatPeriodLockRepositoryFactory = Callable[[Session], VatPeriodLockRepository]
 
 
 class PurchaseBillPostingService:
@@ -76,11 +82,14 @@ class PurchaseBillPostingService:
         numbering_service: NumberingService,
         permission_service: PermissionService,
         tax_fact_service: TaxFactService,
+        budget_control_service: BudgetControlService | None = None,
         audit_service: AuditService | None = None,
+        vat_period_lock_repository_factory: VatPeriodLockRepositoryFactory | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
         self._tax_fact_service = tax_fact_service
+        self._vat_period_lock_repository_factory = vat_period_lock_repository_factory
         self._purchase_bill_repository_factory = purchase_bill_repository_factory
         self._journal_entry_repository_factory = journal_entry_repository_factory
         self._account_repository_factory = account_repository_factory
@@ -91,6 +100,7 @@ class PurchaseBillPostingService:
         self._company_repository_factory = company_repository_factory
         self._numbering_service = numbering_service
         self._permission_service = permission_service
+        self._budget_control_service = budget_control_service
         self._audit_service = audit_service
 
     def post_bill(
@@ -128,6 +138,16 @@ class PurchaseBillPostingService:
             if fiscal_period.status_code != "OPEN":
                 raise ValidationError("Bill can only be posted into an open fiscal period.")
 
+            # --- T43: VAT period lock check ---
+            if self._vat_period_lock_repository_factory is not None:
+                tax_point = bill.tax_point_date or bill.bill_date
+                vat_lock_repo = self._vat_period_lock_repository_factory(uow.session)
+                if vat_lock_repo.is_locked(company_id, tax_point):
+                    raise ValidationError(
+                        "VAT period has been filed; backdating is prohibited. "
+                        "Amend the return instead."
+                    )
+
             # --- AP control account ---
             ap_mapping = role_mapping_repo.get_by_role_code(company_id, "ap_control")
             if ap_mapping is None:
@@ -141,18 +161,28 @@ class PurchaseBillPostingService:
                     },
                 )
             ap_account_id = ap_mapping.account_id
+            self._enforce_budget_for_bill(bill)
 
             # --- Build journal lines ---
             journal_lines: list[JournalEntryLine] = []
             line_number = 1
 
             # Debit expense accounts from lines
-            expense_debits: dict[int, Decimal] = {}
+            expense_debits: dict[tuple[int, int | None, int | None, int | None, int | None], Decimal] = {}
             tax_debits: dict[int, Decimal] = {}
+            # T33: accumulate RC symmetric legs: Dr 4452 (asset) / Cr 4434 (liability)
+            rc_asset_debits: dict[int, Decimal] = {}   # tax_asset_account_id → amount
+            rc_liability_credits: dict[int, Decimal] = {}  # tax_liability_account_id → amount
 
             for bill_line in bill.lines:
-                expense_debits[bill_line.expense_account_id] = (
-                    expense_debits.get(bill_line.expense_account_id, Decimal("0.00"))
+                expense_key = self._dimensioned_account_key(
+                    bill_line.expense_account_id,
+                    line=bill_line,
+                    header_contract_id=bill.contract_id,
+                    header_project_id=bill.project_id,
+                )
+                expense_debits[expense_key] = (
+                    expense_debits.get(expense_key, Decimal("0.00"))
                     + bill_line.line_subtotal_amount
                 )
                 if bill_line.tax_code_id is not None and bill_line.line_tax_amount > Decimal("0.00"):
@@ -166,8 +196,8 @@ class PurchaseBillPostingService:
                     )
 
                     if not is_recoverable:
-                        expense_debits[bill_line.expense_account_id] = (
-                            expense_debits.get(bill_line.expense_account_id, Decimal("0.00"))
+                        expense_debits[expense_key] = (
+                            expense_debits.get(expense_key, Decimal("0.00"))
                             + bill_line.line_tax_amount
                         )
                         continue
@@ -183,8 +213,24 @@ class PurchaseBillPostingService:
                         tax_debits.get(tax_account_id, Decimal("0.00"))
                         + bill_line.line_tax_amount
                     )
+                    # T33: reverse-charge — also accumulate the self-assessment legs.
+                    if getattr(tax_code_obj, "is_reverse_charge", False):
+                        if tax_mapping.tax_liability_account_id is None:
+                            raise ValidationError(
+                                f"Tax liability account mapping for reverse-charge tax code "
+                                f"on line {bill_line.line_number} must be configured before posting."
+                            )
+                        rc_asset_debits[tax_mapping.tax_asset_account_id] = (
+                            rc_asset_debits.get(tax_mapping.tax_asset_account_id, Decimal("0.00"))
+                            + bill_line.line_tax_amount
+                        )
+                        rc_liability_credits[tax_mapping.tax_liability_account_id] = (
+                            rc_liability_credits.get(tax_mapping.tax_liability_account_id, Decimal("0.00"))
+                            + bill_line.line_tax_amount
+                        )
 
-            for exp_account_id, amount in expense_debits.items():
+            for expense_key, amount in expense_debits.items():
+                exp_account_id, contract_id, project_id, project_job_id, project_cost_code_id = expense_key
                 journal_lines.append(
                     JournalEntryLine(
                         journal_entry_id=0,
@@ -193,6 +239,10 @@ class PurchaseBillPostingService:
                         line_description=f"Expense - Bill {bill.bill_number}",
                         debit_amount=amount,
                         credit_amount=Decimal("0.00"),
+                        contract_id=contract_id,
+                        project_id=project_id,
+                        project_job_id=project_job_id,
+                        project_cost_code_id=project_cost_code_id,
                     )
                 )
                 line_number += 1
@@ -221,6 +271,40 @@ class PurchaseBillPostingService:
                     credit_amount=bill.total_amount,
                 )
             )
+            line_number += 1
+
+            # T33: reverse-charge self-assessment legs.
+            # The normal Dr to tax_asset (4452) is already in tax_debits above.
+            # The RC legs add an equal Cr to tax_liability (4434) so that the
+            # net effect on the asset account is zero and the liability account
+            # records the output self-assessed VAT.
+            for rc_liability_id, rc_amount in rc_liability_credits.items():
+                journal_lines.append(
+                    JournalEntryLine(
+                        journal_entry_id=0,
+                        line_number=line_number,
+                        account_id=rc_liability_id,
+                        line_description=f"RC output VAT self-assessed - Bill {bill.bill_number}",
+                        debit_amount=Decimal("0.00"),
+                        credit_amount=rc_amount,
+                    )
+                )
+                line_number += 1
+            # Balancing Dr to the same asset account (cancels the normal input VAT
+            # debit recorded in tax_debits so the asset position nets to zero for
+            # a fully self-assessed RC transaction).
+            for rc_asset_id, rc_amount in rc_asset_debits.items():
+                journal_lines.append(
+                    JournalEntryLine(
+                        journal_entry_id=0,
+                        line_number=line_number,
+                        account_id=rc_asset_id,
+                        line_description=f"RC input VAT recoverable - Bill {bill.bill_number}",
+                        debit_amount=rc_amount,
+                        credit_amount=Decimal("0.00"),
+                    )
+                )
+                line_number += 1
 
             # --- Create journal entry ---
             journal_entry = JournalEntry(
@@ -275,6 +359,7 @@ class PurchaseBillPostingService:
                             line_is_recoverable = detail.tax_code.is_recoverable
                         else:
                             line_is_recoverable = None
+                        _tc_rc = detail.tax_code
                         tax_facts.append(
                             TaxFactInput(
                                 tax_code_id=detail.tax_code_id,
@@ -282,6 +367,9 @@ class PurchaseBillPostingService:
                                 tax_amount=detail.tax_amount,
                                 is_recoverable=line_is_recoverable,
                                 source_line_id=bill_line.id,
+                                is_reverse_charge=bool(
+                                    getattr(_tc_rc, "is_reverse_charge", False)
+                                ),
                             )
                         )
                     continue
@@ -299,6 +387,9 @@ class PurchaseBillPostingService:
                         tax_amount=bill_line.line_tax_amount,
                         is_recoverable=line_is_recoverable,
                         source_line_id=bill_line.id,
+                        is_reverse_charge=bool(
+                            getattr(tax_code_obj, "is_reverse_charge", False)
+                        ),
                     )
                 )
             if tax_facts:
@@ -314,6 +405,7 @@ class PurchaseBillPostingService:
                     posted_at=posted_at_value,
                     posted_by_user_id=actor_id,
                     line_facts=tax_facts,
+                    tax_point_date=bill.tax_point_date or bill.bill_date,
                 )
 
             # --- Assign bill number and update status ---
@@ -356,6 +448,63 @@ class PurchaseBillPostingService:
                 payment_status_code=bill.payment_status_code,
                 open_balance_amount=open_balance,
             )
+
+    # ------------------------------------------------------------------
+    # Budget and dimension helpers
+    # ------------------------------------------------------------------
+
+    def _enforce_budget_for_bill(self, bill: object) -> None:
+        if self._budget_control_service is None:
+            return
+        requests: dict[tuple[int, int | None, int | None], Decimal] = {}
+        for bill_line in bill.lines:
+            project_id = getattr(bill_line, "project_id", None) or getattr(bill, "project_id", None)
+            if project_id is None:
+                continue
+            amount = self._bill_line_cost_amount(bill_line)
+            if amount <= Decimal("0.00"):
+                continue
+            key = (
+                project_id,
+                getattr(bill_line, "project_job_id", None),
+                getattr(bill_line, "project_cost_code_id", None),
+            )
+            requests[key] = requests.get(key, Decimal("0.00")) + amount
+        for (project_id, project_job_id, project_cost_code_id), amount in requests.items():
+            self._budget_control_service.enforce_budget(
+                project_id,
+                amount,
+                project_job_id=project_job_id,
+                project_cost_code_id=project_cost_code_id,
+                context_label=f"Purchase bill {getattr(bill, 'bill_number', '')}".strip(),
+            )
+
+    @staticmethod
+    def _bill_line_cost_amount(bill_line: object) -> Decimal:
+        amount = Decimal(getattr(bill_line, "line_subtotal_amount", Decimal("0.00")))
+        tax_amount = Decimal(getattr(bill_line, "line_tax_amount", Decimal("0.00")))
+        tax_code = getattr(bill_line, "tax_code", None)
+        if tax_amount > Decimal("0.00") and tax_code is not None and tax_code.is_recoverable is False:
+            amount += tax_amount
+        return amount.quantize(Decimal("0.01"))
+
+    @staticmethod
+    def _dimensioned_account_key(
+        account_id: int,
+        *,
+        line: object,
+        header_contract_id: int | None,
+        header_project_id: int | None,
+    ) -> tuple[int, int | None, int | None, int | None, int | None]:
+        contract_id = getattr(line, "contract_id", None) or header_contract_id
+        project_id = getattr(line, "project_id", None) or header_project_id
+        return (
+            account_id,
+            contract_id,
+            project_id,
+            getattr(line, "project_job_id", None),
+            getattr(line, "project_cost_code_id", None),
+        )
 
     # ------------------------------------------------------------------
     # Repository factory helpers

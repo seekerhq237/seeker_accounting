@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QDialog,
@@ -21,8 +22,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -34,10 +33,10 @@ from seeker_accounting.modules.budgeting.dto.project_budget_commands import (
 )
 from seeker_accounting.modules.budgeting.dto.project_budget_dto import ProjectBudgetLineDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
 
@@ -69,7 +68,7 @@ class BudgetLineFormDialog(BaseDialog):
         title = "New Budget Line" if line_id is None else "Edit Budget Line"
         super().__init__(title, parent, help_key="dialog.budget_lines")
         self.setObjectName("BudgetLineFormDialog")
-        self.resize(620, 560)
+        apply_window_size(self, "modules.budgeting.ui.budget.lines.dialog.0")
 
         self._error_label = QLabel(self)
         self._error_label.setObjectName("DialogErrorLabel")
@@ -412,7 +411,7 @@ class BudgetLinesDialog(BaseDialog):
         self._lines: list[ProjectBudgetLineDTO] = []
 
         self.setObjectName("BudgetLinesDialog")
-        self.resize(980, 580)
+        apply_window_size(self, "modules.budgeting.ui.budget.lines.dialog.1")
 
         self.body_layout.addWidget(self._build_toolbar())
         self.body_layout.addWidget(self._build_table_card(), 1)
@@ -489,16 +488,30 @@ class BudgetLinesDialog(BaseDialog):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(12)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("BudgetLinesTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
-            ("Line #", "Job", "Cost Code", "Description", "Qty", "Rate", "Amount", "Dates")
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="line_num", title="Line #"),
+                DataTableColumn(key="job", title="Job"),
+                DataTableColumn(key="cost_code", title="Cost Code"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="qty", title="Qty"),
+                DataTableColumn(key="rate", title="Rate"),
+                DataTableColumn(key="amount", title="Amount"),
+                DataTableColumn(key="dates", title="Dates"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(lambda *_: self._edit_line())
+        self._model = QStandardItemModel(0, 8, card)
+        self._model.setHorizontalHeaderLabels(
+            ["Line #", "Job", "Cost Code", "Description", "Qty", "Rate", "Amount", "Dates"]
+        )
+        self._table.set_model(self._model)
+        self._table.selection_changed.connect(self._update_action_state)
+        self._table.view().doubleClicked.connect(lambda *_: self._edit_line())
         layout.addWidget(self._table)
         return card
 
@@ -511,73 +524,70 @@ class BudgetLinesDialog(BaseDialog):
             self._lines = self._service_registry.project_budget_service.list_lines(
                 self._version_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Budget Lines", str(exc))
+
+        except Exception:
+            _log.exception("Budget Lines")
+            show_error(self, "Budget Lines", "An unexpected error occurred. See application log for details.")
             self._lines = []
 
         self._populate_table()
         self._update_action_state()
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         total = Decimal("0")
         for line in self._lines:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
+            num_item = self._make_item(str(line.line_number))
+            num_item.setData(line.id, Qt.ItemDataRole.UserRole)
+            num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
-            num_item = QTableWidgetItem(str(line.line_number))
-            num_item.setData(Qt.ItemDataRole.UserRole, line.id)
-            num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 0, num_item)
-
-            self._table.setItem(row, 1, QTableWidgetItem(line.project_job_code or ""))
-            self._table.setItem(row, 2, QTableWidgetItem(line.project_cost_code_name or ""))
-            self._table.setItem(row, 3, QTableWidgetItem(line.description or ""))
-
-            qty_item = QTableWidgetItem(str(line.quantity) if line.quantity is not None else "")
+            qty_item = self._make_item(str(line.quantity) if line.quantity is not None else "")
             qty_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 4, qty_item)
 
-            rate_item = QTableWidgetItem(str(line.unit_rate) if line.unit_rate is not None else "")
+            rate_item = self._make_item(str(line.unit_rate) if line.unit_rate is not None else "")
             rate_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 5, rate_item)
 
-            amount_item = QTableWidgetItem(f"{line.line_amount:,.2f}")
+            amount_item = self._make_item(f"{line.line_amount:,.2f}")
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 6, amount_item)
 
             date_parts = []
             if line.start_date:
                 date_parts.append(str(line.start_date))
             if line.end_date:
                 date_parts.append(str(line.end_date))
-            self._table.setItem(row, 7, QTableWidgetItem(" → ".join(date_parts)))
 
+            self._model.appendRow([
+                num_item,
+                self._make_item(line.project_job_code or ""),
+                self._make_item(line.project_cost_code_name or ""),
+                self._make_item(line.description or ""),
+                qty_item,
+                rate_item,
+                amount_item,
+                self._make_item(" → ".join(date_parts)),
+            ])
             total += line.line_amount
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
 
         count = len(self._lines)
         self._count_label.setText(f"{count} line" if count == 1 else f"{count} lines")
         self._total_label.setText(f"Total: {total:,.2f}")
 
     def _selected_line(self) -> ProjectBudgetLineDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         if item is None:
             return None
         line_id = item.data(Qt.ItemDataRole.UserRole)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from decimal import Decimal, InvalidOperation
@@ -51,7 +52,7 @@ class ContractFormDialog(BaseDialog):
         title = "New Contract" if contract_id is None else "Edit Contract"
         super().__init__(title, parent, help_key="dialog.contract_form")
         self.setObjectName("ContractFormDialog")
-        self.resize(780, 640)
+        apply_window_size(self, "modules.contracts.projects.ui.contract.form.dialog.0")
 
         intro_label = QLabel(
             "Define contract master data scoped to the active company. "

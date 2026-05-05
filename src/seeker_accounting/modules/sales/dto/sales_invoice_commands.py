@@ -32,7 +32,9 @@ class CreateSalesInvoiceCommand:
     contract_id: int | None = None
     project_id: int | None = None
     is_tax_inclusive: bool | None = None
+    tax_point_date: date | None = None
     lines: tuple[SalesInvoiceLineCommand, ...] = ()
+    withheld_vat_amount: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +49,9 @@ class UpdateSalesInvoiceCommand:
     contract_id: int | None = None
     project_id: int | None = None
     is_tax_inclusive: bool | None = None
+    tax_point_date: date | None = None
     lines: tuple[SalesInvoiceLineCommand, ...] = ()
+    withheld_vat_amount: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)

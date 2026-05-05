@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -16,8 +17,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -29,9 +28,22 @@ from seeker_accounting.modules.inventory.dto.inventory_reference_commands import
     UpdateItemCategoryCommand,
 )
 from seeker_accounting.modules.inventory.dto.inventory_reference_dto import ItemCategoryDTO
-from seeker_accounting.platform.exceptions import ConflictError, ValidationError
+from seeker_accounting.platform.exceptions import ConflictError, PermissionDeniedError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+ITEM_CATEGORY_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="code", title="Code"),
+    DataTableColumn(key="name", title="Name"),
+    DataTableColumn(key="description", title="Description"),
+    DataTableColumn(key="active", title="Active"),
+)
+
 
 _log = logging.getLogger(__name__)
 
@@ -54,7 +66,7 @@ class _CategoryDialog(QDialog):
         is_edit = category_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Item Category — {company_name}")
         self.setModal(True)
-        self.resize(420, 280)
+        apply_window_size(self, "modules.inventory.ui.item.categories.page.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -136,6 +148,9 @@ class _CategoryDialog(QDialog):
                     UpdateItemCategoryCommand(code=code, name=name, description=description, is_active=is_active),
                 )
             self.accept()
+        except PermissionDeniedError as exc:
+            self._error_label.setText(str(exc))
+            self._error_label.show()
         except (ValidationError, ConflictError) as exc:
             self._error_label.setText(str(exc))
             self._error_label.show()
@@ -161,20 +176,42 @@ class ItemCategoriesPage(QWidget):
     def reload(self) -> None:
         active_company = self._service_registry.company_context_service.get_active_company()
         if active_company is None:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_company_state)
             return
         try:
             rows = self._service_registry.item_category_service.list_item_categories(active_company.company_id)
         except Exception as exc:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             show_error(self, "Item Categories", f"Could not load data.\n\n{exc}")
             return
         self._populate(rows)
         self._sync_stack(active_company, rows)
+        self._update_action_state()
+
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Item Categories",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
+    def _update_action_state(self) -> None:
+        active_company = self._active_company()
+        has_company = active_company is not None
+        has_selection = bool(self._table.selected_rows())
+        permission_service = self._service_registry.permission_service
+        self._new_btn.setEnabled(
+            has_company and permission_service.has_permission("inventory.categories.create")
+        )
+        self._edit_btn.setEnabled(
+            has_company
+            and has_selection
+            and permission_service.has_permission("inventory.categories.edit")
+        )
 
     def _build_toolbar(self) -> QWidget:
         card = QFrame(self)
@@ -225,13 +262,24 @@ class ItemCategoriesPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(("Code", "Name", "Description", "Active"))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_edit())
+
+        self._model = QStandardItemModel(0, len(ITEM_CATEGORY_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in ITEM_CATEGORY_COLUMNS])
+
+        self._table = DataTable(
+            columns=ITEM_CATEGORY_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No item categories to display.",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 3)
+        self._table.row_activated.connect(lambda _row: self._on_edit())
+        self._table.selection_changed.connect(lambda _rows: self._update_action_state())
         layout.addWidget(self._table)
         return card
 
@@ -272,25 +320,24 @@ class ItemCategoriesPage(QWidget):
         layout.addStretch(1)
         return card
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate(self, rows: list[ItemCategoryDTO]) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._rows: list[ItemCategoryDTO] = list(rows)
+        self._model.removeRows(0, self._model.rowCount())
         for row in rows:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            code_item = QTableWidgetItem(row.code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._table.setItem(ri, 0, code_item)
-            self._table.setItem(ri, 1, QTableWidgetItem(row.name))
-            self._table.setItem(ri, 2, QTableWidgetItem(row.description or ""))
-            self._table.setItem(ri, 3, QTableWidgetItem("Yes" if row.is_active else "No"))
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                self._make_item(row.code, user_data=row.id),
+                self._make_item(row.name),
+                self._make_item(row.description or ""),
+                self._make_item("active" if row.is_active else "inactive"),
+            ])
         count = len(rows)
         self._count_label.setText(f"{count} record" if count == 1 else f"{count} records")
 
@@ -310,6 +357,9 @@ class ItemCategoriesPage(QWidget):
         if company is None:
             show_error(self, "Item Categories", "Select an active company first.")
             return
+        if not self._service_registry.permission_service.has_permission("inventory.categories.create"):
+            self._show_permission_denied("inventory.categories.create")
+            return
         dialog = _CategoryDialog(self._service_registry, company.company_id, company.company_name, parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload()
@@ -318,13 +368,16 @@ class ItemCategoriesPage(QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        if not self._service_registry.permission_service.has_permission("inventory.categories.edit"):
+            self._show_permission_denied("inventory.categories.edit")
             return
-        cat_id = item.data(Qt.ItemDataRole.UserRole)
+        idx = rows[0]
+        if not (0 <= idx < len(getattr(self, "_rows", []))):
+            return
+        cat_id = self._rows[idx].id
         dialog = _CategoryDialog(
             self._service_registry, company.company_id, company.company_name, category_id=cat_id, parent=self
         )

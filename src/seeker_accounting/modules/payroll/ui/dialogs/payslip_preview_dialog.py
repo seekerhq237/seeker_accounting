@@ -11,6 +11,7 @@ Export: the Export… button opens the format/path picker and routes:
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -27,6 +28,8 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+
+_log = logging.getLogger(__name__)
 
 
 class PayslipPreviewDialog(QDialog):
@@ -48,9 +51,9 @@ class PayslipPreviewDialog(QDialog):
 
         self.setWindowTitle("Payslip Preview")
         self.setModal(True)
-        # A4 portrait proportions at 96 dpi ≈ 794 × 1123 px; add chrome for action bar
-        self.resize(860, 1020)
-        self.setMinimumSize(640, 600)
+        from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _tok
+        # A4 portrait proportions; set a comfortable starting minimum.
+        self.setMinimumSize(_tok.sizes.dialog_min_w_medium, _tok.sizes.dialog_min_h_document)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -107,8 +110,9 @@ class PayslipPreviewDialog(QDialog):
             print_svc = self._registry.payroll_print_service
             dto = print_svc.get_payslip_data(self._company_id, self._run_employee_id)
             self._print_dto = dto
-        except Exception as exc:
-            self._show_error(f"Error loading payslip: {exc}")
+        except Exception:
+            _log.exception("Failed to load payslip data for run_employee=%s", self._run_employee_id)
+            self._show_error("Could not load payslip. See application log for details.")
             return
 
         self.setWindowTitle(f"Payslip — {self._print_dto.employee_display_name}")
@@ -121,8 +125,9 @@ class PayslipPreviewDialog(QDialog):
             resolver = logo_svc.resolve_logo_path if logo_svc is not None else None
             builder = PayslipHtmlBuilder(logo_resolver=resolver)
             self._html = builder.build(self._print_dto)
-        except Exception as exc:
-            self._show_error(f"Error building payslip HTML: {exc}")
+        except Exception:
+            _log.exception("Failed to build payslip HTML for run_employee=%s", self._run_employee_id)
+            self._show_error("Could not render payslip. See application log for details.")
             return
 
         if self._view is not None:

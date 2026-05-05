@@ -185,6 +185,10 @@ class PayrollRunListItemDTO:
     total_net_payable: Decimal
     total_gross_earnings: Decimal = field(default=Decimal("0"))
     posted_journal_entry_id: int | None = field(default=None)
+    run_type_code: str = field(default="regular")
+    run_sequence: int = field(default=1)
+    off_cycle_reason_code: str | None = field(default=None)
+    source_run_id: int | None = field(default=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,9 +206,20 @@ class PayrollRunDetailDTO:
     notes: str | None
     calculated_at: datetime | None
     approved_at: datetime | None
+    approved_by_user_id: int | None = field(default=None)
+    submitted_at: datetime | None = field(default=None)
+    submitted_by_user_id: int | None = field(default=None)
+    sent_back_at: datetime | None = field(default=None)
+    sent_back_by_user_id: int | None = field(default=None)
+    sent_back_reason: str | None = field(default=None)
     posted_at: datetime | None = field(default=None)
     posted_by_user_id: int | None = field(default=None)
     posted_journal_entry_id: int | None = field(default=None)
+    run_type_code: str = field(default="regular")
+    run_sequence: int = field(default=1)
+    off_cycle_reason_code: str | None = field(default=None)
+    off_cycle_employee_ids: tuple[int, ...] = field(default_factory=tuple)
+    source_run_id: int | None = field(default=None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +231,20 @@ class CreatePayrollRunCommand:
     run_date: date
     payment_date: date | None = field(default=None)
     notes: str | None = field(default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class CreateOffCyclePayrollRunCommand:
+    period_year: int
+    period_month: int
+    run_label: str
+    currency_code: str
+    run_date: date
+    employee_ids: tuple[int, ...]
+    off_cycle_reason_code: str
+    payment_date: date | None = field(default=None)
+    notes: str | None = field(default=None)
+    source_run_id: int | None = field(default=None)
 
 
 # ── Run Employee / Payslip DTOs ────────────────────────────────────────────────

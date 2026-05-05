@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QDialog,
@@ -19,8 +20,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -41,7 +40,7 @@ from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 
 # ── Change Order Form Dialog ──────────────────────────────────────────────
@@ -68,7 +67,7 @@ class ContractChangeOrderFormDialog(BaseDialog):
         title = "New Change Order" if change_order_id is None else "Edit Change Order"
         super().__init__(title, parent, help_key="dialog.contract_change_order")
         self.setObjectName("ContractChangeOrderFormDialog")
-        self.resize(640, 520)
+        apply_window_size(self, "modules.contracts.projects.ui.contract.change.order.dialog.0")
 
         intro = QLabel(
             f"Change order for contract {contract_number}.",
@@ -355,7 +354,7 @@ class ContractChangeOrdersDialog(BaseDialog):
         self._change_orders: list[ContractChangeOrderListItemDTO] = []
 
         self.setObjectName("ContractChangeOrdersDialog")
-        self.resize(880, 560)
+        apply_window_size(self, "modules.contracts.projects.ui.contract.change.order.dialog.1")
 
         self.body_layout.addWidget(self._build_toolbar())
         self.body_layout.addWidget(self._build_table_card(), 1)
@@ -435,16 +434,28 @@ class ContractChangeOrdersDialog(BaseDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("ChangeOrdersTable")
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels(
-            ("CO #", "Date", "Type", "Amount Delta", "Days Ext.", "Status", "Description")
+        self._model = QStandardItemModel(0, 7, card)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="co_num", title="CO #"),
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="amount_delta", title="Amount Delta", is_numeric=True),
+                DataTableColumn(key="days_ext", title="Days Ext."),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="description", title="Description"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._open_edit)
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 5)
+        self._table.selection_changed.connect(lambda _: self._update_action_state())
+        self._table.view().doubleClicked.connect(self._on_double_clicked)
         layout.addWidget(self._table)
         return card
 
@@ -463,71 +474,71 @@ class ContractChangeOrdersDialog(BaseDialog):
         self._populate_table()
         count = len(self._change_orders)
         self._count_label.setText(f"{count} change order{'s' if count != 1 else ''}")
-
-        if selected_id is not None:
-            for row in range(self._table.rowCount()):
-                item = self._table.item(row, 0)
-                if item and item.data(Qt.ItemDataRole.UserRole) == selected_id:
-                    self._table.selectRow(row)
-                    self._update_action_state()
-                    return
-
-        if self._table.rowCount() > 0:
-            self._table.selectRow(0)
+        self._select_by_id(selected_id)
         self._update_action_state()
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for co in self._change_orders:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
             delta_str = "" if co.contract_amount_delta is None else f"{co.contract_amount_delta:,.2f}"
             days_str = "" if co.days_extension is None else str(co.days_extension)
             desc_str = (co.description or "")[:60]
-            values = (
-                co.change_order_number,
-                str(co.change_order_date) if co.change_order_date else "",
-                co.change_type_code,
-                delta_str,
-                days_str,
-                co.status_code,
-                desc_str,
-            )
-            for col, val in enumerate(values):
-                item = QTableWidgetItem(val)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, co.id)
-                if col == 3:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                if col in {2, 4, 5}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row, col, item)
+            self._model.appendRow([
+                self._make_item(co.change_order_number, user_data=co.id),
+                self._make_item(str(co.change_order_date) if co.change_order_date else ""),
+                self._make_item(co.change_type_code),
+                self._make_item(delta_str),
+                self._make_item(days_str),
+                self._make_item(co.status_code),
+                self._make_item(desc_str),
+            ])
 
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
+    def _select_by_id(self, target_id: int | None) -> None:
+        if not self._change_orders:
+            return
+        if target_id is not None:
+            target_idx = next(
+                (i for i, co in enumerate(self._change_orders) if co.id == target_id), 0
+            )
+        else:
+            target_idx = 0
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_co(self) -> ContractChangeOrderListItemDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
-        if item is None:
+        id_item = self._model.item(rows[0], 0)
+        if id_item is None:
             return None
-        co_id = item.data(Qt.ItemDataRole.UserRole)
+        co_id = id_item.data(Qt.ItemDataRole.UserRole)
         for co in self._change_orders:
             if co.id == co_id:
                 return co
         return None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _on_double_clicked(self, _index) -> None:
+        self._open_edit()
 
     def _update_action_state(self) -> None:
         selected = self._selected_co()

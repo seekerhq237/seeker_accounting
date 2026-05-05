@@ -32,6 +32,8 @@ from seeker_accounting.modules.taxation.constants import (
     ALL_DSF_SUBMISSION_MODES,
     ALL_TAX_REGIME_CODES,
     ALL_TAXPAYER_SEGMENT_CODES,
+    ALL_VAT_ACCOUNTING_BASIS_CODES,
+    VAT_BASIS_ACCRUAL,
 )
 from seeker_accounting.modules.taxation.dto.company_tax_profile_dto import (
     CompanyTaxProfileDTO,
@@ -215,6 +217,15 @@ class CompanyTaxProfileService:
             tax_regime_code=tax_regime_code,
             is_vat_liable=is_vat_liable,
             vat_effective_from=vat_effective_from,
+            vat_uses_tax_point=bool(command.vat_uses_tax_point),
+            vat_accounting_basis=self._normalize_enum(
+                getattr(command, "vat_accounting_basis", None) or VAT_BASIS_ACCRUAL,
+                "VAT accounting basis",
+                ALL_VAT_ACCOUNTING_BASIS_CODES,
+            ) or VAT_BASIS_ACCRUAL,
+            vat_pro_rata_percent=self._validate_pro_rata(
+                getattr(command, "vat_pro_rata_percent", None)
+            ),
             cit_rate_profile_code=cit_rate_profile_code,
             cit_installment_profile_code=cit_installment_profile_code,
             sme_qualified_flag=bool(command.sme_qualified_flag),
@@ -265,6 +276,18 @@ class CompanyTaxProfileService:
         return normalized
 
     @staticmethod
+    def _validate_pro_rata(value: float | None) -> float | None:
+        """Validate pro-rata percent is in [0, 100] or None (= 100%)."""
+        if value is None:
+            return None
+        pct = float(value)
+        if pct < 0 or pct > 100:
+            raise ValidationError(
+                "VAT pro-rata percentage must be between 0 and 100."
+            )
+        return pct
+
+    @staticmethod
     def _apply_command(
         profile: CompanyTaxProfile, command: UpsertCompanyTaxProfileCommand
     ) -> None:
@@ -274,6 +297,7 @@ class CompanyTaxProfileService:
         profile.tax_regime_code = command.tax_regime_code
         profile.is_vat_liable = command.is_vat_liable
         profile.vat_effective_from = command.vat_effective_from
+        profile.vat_uses_tax_point = bool(command.vat_uses_tax_point)
         profile.cit_rate_profile_code = command.cit_rate_profile_code
         profile.cit_installment_profile_code = command.cit_installment_profile_code
         profile.sme_qualified_flag = command.sme_qualified_flag
@@ -283,6 +307,10 @@ class CompanyTaxProfileService:
         profile.default_withholding_applicable_flag = (
             command.default_withholding_applicable_flag
         )
+        profile.vat_accounting_basis = getattr(
+            command, "vat_accounting_basis", VAT_BASIS_ACCRUAL
+        ) or VAT_BASIS_ACCRUAL
+        profile.vat_pro_rata_percent = getattr(command, "vat_pro_rata_percent", None)
 
     # ------------------------------------------------------------------
     # DTO mapping
@@ -299,6 +327,13 @@ class CompanyTaxProfileService:
             tax_regime_code=profile.tax_regime_code,
             is_vat_liable=profile.is_vat_liable,
             vat_effective_from=profile.vat_effective_from,
+            vat_uses_tax_point=profile.vat_uses_tax_point,
+            vat_accounting_basis=getattr(profile, "vat_accounting_basis", VAT_BASIS_ACCRUAL) or VAT_BASIS_ACCRUAL,
+            vat_pro_rata_percent=(
+                float(profile.vat_pro_rata_percent)
+                if profile.vat_pro_rata_percent is not None
+                else None
+            ),
             cit_rate_profile_code=profile.cit_rate_profile_code,
             cit_installment_profile_code=profile.cit_installment_profile_code,
             sme_qualified_flag=profile.sme_qualified_flag,
@@ -322,6 +357,9 @@ class CompanyTaxProfileService:
             tax_regime_code=None,
             is_vat_liable=False,
             vat_effective_from=None,
+            vat_uses_tax_point=False,
+            vat_accounting_basis=VAT_BASIS_ACCRUAL,
+            vat_pro_rata_percent=None,
             cit_rate_profile_code=None,
             cit_installment_profile_code=None,
             sme_qualified_flag=False,

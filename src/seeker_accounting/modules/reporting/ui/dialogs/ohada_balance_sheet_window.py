@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 import datetime
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -14,8 +16,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -52,9 +52,12 @@ from seeker_accounting.modules.reporting.ui.dialogs.financial_statement_export_d
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class OhadaBalanceSheetWindow(QFrame):
@@ -334,12 +337,25 @@ class OhadaBalanceSheetWindow(QFrame):
         title.setObjectName("InfoCardTitle")
         layout.addWidget(title)
 
-        self._assets_table = QTableWidget(panel)
-        self._assets_table.setColumnCount(5)
-        self._assets_table.setHorizontalHeaderLabels(["Ref", "Line", "Gross", "Deprec./Prov.", "Net"])
-        configure_compact_table(self._assets_table)
-        self._assets_table.setSortingEnabled(False)
-        self._assets_table.cellDoubleClicked.connect(self._on_assets_double_clicked)
+        self._assets_model = QStandardItemModel(0, 5, panel)
+        self._assets_model.setHorizontalHeaderLabels(["Ref", "Line", "Gross", "Deprec./Prov.", "Net"])
+        self._assets_table = DataTable(
+            columns=(
+                DataTableColumn(key="ref", title="Ref"),
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="gross", title="Gross"),
+                DataTableColumn(key="contra", title="Deprec./Prov."),
+                DataTableColumn(key="net", title="Net"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._assets_table.set_model(self._assets_model)
+        self._assets_table.view().setSortingEnabled(False)
+        self._assets_table.view().doubleClicked.connect(self._on_assets_double_clicked)
         layout.addWidget(self._assets_table, 1)
         return panel
 
@@ -353,12 +369,23 @@ class OhadaBalanceSheetWindow(QFrame):
         title.setObjectName("InfoCardTitle")
         layout.addWidget(title)
 
-        self._liabilities_table = QTableWidget(panel)
-        self._liabilities_table.setColumnCount(3)
-        self._liabilities_table.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
-        configure_compact_table(self._liabilities_table)
-        self._liabilities_table.setSortingEnabled(False)
-        self._liabilities_table.cellDoubleClicked.connect(self._on_liabilities_double_clicked)
+        self._liabilities_model = QStandardItemModel(0, 3, panel)
+        self._liabilities_model.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
+        self._liabilities_table = DataTable(
+            columns=(
+                DataTableColumn(key="ref", title="Ref"),
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._liabilities_table.set_model(self._liabilities_model)
+        self._liabilities_table.view().setSortingEnabled(False)
+        self._liabilities_table.view().doubleClicked.connect(self._on_liabilities_double_clicked)
         layout.addWidget(self._liabilities_table, 1)
         return panel
 
@@ -403,8 +430,12 @@ class OhadaBalanceSheetWindow(QFrame):
             show_error(self, "OHADA Balance Sheet", str(exc))
             self._stack.setCurrentIndex(1)
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "OHADA Balance Sheet", str(exc))
+
+        except Exception:
+            _log.exception("OHADA Balance Sheet")
+            show_error(self, "OHADA Balance Sheet", "An unexpected error occurred. See application log for details.")
             self._stack.setCurrentIndex(1)
             return
 
@@ -435,45 +466,51 @@ class OhadaBalanceSheetWindow(QFrame):
 
     def _bind_assets(self, lines: tuple[OhadaBalanceSheetLineDTO, ...]) -> None:
         template = self._current_template
-        self._assets_table.setRowCount(len(lines))
+        self._assets_model.removeRows(0, self._assets_model.rowCount())
+        self._assets_model.setRowCount(len(lines))
         for row_index, line in enumerate(lines):
-            ref_item = QTableWidgetItem(line.reference_code or "")
-            ref_item.setData(Qt.ItemDataRole.UserRole, line.code)
-            ref_item.setData(Qt.ItemDataRole.UserRole + 1, line.can_drilldown)
-            label_item = QTableWidgetItem(line.label)
+            ref_item = QStandardItem(line.reference_code or "")
+            ref_item.setEditable(False)
+            ref_item.setData(line.code, Qt.ItemDataRole.UserRole)
+            ref_item.setData(line.can_drilldown, Qt.ItemDataRole.UserRole + 1)
+            label_item = QStandardItem(line.label)
+            label_item.setEditable(False)
             gross_item = self._amount_item(line.gross_amount)
             contra_item = self._amount_item(line.contra_amount)
             net_item = self._amount_item(line.net_amount)
             self._apply_row_style(ref_item, label_item, gross_item, contra_item, net_item, line.row_kind_code, template)
-            self._assets_table.setRowHeight(row_index, template.row_height)
-            self._assets_table.setItem(row_index, 0, ref_item)
-            self._assets_table.setItem(row_index, 1, label_item)
-            self._assets_table.setItem(row_index, 2, gross_item)
-            self._assets_table.setItem(row_index, 3, contra_item)
-            self._assets_table.setItem(row_index, 4, net_item)
+            self._assets_table.view().verticalHeader().resizeSection(row_index, template.row_height)
+            self._assets_model.setItem(row_index, 0, ref_item)
+            self._assets_model.setItem(row_index, 1, label_item)
+            self._assets_model.setItem(row_index, 2, gross_item)
+            self._assets_model.setItem(row_index, 3, contra_item)
+            self._assets_model.setItem(row_index, 4, net_item)
 
     def _bind_liabilities(self, lines: tuple[OhadaBalanceSheetLineDTO, ...]) -> None:
         template = self._current_template
-        self._liabilities_table.setRowCount(len(lines))
+        self._liabilities_model.removeRows(0, self._liabilities_model.rowCount())
+        self._liabilities_model.setRowCount(len(lines))
         for row_index, line in enumerate(lines):
-            ref_item = QTableWidgetItem(line.reference_code or "")
-            ref_item.setData(Qt.ItemDataRole.UserRole, line.code)
-            ref_item.setData(Qt.ItemDataRole.UserRole + 1, line.can_drilldown)
-            label_item = QTableWidgetItem(line.label)
+            ref_item = QStandardItem(line.reference_code or "")
+            ref_item.setEditable(False)
+            ref_item.setData(line.code, Qt.ItemDataRole.UserRole)
+            ref_item.setData(line.can_drilldown, Qt.ItemDataRole.UserRole + 1)
+            label_item = QStandardItem(line.label)
+            label_item.setEditable(False)
             amount_item = self._amount_item(line.net_amount)
             self._apply_row_style(ref_item, label_item, amount_item, None, None, line.row_kind_code, template)
-            self._liabilities_table.setRowHeight(row_index, template.row_height)
-            self._liabilities_table.setItem(row_index, 0, ref_item)
-            self._liabilities_table.setItem(row_index, 1, label_item)
-            self._liabilities_table.setItem(row_index, 2, amount_item)
+            self._liabilities_table.view().verticalHeader().resizeSection(row_index, template.row_height)
+            self._liabilities_model.setItem(row_index, 0, ref_item)
+            self._liabilities_model.setItem(row_index, 1, label_item)
+            self._liabilities_model.setItem(row_index, 2, amount_item)
 
     def _apply_row_style(
         self,
-        ref_item: QTableWidgetItem,
-        label_item: QTableWidgetItem,
-        amount_a: QTableWidgetItem | None,
-        amount_b: QTableWidgetItem | None,
-        amount_c: QTableWidgetItem | None,
+        ref_item: QStandardItem,
+        label_item: QStandardItem,
+        amount_a: QStandardItem | None,
+        amount_b: QStandardItem | None,
+        amount_c: QStandardItem | None,
         row_kind_code: str,
         template,
     ) -> None:
@@ -503,8 +540,9 @@ class OhadaBalanceSheetWindow(QFrame):
             font.setPointSize(template.amount_font_size)
             item.setFont(font)
 
-    def _amount_item(self, amount: Decimal | None) -> QTableWidgetItem:
-        item = QTableWidgetItem("" if amount is None else self._fmt(amount))
+    def _amount_item(self, amount: Decimal | None) -> QStandardItem:
+        item = QStandardItem("" if amount is None else self._fmt(amount))
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return item
 
@@ -562,8 +600,12 @@ class OhadaBalanceSheetWindow(QFrame):
                 result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Failed", str(exc))
+
+        except Exception:
+            _log.exception("Export Failed")
+            show_error(self, "Export Failed", "An unexpected error occurred. See application log for details.")
 
     def _on_review_unclassified(self) -> None:
         try:
@@ -588,16 +630,24 @@ class OhadaBalanceSheetWindow(QFrame):
             return
         OhadaBalanceSheetLineDetailDialog.open(self._service_registry, detail, parent=self)
 
-    def _on_assets_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        ref_item = self._assets_table.item(row, 0)
+    def _on_assets_double_clicked(self, index) -> None:
+        proxy = self._assets_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        ref_item = self._assets_model.item(src.row(), 0)
         if ref_item is None or not ref_item.data(Qt.ItemDataRole.UserRole + 1):
             return
         line_code = ref_item.data(Qt.ItemDataRole.UserRole)
         if isinstance(line_code, str):
             self._open_line_detail(line_code)
 
-    def _on_liabilities_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        ref_item = self._liabilities_table.item(row, 0)
+    def _on_liabilities_double_clicked(self, index) -> None:
+        proxy = self._liabilities_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        ref_item = self._liabilities_model.item(src.row(), 0)
         if ref_item is None or not ref_item.data(Qt.ItemDataRole.UserRole + 1):
             return
         line_code = ref_item.data(Qt.ItemDataRole.UserRole)

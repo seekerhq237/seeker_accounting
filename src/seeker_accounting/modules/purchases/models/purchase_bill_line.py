@@ -59,6 +59,15 @@ class PurchaseBillLine(TimestampMixin, Base):
         ForeignKey("project_cost_codes.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    # P2 / Slice 3.1 – inventory item linkage
+    item_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("items.id", ondelete="RESTRICT"), nullable=True
+    )
+    uom_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("units_of_measure.id", ondelete="RESTRICT"), nullable=True
+    )
+    uom_ratio_snapshot: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    base_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
 
     purchase_bill: Mapped["PurchaseBill"] = relationship("PurchaseBill", back_populates="lines")
     tax_code: Mapped["TaxCode | None"] = relationship("TaxCode")

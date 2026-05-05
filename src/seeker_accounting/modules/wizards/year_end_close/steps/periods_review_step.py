@@ -1,16 +1,11 @@
 """Step 2 — Period review: ensure all periods are CLOSED/LOCKED, optionally lock CLOSED ones."""
 from __future__ import annotations
 
+from decimal import Decimal
+
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    QCheckBox,
-    QHeaderView,
-    QLabel,
-    QTableWidget,
-    QTableWidgetItem,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QCheckBox, QLabel, QVBoxLayout, QWidget
 
 from seeker_accounting.modules.wizards.year_end_close import state_keys as K
 from seeker_accounting.platform.wizards import (
@@ -18,6 +13,18 @@ from seeker_accounting.platform.wizards import (
     WizardContext,
     WizardState,
     WizardStep,
+)
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
+
+
+_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="period", title="Period", min_width=100),
+    DataTableColumn(key="date_range", title="Date range", min_width=240),
+    DataTableColumn(key="status", title="Status", min_width=110),
 )
 
 
@@ -30,10 +37,30 @@ class PeriodsReviewStep(WizardStep):
 
     def __init__(self) -> None:
         super().__init__()
-        self._table: QTableWidget | None = None
+        self._table: DataTable | None = None
+        self._model: QStandardItemModel | None = None
+        self._status_delegate = None
         self._lock_checkbox: QCheckBox | None = None
         self._summary: QLabel | None = None
         self._result: QLabel | None = None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
 
     def build_widget(self, parent: QWidget | None = None) -> QWidget:
         root = QWidget(parent)
@@ -45,15 +72,21 @@ class PeriodsReviewStep(WizardStep):
         self._summary.setWordWrap(True)
         outer.addWidget(self._summary)
 
-        self._table = QTableWidget(0, 3, root)
-        self._table.setHorizontalHeaderLabels(["Period", "Date range", "Status"])
-        self._table.verticalHeader().setVisible(False)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
-        h = self._table.horizontalHeader()
-        h.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self._model = QStandardItemModel(0, len(_COLUMNS), root)
+        self._model.setHorizontalHeaderLabels([c.title for c in _COLUMNS])
+        self._table = DataTable(
+            columns=_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=root,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(
+            self._table.view(), 2
+        )
         outer.addWidget(self._table, 1)
 
         self._lock_checkbox = QCheckBox(
@@ -89,18 +122,14 @@ class PeriodsReviewStep(WizardStep):
             for p in periods
         ]
         state[K.KEY_PERIODS_SNAPSHOT] = snapshot
-        if self._table is not None:
-            self._table.setRowCount(0)
+        if self._model is not None:
+            self._model.removeRows(0, self._model.rowCount())
             for p in snapshot:
-                row = self._table.rowCount()
-                self._table.insertRow(row)
-                self._table.setItem(row, 0, QTableWidgetItem(p["period_code"]))
-                self._table.setItem(
-                    row,
-                    1,
-                    QTableWidgetItem(f"{p['start_date']} → {p['end_date']}"),
-                )
-                self._table.setItem(row, 2, QTableWidgetItem(p["status_code"]))
+                self._model.appendRow([
+                    self._make_item(p["period_code"]),
+                    self._make_item(f"{p['start_date']} → {p['end_date']}"),
+                    self._make_item(p["status_code"]),
+                ])
         open_count = sum(1 for p in snapshot if p["status_code"] == "OPEN")
         closed_count = sum(1 for p in snapshot if p["status_code"] == "CLOSED")
         locked_count = sum(1 for p in snapshot if p["status_code"] == "LOCKED")

@@ -68,6 +68,7 @@ from seeker_accounting.platform.exceptions import (
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 
 _log = logging.getLogger(__name__)
@@ -142,7 +143,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
             help_key="wizard.employee_payroll_setup",
         )
         self.setObjectName("EmployeePayrollSetupWizardDialog")
-        self.resize(940, 680)
+        apply_window_size(self, "modules.payroll.ui.wizards.employee.payroll.setup.wizard.0")
 
         # Load employee + context
         self._load_context()
@@ -348,7 +349,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
         items = [
             ("Tax identifier & CNPS number", not self._gaps[STEP_TAX_CNPS]),
             ("Default payment account", not self._gaps[STEP_PAYMENT]),
-            ("Active compensation profile", not self._gaps[STEP_COMP]),
+            ("Active compensation", not self._gaps[STEP_COMP]),
             ("Recurring component assignments", not self._gaps[STEP_COMPONENTS]),
         ]
         for row, (label, ok) in enumerate(items):
@@ -458,10 +459,10 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
-        card = self._card("Compensation Profile")
+        card = self._card("Compensation")
 
         hint = QLabel(
-            "An active compensation profile is required for payroll "
+            "Active compensation is required for payroll "
             "calculation. Enter the basic salary effective from the date "
             "below. This step is mandatory.",
             card,
@@ -478,7 +479,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
             if self._employee else ""
         )
         grid.addWidget(
-            create_field_block("Profile Name *", self._profile_name_edit),
+            create_field_block("Compensation name *", self._profile_name_edit),
             0, 0, 1, 2,
         )
 
@@ -520,7 +521,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
-        card = self._card("Recurring Component Assignments")
+        card = self._card("Recurring component assignments")
 
         hint = QLabel(
             "Select the recurring components (deductions, employer "
@@ -580,7 +581,8 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
 
         self._notes_edit = QPlainTextEdit(card)
         self._notes_edit.setPlaceholderText("Optional note for the audit trail.")
-        self._notes_edit.setFixedHeight(60)
+        from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _tok
+        self._notes_edit.setFixedHeight(_tok.sizes.form_textarea_h_small)
         card.layout().addWidget(create_field_block("Notes", self._notes_edit))
 
         outer.addWidget(card)
@@ -676,7 +678,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
         key = self._current_key()
         if key == STEP_COMP:
             # Compensation profile is mandatory.
-            self._set_error("A compensation profile is required; please complete this step.")
+            self._set_error("Compensation is required; please complete this step.")
             return
         self._skipped.add(key)
         self._go_next()
@@ -687,7 +689,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
         if STEP_COMP not in self._page_index or STEP_COMP in self._skipped:
             return True
         if not self._profile_name_edit.text().strip():
-            self._set_error("Profile name is required.")
+            self._set_error("Compensation name is required.")
             return False
         if self._basic_salary_edit.value() <= 0:
             self._set_error("Basic salary must be greater than zero.")
@@ -720,7 +722,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
 
         if STEP_COMP in self._page_index and STEP_COMP not in self._skipped:
             lines.append(
-                f"<b>New compensation profile:</b> "
+                f"<b>New compensation:</b> "
                 f"{self._profile_name_edit.text().strip()} · "
                 f"{self._basic_salary_edit.value():,.2f} "
                 f"{self._currency_edit.text().strip()} · "
@@ -866,10 +868,10 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
                 profile_id = profile.id
             except (ValidationError, ConflictError, NotFoundError,
                     PermissionDeniedError) as exc:
-                self._set_error(f"Compensation profile: {exc}")
+                self._set_error(f"Compensation: {exc}")
                 return
             except Exception as exc:  # noqa: BLE001
-                _log.exception("Compensation profile create failed")
+                _log.exception("Compensation create failed")
                 self._set_error(f"Unexpected error: {exc}")
                 return
 
@@ -907,7 +909,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
             summary_lines.append(f"- Updated: {', '.join(bits)}")
         if profile_id is not None:
             summary_lines.append(
-                f"- Created compensation profile (id={profile_id})"
+                f"- Created compensation (id={profile_id})"
             )
         if assignment_ids:
             summary_lines.append(

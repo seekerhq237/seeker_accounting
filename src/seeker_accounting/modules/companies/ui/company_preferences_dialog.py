@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtWidgets import (
@@ -19,7 +20,9 @@ from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.companies.dto.company_commands import (
     UpdateCompanyPreferencesCommand,
 )
-from seeker_accounting.platform.exceptions import ValidationError
+from seeker_accounting.platform.exceptions import AppError, ValidationError
+from seeker_accounting.shared.services.telemetry_service import get_default_telemetry_service
+from seeker_accounting.shared.services.ui_preferences_service import get_default_ui_preferences_service
 from seeker_accounting.shared.ui.message_boxes import show_error
 
 _log = logging.getLogger(__name__)
@@ -58,10 +61,12 @@ class CompanyPreferencesDialog(QDialog):
         super().__init__(parent)
         self._sr = service_registry
         self._company_id = company_id
+        self._ui_preferences = get_default_ui_preferences_service()
+        self._telemetry = get_default_telemetry_service()
 
         self.setWindowTitle(f"Company Preferences — {company_name}")
         self.setModal(True)
-        self.resize(480, 500)
+        apply_window_size(self, "modules.companies.ui.company.preferences.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -110,6 +115,11 @@ class CompanyPreferencesDialog(QDialog):
 
         self._negative_stock_check = QCheckBox("Allow negative stock", inv_card)
         inv_form.addRow(self._negative_stock_check)
+
+        self._inventory_sod_check = QCheckBox(
+            "Require separate submitter and poster", inv_card
+        )
+        inv_form.addRow(self._inventory_sod_check)
 
         self._cost_method_combo = QComboBox(inv_card)
         for code, label in _COST_METHODS:
@@ -160,6 +170,29 @@ class CompanyPreferencesDialog(QDialog):
 
         layout.addWidget(sec_card)
 
+        # ── Local privacy card ───────────────────────────────────────────
+        privacy_card = QFrame(self)
+        privacy_card.setObjectName("PageCard")
+        privacy_form = QFormLayout(privacy_card)
+        privacy_form.setContentsMargins(18, 16, 18, 16)
+        privacy_form.setSpacing(10)
+        privacy_hdr = QLabel("Local Privacy", privacy_card)
+        privacy_hdr.setObjectName("CardTitle")
+        privacy_form.addRow(privacy_hdr)
+
+        self._telemetry_check = QCheckBox("Share anonymous usage telemetry", privacy_card)
+        privacy_form.addRow(self._telemetry_check)
+
+        telemetry_note = QLabel(
+            "Stores coarse workflow events locally on this workstation; names, emails, phone numbers, addresses, and tax identifiers are never recorded.",
+            privacy_card,
+        )
+        telemetry_note.setObjectName("FieldHint")
+        telemetry_note.setWordWrap(True)
+        privacy_form.addRow(telemetry_note)
+
+        layout.addWidget(privacy_card)
+
         # ── Error + buttons ───────────────────────────────────────────────
         self._error_label = QLabel(self)
         self._error_label.setObjectName("FormError")
@@ -191,9 +224,12 @@ class CompanyPreferencesDialog(QDialog):
         self._decimal_spin.setValue(prefs.decimal_places)
         self._tax_inclusive_check.setChecked(prefs.tax_inclusive_default)
         self._negative_stock_check.setChecked(prefs.allow_negative_stock)
+        if hasattr(self, "_inventory_sod_check"):
+            self._inventory_sod_check.setChecked(prefs.enforce_inventory_segregation_of_duties)
         self._set_combo_value(self._cost_method_combo, prefs.default_inventory_cost_method or "")
         self._idle_timeout_spin.setValue(prefs.idle_timeout_minutes)
         self._password_expiry_spin.setValue(prefs.password_expiry_days)
+        self._telemetry_check.setChecked(self._ui_preferences.get_telemetry_opted_in())
 
     def _set_combo_value(self, combo: QComboBox, value: str | None) -> None:
         if value is None:
@@ -228,6 +264,11 @@ class CompanyPreferencesDialog(QDialog):
                     decimal_places=self._decimal_spin.value(),
                     tax_inclusive_default=self._tax_inclusive_check.isChecked(),
                     allow_negative_stock=self._negative_stock_check.isChecked(),
+                    enforce_inventory_segregation_of_duties=(
+                        self._inventory_sod_check.isChecked()
+                        if hasattr(self, "_inventory_sod_check")
+                        else False
+                    ),
                     default_inventory_cost_method=cost_method,
                     idle_timeout_minutes=self._idle_timeout_spin.value(),
                     password_expiry_days=self._password_expiry_spin.value(),
@@ -239,12 +280,36 @@ class CompanyPreferencesDialog(QDialog):
                 self._sr.session_idle_watcher_service.update_timeout(
                     self._idle_timeout_spin.value()
                 )
+            self._save_local_privacy_preferences()
             self.accept()
         except ValidationError as exc:
             self._show_error(str(exc))
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Company Preferences", f"Could not save preferences.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Company Preferences")
+            show_error(self, "Company Preferences", "An unexpected error occurred. See application log for details.")
 
     def _show_error(self, message: str) -> None:
         self._error_label.setText(message)
         self._error_label.show()
+
+    def _save_local_privacy_preferences(self) -> None:
+        previous = self._ui_preferences.get_telemetry_opted_in()
+        current = self._telemetry_check.isChecked()
+        if previous == current:
+            return
+        if previous and not current:
+            self._telemetry.record_funnel_step(
+                funnel="privacy_preferences",
+                step="telemetry_disabled",
+                context={"surface": "company_preferences"},
+            )
+        self._telemetry.set_opted_in(current)
+        if current:
+            self._telemetry.record_funnel_step(
+                funnel="privacy_preferences",
+                step="telemetry_enabled",
+                context={"surface": "company_preferences"},
+            )

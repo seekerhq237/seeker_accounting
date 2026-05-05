@@ -11,6 +11,7 @@ This dialog is opened from:
   - The pre-login landing window / splash screen
 """
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 from pathlib import Path
 
@@ -50,7 +51,7 @@ class LicenseDialog(QDialog):
         self.setWindowTitle("License Management")
         self.setModal(True)
         self.setMinimumWidth(480)
-        self.resize(520, 380)
+        apply_window_size(self, "app.shell.license.dialog.0")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(24, 24, 24, 20)
@@ -219,8 +220,12 @@ class LicenseDialog(QDialog):
             self._refresh_display()
         except ValueError as exc:
             self._set_feedback(str(exc), success=False)
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Activation Error", f"Unexpected error during activation:\n\n{exc}")
+
+        except Exception:
+            _log.exception("Activation Error")
+            show_error(self, "Activation Error", "An unexpected error occurred. See application log for details.")
 
     def _on_deactivate(self) -> None:
         self._license_service.deactivate_license()

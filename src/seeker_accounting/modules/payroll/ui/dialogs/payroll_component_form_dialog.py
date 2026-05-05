@@ -21,6 +21,7 @@ from seeker_accounting.modules.payroll.dto.payroll_component_dto import (
     UpdatePayrollComponentCommand,
 )
 from seeker_accounting.platform.exceptions import ConflictError, ValidationError
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 _log = logging.getLogger(__name__)
 
@@ -56,9 +57,9 @@ class PayrollComponentFormDialog(QDialog):
         self._component_id = component_id
 
         is_edit = component_id is not None
-        self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Payroll Component — {company_name}")
+        self.setWindowTitle(f"{'Edit' if is_edit else 'New'} payroll component - {company_name}")
         self.setModal(True)
-        self.resize(500, 480)
+        apply_window_size(self, "modules.payroll.ui.dialogs.payroll.component.form.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -70,7 +71,7 @@ class PayrollComponentFormDialog(QDialog):
         def_form = QFormLayout(def_card)
         def_form.setContentsMargins(18, 16, 18, 16)
         def_form.setSpacing(10)
-        def_hdr = QLabel("Component Definition", def_card)
+        def_hdr = QLabel("Payroll component definition", def_card)
         def_hdr.setObjectName("CardTitle")
         def_form.addRow(def_hdr)
 

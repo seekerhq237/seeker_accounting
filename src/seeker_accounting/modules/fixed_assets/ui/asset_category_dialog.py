@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtWidgets import (
@@ -53,7 +54,7 @@ class AssetCategoryDialog(QDialog):
         is_edit = category_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Asset Category — {company_name}")
         self.setModal(True)
-        self.resize(460, 460)
+        apply_window_size(self, "modules.fixed.assets.ui.asset.category.dialog.0")
         self.setMinimumWidth(440)
         self.setMaximumWidth(560)
 

@@ -33,6 +33,7 @@ from seeker_accounting.modules.accounting.reference_data.repositories.tax_code_a
 from seeker_accounting.modules.accounting.reference_data.repositories.tax_code_repository import TaxCodeRepository
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.validation import require_code, require_non_negative_decimal, require_text
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -422,13 +423,10 @@ class TaxSetupService:
         return account
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _require_code(self, value: str, label: str) -> str:
-        return self._require_text(value, label).upper()
+        return require_code(value, label)
 
     def _require_date(self, value: date | None, label: str) -> date:
         if value is None:
@@ -439,13 +437,9 @@ class TaxSetupService:
         if calculation_method_code == "PERCENTAGE":
             if value is None:
                 raise ValidationError("Rate percent is required when calculation method is percentage.")
-            if value < Decimal("0"):
-                raise ValidationError("Rate percent cannot be negative.")
-            return value
+            return require_non_negative_decimal(value, "Rate percent")
 
-        if value is not None and value < Decimal("0"):
-            raise ValidationError("Rate percent cannot be negative.")
-        return value
+        return require_non_negative_decimal(value, "Rate percent")
 
     def _normalize_cac_split(
         self,

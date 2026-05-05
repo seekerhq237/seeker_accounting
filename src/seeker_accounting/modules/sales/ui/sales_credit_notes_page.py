@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
+from decimal import Decimal
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -11,8 +14,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -20,9 +21,13 @@ from PySide6.QtWidgets import (
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.sales.dto.sales_credit_note_dto import SalesCreditNoteListItemDTO
 from seeker_accounting.modules.sales.ui.sales_credit_note_dialog import SalesCreditNoteDialog
-from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _STATUS_LABELS: dict[str, str] = {
     "draft": "Draft",
@@ -36,6 +41,18 @@ _COL_DATE = 2
 _COL_STATUS = 3
 _COL_SOURCE_INVOICE = 4
 _COL_TOTAL = 5
+
+_CREDIT_NOTE_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="credit_number", title="Credit #"),
+    DataTableColumn(key="customer_name", title="Customer"),
+    DataTableColumn(key="credit_date", title="Date"),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="source_invoice_number", title="Source Invoice"),
+    DataTableColumn(key="total_amount", title="Total", is_numeric=True),
+)
+
+
+_log = logging.getLogger(__name__)
 
 
 class SalesCreditNotesPage(QWidget):
@@ -64,7 +81,7 @@ class SalesCreditNotesPage(QWidget):
         active = self._active_company()
         if active is None:
             self._notes = []
-            self._table.setRowCount(0)
+            self._notes_model.removeRows(0, self._notes_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_company_state)
             self._update_action_state()
@@ -77,7 +94,7 @@ class SalesCreditNotesPage(QWidget):
             )
         except Exception as exc:
             self._notes = []
-            self._table.setRowCount(0)
+            self._notes_model.removeRows(0, self._notes_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -85,7 +102,7 @@ class SalesCreditNotesPage(QWidget):
             return
 
         self._populate_table()
-        self._apply_search()
+        self._update_record_count_label()
         self._sync_surface(active)
         self._restore_selection(selected_id)
         self._update_action_state()
@@ -105,7 +122,6 @@ class SalesCreditNotesPage(QWidget):
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search credit notes...")
         self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _: self._apply_search())
         layout.addWidget(self._search_input)
 
         self._status_filter = QComboBox(card)
@@ -175,23 +191,27 @@ class SalesCreditNotesPage(QWidget):
         card_layout.addWidget(sub_header)
 
         # Table
-        self._table = QTableWidget(0, 6, card)
-        self._table.setHorizontalHeaderLabels(
-            ["Credit #", "Customer", "Date", "Status", "Source Invoice", "Total"]
+        self._notes_model = QStandardItemModel(0, len(_CREDIT_NOTE_COLUMNS), card)
+        self._notes_model.setHorizontalHeaderLabels([c.title for c in _CREDIT_NOTE_COLUMNS])
+
+        self._table = DataTable(
+            columns=_CREDIT_NOTE_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No credit notes match the current filters.",
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_double_click)
-        self._table.horizontalHeader().setStretchLastSection(False)
-        hh = self._table.horizontalHeader()
-        hh.resizeSection(_COL_NUMBER, 120)
-        hh.resizeSection(_COL_CUSTOMER, 180)
-        hh.resizeSection(_COL_DATE, 100)
-        hh.resizeSection(_COL_STATUS, 90)
-        hh.resizeSection(_COL_SOURCE_INVOICE, 130)
-        hh.resizeSection(_COL_TOTAL, 100)
+        self._table.set_model(self._notes_model)
+        self._notes_status_delegate = apply_status_chip_to_column(
+            self._table.view(), _COL_STATUS
+        )
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
+        self._search_input.textChanged.connect(self._table.set_search_text)
+        self._search_input.textChanged.connect(self._update_record_count_label)
         card_layout.addWidget(self._table, 1)
 
         self._stack.addWidget(card)
@@ -212,61 +232,51 @@ class SalesCreditNotesPage(QWidget):
     # Table population
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _make_item(text: str, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setRowCount(0)
+        self._notes_model.removeRows(0, self._notes_model.rowCount())
         for note in self._notes:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
+            items = [
+                self._make_item(note.credit_number, user_data=note.id),
+                self._make_item(note.customer_name),
+                self._make_item(note.credit_date.isoformat()),
+                self._make_item(note.status_code),
+                self._make_item(note.source_invoice_number or ""),
+                self._make_numeric(note.total_amount),
+            ]
+            self._notes_model.appendRow(items)
 
-            self._set_item(row, _COL_NUMBER, note.credit_number)
-            self._set_item(row, _COL_CUSTOMER, note.customer_name)
-            self._set_item(row, _COL_DATE, note.credit_date.isoformat())
-            self._set_status_chip(row, _COL_STATUS, note.status_code)
-            self._set_item(row, _COL_SOURCE_INVOICE, note.source_invoice_number or "")
-            total_item = QTableWidgetItem(f"{note.total_amount:,.2f}")
-            total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            total_item.setData(Qt.ItemDataRole.UserRole, note.id)
-            total_item.setFlags(total_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self._table.setItem(row, _COL_TOTAL, total_item)
-
-            # Store note id on the number column
-            num_item = self._table.item(row, _COL_NUMBER)
-            if num_item is not None:
-                num_item.setData(Qt.ItemDataRole.UserRole, note.id)
-
-    def _set_item(self, row: int, col: int, text: str) -> None:
-        item = QTableWidgetItem(text)
-        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self._table.setItem(row, col, item)
-
-    def _set_status_chip(self, row: int, col: int, status_code: str) -> None:
-        label = _STATUS_LABELS.get(status_code, status_code)
-        item = QTableWidgetItem(label)
-        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        if status_code == "posted":
-            item.setForeground(Qt.GlobalColor.darkGreen)
-        elif status_code == "draft":
-            item.setForeground(Qt.GlobalColor.darkGray)
-        elif status_code == "cancelled":
-            item.setForeground(Qt.GlobalColor.red)
-        self._table.setItem(row, col, item)
-
-    def _apply_search(self) -> None:
-        term = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            visible = not term
-            if term:
-                for col in (_COL_NUMBER, _COL_CUSTOMER, _COL_SOURCE_INVOICE):
-                    item = self._table.item(row, col)
-                    if item and term in item.text().lower():
-                        visible = True
-                        break
-            self._table.setRowHidden(row, not visible)
-        visible_count = sum(1 for r in range(self._table.rowCount()) if not self._table.isRowHidden(r))
-        self._record_count_label.setText(f"{visible_count} credit note(s)")
+    def _update_record_count_label(self, *_args: object) -> None:
+        total = len(self._notes)
+        query = self._search_input.text().strip()
+        if query:
+            proxy = self._table.view().model()
+            visible = proxy.rowCount() if proxy is not None else total
+            self._record_count_label.setText(
+                f"{visible} shown of {total} credit note(s)"
+            )
+        else:
+            self._record_count_label.setText(f"{total} credit note(s)")
 
     def _sync_surface(self, active) -> None:
-        has_rows = self._table.rowCount() > 0
+        has_rows = bool(self._notes)
         self._stack.setCurrentWidget(
             self._empty_state if not has_rows else self._stack.widget(1)
         )
@@ -276,6 +286,9 @@ class SalesCreditNotesPage(QWidget):
     # ------------------------------------------------------------------
 
     def _handle_new(self) -> None:
+        if not self._service_registry.permission_service.has_permission("sales.credit_notes.create"):
+            self._show_permission_denied("sales.credit_notes.create")
+            return
         active = self._active_company()
         if active is None:
             show_error(self, "Credit Notes", "No active company selected.")
@@ -287,6 +300,9 @@ class SalesCreditNotesPage(QWidget):
             self.reload(selected_id=result.id)
 
     def _handle_edit(self) -> None:
+        if not self._service_registry.permission_service.has_permission("sales.credit_notes.edit"):
+            self._show_permission_denied("sales.credit_notes.edit")
+            return
         note_id = self._selected_note_id()
         if note_id is None:
             return
@@ -306,6 +322,9 @@ class SalesCreditNotesPage(QWidget):
             self.reload(selected_id=result.id)
 
     def _handle_post(self) -> None:
+        if not self._service_registry.permission_service.has_permission("sales.credit_notes.post"):
+            self._show_permission_denied("sales.credit_notes.post")
+            return
         note_id = self._selected_note_id()
         if note_id is None:
             return
@@ -335,10 +354,17 @@ class SalesCreditNotesPage(QWidget):
             self.reload(selected_id=note_id)
         except (ValidationError, NotFoundError, ConflictError) as exc:
             show_error(self, "Post Credit Note", str(exc))
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Post Credit Note", f"Unexpected error: {exc}")
 
+        except Exception:
+            _log.exception("Post Credit Note")
+            show_error(self, "Post Credit Note", "An unexpected error occurred. See application log for details.")
+
     def _handle_cancel(self) -> None:
+        if not self._service_registry.permission_service.has_permission("sales.credit_notes.cancel"):
+            self._show_permission_denied("sales.credit_notes.cancel")
+            return
         note_id = self._selected_note_id()
         if note_id is None:
             return
@@ -365,8 +391,12 @@ class SalesCreditNotesPage(QWidget):
             self.reload()
         except (ValidationError, NotFoundError, ConflictError) as exc:
             show_error(self, "Cancel Credit Note", str(exc))
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Cancel Credit Note", f"Unexpected error: {exc}")
+
+        except Exception:
+            _log.exception("Cancel Credit Note")
+            show_error(self, "Cancel Credit Note", "An unexpected error occurred. See application log for details.")
 
     def _handle_double_click(self) -> None:
         note_id = self._selected_note_id()
@@ -378,6 +408,12 @@ class SalesCreditNotesPage(QWidget):
         if note.status_code == "draft":
             self._handle_edit()
 
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        self._handle_double_click()
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -386,41 +422,64 @@ class SalesCreditNotesPage(QWidget):
         note_id = self._selected_note_id()
         note = next((n for n in self._notes if n.id == note_id), None) if note_id else None
         active = self._active_company()
+        perm = self._service_registry.permission_service
 
         has_company = active is not None
         is_draft = note is not None and note.status_code == "draft"
         is_live = note is not None and note.status_code in ("draft",)
 
-        self._new_btn.setEnabled(has_company)
-        self._edit_btn.setEnabled(is_draft)
-        self._post_btn.setEnabled(is_draft)
-        self._cancel_btn.setEnabled(is_live)
+        self._new_btn.setEnabled(has_company and perm.has_permission("sales.credit_notes.create"))
+        self._edit_btn.setEnabled(is_draft and perm.has_permission("sales.credit_notes.edit"))
+        self._post_btn.setEnabled(is_draft and perm.has_permission("sales.credit_notes.post"))
+        self._cancel_btn.setEnabled(is_live and perm.has_permission("sales.credit_notes.cancel"))
 
     def _selected_note_id(self) -> int | None:
-        rows = self._table.selectedItems()
+        rows = self._table.selected_rows()
         if not rows:
             return None
-        row = self._table.currentRow()
-        item = self._table.item(row, _COL_NUMBER)
-        if item is None:
-            return None
-        val = item.data(Qt.ItemDataRole.UserRole)
-        return val if isinstance(val, int) else None
+        idx = rows[0]
+        if 0 <= idx < len(self._notes):
+            return self._notes[idx].id
+        return None
 
     def _active_company(self):
         return self._service_registry.company_context_service.get_active_company()
+
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Permission Denied",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
 
     def _status_filter_value(self) -> str | None:
         return self._status_filter.currentData()
 
     def _restore_selection(self, selected_id: int | None) -> None:
-        if selected_id is None:
+        if not self._notes:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, _COL_NUMBER)
-            if item and item.data(Qt.ItemDataRole.UserRole) == selected_id:
-                self._table.selectRow(row)
-                break
+        if selected_id is None:
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, n in enumerate(self._notes) if n.id == selected_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src_index = self._notes_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _handle_active_company_changed(self) -> None:
         self.reload()

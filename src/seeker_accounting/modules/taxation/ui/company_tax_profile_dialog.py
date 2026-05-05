@@ -7,6 +7,7 @@ the taxation constant module so codes never drift.
 
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 
 from PySide6.QtCore import QDate, Qt
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFrame,
     QGridLayout,
     QLabel,
@@ -42,6 +44,8 @@ from seeker_accounting.modules.taxation.constants import (
     TAXPAYER_SEGMENT_LARGE,
     TAXPAYER_SEGMENT_MEDIUM,
     TAXPAYER_SEGMENT_SPECIALIZED,
+    VAT_BASIS_ACCRUAL,
+    VAT_BASIS_CASH,
 )
 from seeker_accounting.modules.taxation.dto.company_tax_profile_dto import (
     CompanyTaxProfileDTO,
@@ -94,6 +98,11 @@ _DSF_SUBMISSION_OPTIONS: tuple[tuple[str, str], ...] = (
     (DSF_SUBMISSION_MANUAL, "Manual"),
 )
 
+_VAT_BASIS_OPTIONS: tuple[tuple[str, str], ...] = (
+    (VAT_BASIS_ACCRUAL, "Accrual (invoice) basis"),
+    (VAT_BASIS_CASH, "Cash (payment) basis"),
+)
+
 
 class CompanyTaxProfileDialog(BaseDialog):
     def __init__(
@@ -116,7 +125,7 @@ class CompanyTaxProfileDialog(BaseDialog):
             help_key="dialog.company_tax_profile",
         )
         self.setObjectName("CompanyTaxProfileDialog")
-        self.resize(720, 640)
+        apply_window_size(self, "modules.taxation.ui.company.tax.profile.dialog.0")
 
         intro = QLabel(
             "Configure the company's tax-compliance identity. These values drive "
@@ -203,8 +212,31 @@ class CompanyTaxProfileDialog(BaseDialog):
         grid.addWidget(QLabel("VAT effective from"), 2, 0)
         grid.addWidget(self._vat_effective_edit, 2, 1)
 
+        self._vat_basis_combo = self._make_combo(frame, _VAT_BASIS_OPTIONS)
+        grid.addWidget(QLabel("VAT accounting basis"), 3, 0)
+        grid.addWidget(self._vat_basis_combo, 3, 1)
+
+        self._vat_pro_rata_spin = QDoubleSpinBox(frame)
+        self._vat_pro_rata_spin.setRange(0.0, 100.0)
+        self._vat_pro_rata_spin.setDecimals(2)
+        self._vat_pro_rata_spin.setSuffix(" %")
+        self._vat_pro_rata_spin.setSpecialValueText("N/A (fully taxable)")
+        self._vat_pro_rata_spin.setValue(0.0)
+        self._vat_pro_rata_spin.setToolTip(
+            "Set to 0 when the company is fully taxable. "
+            "Enter the agreed pro-rata % for partial-exemption filers."
+        )
+        grid.addWidget(QLabel("Pro-rata recovery %"), 4, 0)
+        grid.addWidget(self._vat_pro_rata_spin, 4, 1)
+
         self._vat_liable_check.toggled.connect(
             self._vat_effective_edit.setEnabled
+        )
+        self._vat_liable_check.toggled.connect(
+            self._vat_basis_combo.setEnabled
+        )
+        self._vat_liable_check.toggled.connect(
+            self._vat_pro_rata_spin.setEnabled
         )
 
         return frame
@@ -307,6 +339,14 @@ class CompanyTaxProfileDialog(BaseDialog):
             self._vat_effective_edit.setDate(self._vat_effective_edit.minimumDate())
         self._vat_effective_edit.setEnabled(bool(profile.is_vat_liable))
 
+        vat_basis = getattr(profile, "vat_accounting_basis", VAT_BASIS_ACCRUAL) or VAT_BASIS_ACCRUAL
+        self._set_combo_value(self._vat_basis_combo, vat_basis)
+        self._vat_basis_combo.setEnabled(bool(profile.is_vat_liable))
+
+        pro_rata = getattr(profile, "vat_pro_rata_percent", None)
+        self._vat_pro_rata_spin.setValue(float(pro_rata) if pro_rata is not None else 0.0)
+        self._vat_pro_rata_spin.setEnabled(bool(profile.is_vat_liable))
+
         self._set_combo_value(self._cit_rate_combo, profile.cit_rate_profile_code)
         self._cit_installment_edit.setText(profile.cit_installment_profile_code or "")
         self._sme_check.setChecked(bool(profile.sme_qualified_flag))
@@ -327,6 +367,9 @@ class CompanyTaxProfileDialog(BaseDialog):
         else:
             vat_from = None
 
+        pro_rata_val = self._vat_pro_rata_spin.value()
+        pro_rata: float | None = pro_rata_val if pro_rata_val > 0.0 else None
+
         return UpsertCompanyTaxProfileCommand(
             niu=(self._niu_edit.text().strip() or None),
             tax_center_code=(self._tax_center_edit.text().strip() or None),
@@ -334,6 +377,8 @@ class CompanyTaxProfileDialog(BaseDialog):
             tax_regime_code=(self._regime_combo.currentData() or None),
             is_vat_liable=vat_liable,
             vat_effective_from=vat_from,
+            vat_accounting_basis=self._vat_basis_combo.currentData() or VAT_BASIS_ACCRUAL,
+            vat_pro_rata_percent=pro_rata,
             cit_rate_profile_code=(self._cit_rate_combo.currentData() or None),
             cit_installment_profile_code=(
                 self._cit_installment_edit.text().strip() or None

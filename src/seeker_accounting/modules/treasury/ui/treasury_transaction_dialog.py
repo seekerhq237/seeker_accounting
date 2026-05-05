@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
@@ -59,7 +60,7 @@ class TreasuryTransactionDialog(QDialog):
         is_edit = transaction_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Treasury Transaction — {company_name}")
         self.setModal(True)
-        self.resize(800, 600)
+        apply_window_size(self, "modules.treasury.ui.treasury.transaction.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

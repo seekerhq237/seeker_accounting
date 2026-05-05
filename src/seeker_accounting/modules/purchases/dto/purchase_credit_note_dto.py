@@ -64,6 +64,7 @@ class PurchaseCreditNoteDetailDTO:
     contract_id: int | None
     project_id: int | None
     lines: list[PurchaseCreditNoteLineDTO]
+    tax_point_date: date | None = None
 
 
 @dataclass(frozen=True, slots=True)

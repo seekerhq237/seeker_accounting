@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from collections.abc import Callable
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
@@ -29,6 +31,9 @@ from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 from seeker_accounting.shared.utils.text import coalesce_text, humanize_identifier
+
+
+_log = logging.getLogger(__name__)
 
 
 class ElidedLabel(QLabel):
@@ -452,8 +457,12 @@ class ShellTopBar(QFrame):
                 )
             )
             show_info(self.window(), "Password Changed", "Your password has been updated.")
-        except Exception as exc:
+        except AppError as exc:
             show_error(self.window(), "Password Change", f"Could not change password.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Password Change")
+            show_error(self.window(), "Password Change", "An unexpected error occurred. See application log for details.")
 
     def _handle_toggle_theme(self) -> None:
         self._service_registry.theme_manager.toggle_theme()
@@ -557,8 +566,12 @@ class ShellTopBar(QFrame):
     def _switch_company(self, company_id: int) -> None:
         try:
             self._service_registry.company_context_service.set_active_company(company_id)
-        except Exception as exc:
+        except AppError as exc:
             show_error(self.window(), "Company Switch", f"Could not switch company.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Company Switch")
+            show_error(self.window(), "Company Switch", "An unexpected error occurred. See application log for details.")
 
     # ── Fiscal chip ───────────────────────────────────────────────────
 

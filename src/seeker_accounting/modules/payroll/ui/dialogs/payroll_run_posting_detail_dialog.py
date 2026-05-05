@@ -4,20 +4,16 @@ from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _STATUS_COLORS = {
     "posted": "#1a7a2e",
@@ -43,7 +39,7 @@ class PayrollRunPostingDetailDialog(QDialog):
         self._company_id = company_id
         self._run_id = run_id
 
-        self.setWindowTitle("Payroll Run — Posting Detail")
+        self.setWindowTitle("Payroll run - Posting detail")
         self.setMinimumSize(660, 500)
         self.setModal(True)
 

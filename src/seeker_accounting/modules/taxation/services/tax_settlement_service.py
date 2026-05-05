@@ -64,6 +64,7 @@ from seeker_accounting.modules.taxation.constants import (
     RETURN_STATUS_FILED,
     SETTLEMENT_VAT_CREDIT_CARRYFORWARD_ACCOUNT_CODE,
     SETTLEMENT_VAT_PAYABLE_ACCOUNT_CODE,
+    SETTLEMENT_WITHHOLDING_VAT_RECEIVABLE_ACCOUNT_CODE,
     TAX_TYPE_VAT,
 )
 from seeker_accounting.modules.taxation.dto.tax_compliance_dto import (
@@ -102,6 +103,7 @@ _LINE_ROLE_OUTPUT = "OUTPUT_VAT"
 _LINE_ROLE_INPUT = "INPUT_VAT"
 _LINE_ROLE_PAYABLE = "VAT_PAYABLE"
 _LINE_ROLE_CREDIT_CARRYFORWARD = "VAT_CREDIT_CARRYFORWARD"
+_LINE_ROLE_WITHHOLDING_RECEIVABLE = "VAT_WITHHOLDING_RECEIVABLE"
 
 
 TaxReturnRepositoryFactory = Callable[[Session], TaxReturnRepository]
@@ -368,7 +370,10 @@ class TaxSettlementService:
         )
 
         net = output_total - input_total
-        net_payable = net if net > _ZERO else _ZERO
+        # T37: withholding VAT (précompte) reduces amount payable to DGI.
+        withholding_vat = getattr(tax_return, "withholding_vat_amount", _ZERO) or _ZERO
+        withholding_vat = Decimal(str(withholding_vat))
+        net_payable = max(_ZERO, net - withholding_vat) if net > _ZERO else _ZERO
         net_credit = (-net) if net < _ZERO else _ZERO
 
         plan_lines: list[TaxSettlementLineDTO] = []
@@ -398,6 +403,28 @@ class TaxSettlementService:
                     role=_LINE_ROLE_INPUT,
                 )
             )
+
+        # T37: withholding VAT receivable leg (Dr 4443 — funds withheld by customer).
+        if withholding_vat > _ZERO:
+            wht_account = self._resolve_settlement_account(
+                account_repo,
+                company_id,
+                SETTLEMENT_WITHHOLDING_VAT_RECEIVABLE_ACCOUNT_CODE,
+                "VAT withholding receivable",
+                blocking,
+            )
+            if wht_account is not None:
+                plan_lines.append(
+                    TaxSettlementLineDTO(
+                        account_id=wht_account.id,
+                        account_code=wht_account.account_code,
+                        account_name=wht_account.account_name,
+                        debit_amount=withholding_vat,
+                        credit_amount=_ZERO,
+                        description="VAT withheld by customer (précompte)",
+                        role=_LINE_ROLE_WITHHOLDING_RECEIVABLE,
+                    )
+                )
 
         # Plug — payable or credit-carry-forward.
         if net_payable > _ZERO:

@@ -1,6 +1,7 @@
 """RoleAssignmentDialog — manage role assignments for a user."""
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtWidgets import (
@@ -37,7 +38,7 @@ class RoleAssignmentDialog(BaseDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(f"Manage Roles — {user_dto.display_name}", parent, help_key="dialog.role_assignment")
-        self.resize(500, 420)
+        apply_window_size(self, "modules.administration.ui.role.assignment.dialog.0")
         self._service_registry = service_registry
         self._user_dto = user_dto
         self._all_roles: list[RoleDTO] = []

@@ -37,6 +37,13 @@ from seeker_accounting.modules.companies.repositories.company_preference_reposit
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.companies.services.company_context_service import CompanyContextService
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PermissionDeniedError, ValidationError
+from seeker_accounting.platform.validation import (
+    require_code,
+    require_int_between,
+    require_minimum_int,
+    require_non_negative_int,
+    require_text,
+)
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -249,12 +256,14 @@ class CompanyService:
         self._permission_service.require_permission("companies.preferences.manage")
         date_format_code = self._require_text(command.date_format_code, "Date format")
         number_format_code = self._require_text(command.number_format_code, "Number format")
-        if command.decimal_places < 0:
-            raise ValidationError("Decimal places cannot be negative.")
-        if command.idle_timeout_minutes < 1:
-            raise ValidationError("Idle timeout must be at least 1 minute.")
-        if command.password_expiry_days < 0:
-            raise ValidationError("Password expiry days cannot be negative.")
+        require_non_negative_int(command.decimal_places, "Decimal places")
+        require_minimum_int(
+            command.idle_timeout_minutes,
+            "Idle timeout",
+            minimum=1,
+            message="Idle timeout must be at least 1 minute.",
+        )
+        require_non_negative_int(command.password_expiry_days, "Password expiry days")
 
         with self._unit_of_work_factory() as uow:
             company_repository = self._require_company_repository(uow.session)
@@ -274,6 +283,9 @@ class CompanyService:
                     decimal_places=command.decimal_places,
                     tax_inclusive_default=command.tax_inclusive_default,
                     allow_negative_stock=command.allow_negative_stock,
+                    enforce_inventory_segregation_of_duties=(
+                        command.enforce_inventory_segregation_of_duties
+                    ),
                     default_inventory_cost_method=self._normalize_optional_text(command.default_inventory_cost_method),
                     idle_timeout_minutes=command.idle_timeout_minutes,
                     password_expiry_days=command.password_expiry_days,
@@ -285,6 +297,9 @@ class CompanyService:
                 preference.decimal_places = command.decimal_places
                 preference.tax_inclusive_default = command.tax_inclusive_default
                 preference.allow_negative_stock = command.allow_negative_stock
+                preference.enforce_inventory_segregation_of_duties = (
+                    command.enforce_inventory_segregation_of_duties
+                )
                 preference.default_inventory_cost_method = self._normalize_optional_text(
                     command.default_inventory_cost_method
                 )
@@ -297,6 +312,22 @@ class CompanyService:
             except IntegrityError as exc:
                 raise ValidationError("Company preferences could not be saved.") from exc
 
+            from seeker_accounting.modules.audit.event_type_catalog import COMPANY_PREFERENCES_UPDATED
+            self._record_audit(
+                company_id,
+                COMPANY_PREFERENCES_UPDATED,
+                "CompanyPreference",
+                preference.company_id,
+                "Updated company preferences",
+            )
+            self._record_business_process_step(
+                company_id,
+                "CompanyPreference",
+                preference.company_id,
+                "company_preferences",
+                "saved",
+                "Company preferences saved.",
+            )
             return self._to_company_preferences_dto(preference)
 
     def get_company_preferences(self, company_id: int) -> CompanyPreferencesDTO:
@@ -323,6 +354,7 @@ class CompanyService:
                 decimal_places=2,
                 tax_inclusive_default=False,
                 allow_negative_stock=False,
+                enforce_inventory_segregation_of_duties=False,
                 default_inventory_cost_method=None,
                 idle_timeout_minutes=2,
                 password_expiry_days=30,
@@ -335,12 +367,23 @@ class CompanyService:
         command: UpdateCompanyFiscalDefaultsCommand,
     ) -> CompanyFiscalDefaultsDTO:
         self._permission_service.require_permission("companies.fiscal_defaults.manage")
-        if not 1 <= command.fiscal_year_start_month <= 12:
-            raise ValidationError("Fiscal year start month must be between 1 and 12.")
-        if not 1 <= command.fiscal_year_start_day <= 31:
-            raise ValidationError("Fiscal year start day must be between 1 and 31.")
+        require_int_between(
+            command.fiscal_year_start_month,
+            "Fiscal year start month",
+            minimum=1,
+            maximum=12,
+        )
+        require_int_between(
+            command.fiscal_year_start_day,
+            "Fiscal year start day",
+            minimum=1,
+            maximum=31,
+        )
         if command.default_posting_grace_days is not None and command.default_posting_grace_days < 0:
-            raise ValidationError("Default posting grace days cannot be negative.")
+            require_non_negative_int(
+                command.default_posting_grace_days,
+                "Default posting grace days",
+            )
 
         with self._unit_of_work_factory() as uow:
             company_repository = self._require_company_repository(uow.session)
@@ -371,6 +414,22 @@ class CompanyService:
             except IntegrityError as exc:
                 raise ValidationError("Company fiscal defaults could not be saved.") from exc
 
+            from seeker_accounting.modules.audit.event_type_catalog import COMPANY_FISCAL_DEFAULTS_UPDATED
+            self._record_audit(
+                company_id,
+                COMPANY_FISCAL_DEFAULTS_UPDATED,
+                "CompanyFiscalDefault",
+                fiscal_default.company_id,
+                "Updated company fiscal defaults",
+            )
+            self._record_business_process_step(
+                company_id,
+                "CompanyFiscalDefault",
+                fiscal_default.company_id,
+                "company_fiscal_defaults",
+                "saved",
+                "Company fiscal defaults saved.",
+            )
             return self._to_company_fiscal_defaults_dto(fiscal_default)
 
     def deactivate_company(self, company_id: int) -> None:
@@ -382,6 +441,7 @@ class CompanyService:
                 raise NotFoundError(f"Company with id {company_id} was not found.")
             self._ensure_company_access(uow.session, company.id)
 
+            from_state = "active" if company.is_active else "inactive"
             company.is_active = False
             company_repository.save(company)
 
@@ -393,6 +453,17 @@ class CompanyService:
         active_company = self._company_context_service.get_active_company()
         if active_company is not None and active_company.company_id == company_id:
             self._company_context_service.clear_active_company()
+
+        from seeker_accounting.modules.audit.event_type_catalog import COMPANY_DEACTIVATED
+        self._record_audit(company_id, COMPANY_DEACTIVATED, "Company", company_id, "Deactivated company")
+        self._record_state_transition(
+            company_id,
+            "Company",
+            company_id,
+            from_state,
+            "inactive",
+            "Company deactivated.",
+        )
 
     def reactivate_company(self, company_id: int) -> None:
         raise PermissionDeniedError(
@@ -519,16 +590,10 @@ class CompanyService:
         return ValidationError("Company data could not be saved.")
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _require_code(self, value: str, label: str) -> str:
-        normalized = value.strip().upper()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_code(value, label)
 
     def _normalize_optional_text(self, value: str | None) -> str | None:
         if value is None:
@@ -593,6 +658,9 @@ class CompanyService:
             decimal_places=preference.decimal_places,
             tax_inclusive_default=preference.tax_inclusive_default,
             allow_negative_stock=preference.allow_negative_stock,
+            enforce_inventory_segregation_of_duties=(
+                preference.enforce_inventory_segregation_of_duties
+            ),
             default_inventory_cost_method=preference.default_inventory_cost_method,
             idle_timeout_minutes=preference.idle_timeout_minutes,
             password_expiry_days=preference.password_expiry_days,
@@ -633,3 +701,53 @@ class CompanyService:
             )
         except Exception:
             pass  # Audit must not break business operations
+
+    def _record_state_transition(
+        self,
+        company_id: int,
+        entity_type: str,
+        entity_id: int | None,
+        from_state: str | None,
+        to_state: str,
+        description: str,
+    ) -> None:
+        if self._audit_service is None:
+            return
+        from seeker_accounting.modules.audit.event_type_catalog import MODULE_COMPANIES
+        try:
+            self._audit_service.record_state_transition(
+                company_id,
+                module_code=MODULE_COMPANIES,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                from_state=from_state,
+                to_state=to_state,
+                description=description,
+            )
+        except Exception:
+            pass
+
+    def _record_business_process_step(
+        self,
+        company_id: int,
+        entity_type: str,
+        entity_id: int | None,
+        process_code: str,
+        step_code: str,
+        description: str,
+    ) -> None:
+        if self._audit_service is None:
+            return
+        from seeker_accounting.modules.audit.event_type_catalog import MODULE_COMPANIES
+        try:
+            self._audit_service.record_business_process_step(
+                company_id,
+                module_code=MODULE_COMPANIES,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                process_code=process_code,
+                step_code=step_code,
+                description=description,
+            )
+        except Exception:
+            pass

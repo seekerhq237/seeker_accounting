@@ -87,6 +87,8 @@ class SalesInvoiceDetailDTO:
     lines: tuple[SalesInvoiceLineDTO, ...]
     contract_id: int | None = None
     project_id: int | None = None
+    tax_point_date: date | None = None
+    withheld_vat_amount: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)

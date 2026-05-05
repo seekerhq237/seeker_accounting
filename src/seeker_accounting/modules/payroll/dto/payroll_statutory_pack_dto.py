@@ -26,5 +26,9 @@ class ApplyPackResultDTO:
     brackets_created: int
     settings_updated: bool
     settings_action: str
+    authorities_created: int = 0
+    authorities_skipped: int = 0
+    mappings_created: int = 0
+    mappings_skipped: int = 0
     superseded_previous_pack_code: str | None = None
     message: str = field(default="")

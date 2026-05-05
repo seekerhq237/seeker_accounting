@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import datetime
 from decimal import Decimal
 
@@ -33,6 +35,9 @@ _METHODS = [
     ("transfer_note", "Transfer Note"),
     ("other", "Other"),
 ]
+
+
+_log = logging.getLogger(__name__)
 
 
 class PayrollPaymentRecordDialog(QDialog):
@@ -128,5 +133,8 @@ class PayrollPaymentRecordDialog(QDialog):
                 ),
             )
             self.accept()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payment Record", str(exc))
+        except Exception:
+            _log.exception("Payment Record")
+            show_error(self, "Payment Record", "An unexpected error occurred. See application log for details.")

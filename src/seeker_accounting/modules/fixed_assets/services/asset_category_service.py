@@ -8,6 +8,7 @@ from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
 from seeker_accounting.modules.accounting.chart_of_accounts.repositories.account_repository import (
     AccountRepository,
 )
+from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.fixed_assets.dto.asset_category_commands import (
     CreateAssetCategoryCommand,
@@ -56,12 +57,14 @@ class AssetCategoryService:
         asset_category_repository_factory: AssetCategoryRepositoryFactory,
         account_repository_factory: AccountRepositoryFactory,
         company_repository_factory: CompanyRepositoryFactory,
+        permission_service: PermissionService,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._asset_category_repository_factory = asset_category_repository_factory
         self._account_repository_factory = account_repository_factory
         self._company_repository_factory = company_repository_factory
+        self._permission_service = permission_service
         self._audit_service = audit_service
 
     def list_asset_categories(
@@ -84,6 +87,7 @@ class AssetCategoryService:
     def create_asset_category(
         self, company_id: int, command: CreateAssetCategoryCommand
     ) -> AssetCategoryDetailDTO:
+        self._permission_service.require_permission("assets.categories.create")
         with self._unit_of_work_factory() as uow:
             self._require_company(uow.session, company_id)
             self._validate_command_fields(command.code, command.name, command.default_useful_life_months,
@@ -115,6 +119,7 @@ class AssetCategoryService:
     def update_asset_category(
         self, company_id: int, category_id: int, command: UpdateAssetCategoryCommand
     ) -> AssetCategoryDetailDTO:
+        self._permission_service.require_permission("assets.categories.edit")
         with self._unit_of_work_factory() as uow:
             repo = self._asset_category_repository_factory(uow.session)
             cat = repo.get_by_id(company_id, category_id)
@@ -145,6 +150,7 @@ class AssetCategoryService:
             return self._to_detail_dto(cat)
 
     def deactivate_asset_category(self, company_id: int, category_id: int) -> None:
+        self._permission_service.require_permission("assets.categories.deactivate")
         with self._unit_of_work_factory() as uow:
             repo = self._asset_category_repository_factory(uow.session)
             cat = repo.get_by_id(company_id, category_id)

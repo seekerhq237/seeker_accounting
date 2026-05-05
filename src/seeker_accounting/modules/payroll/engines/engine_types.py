@@ -7,7 +7,19 @@ result lines. They do not touch the database.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+
+
+# ── XAF rounding helper ───────────────────────────────────────────────────────
+# XAF (Central African CFA franc) has no sub-unit: 1 XAF is the smallest legal
+# denomination.  All final payroll line amounts must be integers.  Use this
+# helper for every component_amount assignment in the engines.
+# Intermediate computation steps (annualisation, progressive bracket slices)
+# may retain higher precision; only the final output is rounded.
+
+def quantize_xaf(amount: Decimal) -> Decimal:
+    """Round amount to the nearest whole XAF (ROUND_HALF_UP)."""
+    return amount.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
 
 
 @dataclass(slots=True)
@@ -59,6 +71,19 @@ class EngineLineResult:
 
 
 @dataclass(slots=True)
+class CalcStep:
+    """One explainable calculation step emitted for audit/variance drill-down."""
+    sequence_number: int
+    stage_code: str
+    component_id: int | None
+    component_code: str | None
+    formula_code: str
+    input_json: str | None
+    output_json: str | None
+    amount: Decimal
+
+
+@dataclass(slots=True)
 class EngineContext:
     """All resolved inputs needed to run the calculation engines for one employee."""
     company_id: int
@@ -78,6 +103,7 @@ class EmployeeCalculationResult:
     """Full calculation result for one employee in a payroll run."""
     employee_id: int
     lines: list[EngineLineResult] = field(default_factory=list)
+    calc_steps: list[CalcStep] = field(default_factory=list)
     error_message: str | None = None
 
     # Derived after all engines run

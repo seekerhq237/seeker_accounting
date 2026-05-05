@@ -69,7 +69,7 @@ class VerificationRecord:
 # ── Pack identity ─────────────────────────────────────────────────────────────
 
 PACK_CODE = "CMR_2024_V1"
-PACK_DISPLAY_NAME = "Cameroon 2024 Statutory Pack (R2)"
+PACK_DISPLAY_NAME = "Cameroon 2024 statutory pack (R2)"
 PACK_COUNTRY_CODE = "CM"
 PACK_EFFECTIVE_FROM = date(2024, 1, 1)
 PACK_DESCRIPTION = (
@@ -125,7 +125,7 @@ COMPONENT_SEEDS: list[tuple[str, str, str, str, bool, bool, VerificationRecord]]
     ("TDL", "Taxe de Développement Local (TDL)", "tax", "rule_based", False, False,
      VerificationRecord(VerificationStatus.PROVISIONAL, "DGI monthly withholding barème",
                         "Fixed-amount brackets tied to gross salary; bracket boundaries are from DGI publications but exact values need annual confirmation.")),
-    ("CRTV", "Redevance Audiovisuelle (CRTV)", "deduction", "rule_based", False, False,
+    ("CRTV", "Redevance Audiovisuelle (CRTV)", "tax", "rule_based", False, False,
      VerificationRecord(VerificationStatus.PROVISIONAL, "DGI monthly withholding barème",
                         "Bracket-based monthly fixed amounts; commonly published schedule but exact amounts require annual DGI circular confirmation.")),
     ("CFC_HLF", "Crédit Foncier du Cameroun (CFC)", "deduction", "rule_based", False, False,
@@ -147,6 +147,78 @@ COMPONENT_SEEDS: list[tuple[str, str, str, str, bool, bool, VerificationRecord]]
     ("EMPLOYER_AF", "Allocations Familiales (CNPS PF)", "employer_contribution", "rule_based", False, False,
      VerificationRecord(VerificationStatus.VERIFIED, "Décret N° 2014/2377 — CNPS PF",
                         "General regime 7 %, capped at 750,000 XAF/month. Regime-specific rate selected per company settings.")),
+    # ── Benefits in kind (BIK) ────────────────────────────────────────────────
+    # Statutory valuation rates per Arrêté N° 039/CAB/MINFI (in-kind benefit schedules).
+    # BIK amounts count toward taxable gross (IRPP base) but NOT toward pensionable
+    # base (CNPS PVID) unless the company explicitly flags them as pensionable.
+    ("HOUSING_BIK", "Housing Benefit in Kind", "earning", "percentage", True, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI — BIK schedule",
+                        "15 % of basic salary per statutory BIK schedule. Taxable, non-pensionable.")),
+    ("ELECTRICITY_BIK", "Electricity Benefit in Kind", "earning", "percentage", True, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI — BIK schedule",
+                        "4 % of basic salary per statutory BIK schedule. Taxable, non-pensionable.")),
+    ("WATER_BIK", "Water Benefit in Kind", "earning", "percentage", True, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI — BIK schedule",
+                        "2 % of basic salary per statutory BIK schedule. Taxable, non-pensionable.")),
+    ("DOMESTIC_BIK", "Domestic Staff Benefit in Kind", "earning", "percentage", True, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI — BIK schedule",
+                        "5 % of basic salary per statutory BIK schedule. Taxable, non-pensionable.")),
+    ("MEAL_BIK", "Meal Benefit in Kind", "earning", "percentage", True, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI — BIK schedule",
+                        "10 % of basic salary per statutory BIK schedule. Taxable, non-pensionable.")),
+    ("VEHICLE_BIK", "Vehicle Benefit in Kind (1 vehicle)", "earning", "percentage", True, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI — BIK schedule",
+                        "10 % of basic salary for one vehicle per statutory BIK schedule. Taxable, non-pensionable.")),
+    ("VEHICLE_BIK_2", "Vehicle Benefit in Kind (2+ vehicles)", "earning", "percentage", True, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI — BIK schedule",
+                        "15 % of basic salary for two or more vehicles per statutory BIK schedule. Taxable, non-pensionable.")),
+    ("TRANSPORT_BIK", "Transport Benefit in Kind", "earning", "percentage", False, False,
+     VerificationRecord(VerificationStatus.PROVISIONAL, "Standard Cameroon payroll practice",
+                        "In-kind transport provision; non-taxable, non-pensionable.")),
+]
+
+# ── Statutory authority seed definitions ─────────────────────────────────────
+# Each entry: (code, display_name, jurisdiction_code, filing_cadence_code,
+#              deadline_day, deadline_rule_code, notes)
+# Filing deadlines below reflect commonly-published practice for Cameroon
+# (15th of the following month).  Adjust per administrative changes.
+
+AUTHORITY_SEEDS: list[tuple[str, str, str, str, int | None, str | None, str]] = [
+    ("CNPS", "Caisse Nationale de Prévoyance Sociale", "CM", "monthly", 15,
+     "MONTHLY_DAY_15",
+     "Social-security authority — collects pension (PVID), family allowances (PF) and accident-risk (AT/MP)."),
+    ("DGI", "Direction Générale des Impôts", "CM", "monthly", 15,
+     "MONTHLY_DAY_15",
+     "Tax authority — collects IRPP, CAC, TDL, CRTV and other payroll-withheld taxes."),
+    ("FNE", "Fonds National de l'Emploi", "CM", "monthly", 15,
+     "MONTHLY_DAY_15",
+     "National employment fund — receives FNE employee deduction and FNE employer contribution."),
+    ("CFC", "Crédit Foncier du Cameroun", "CM", "monthly", 15,
+     "MONTHLY_DAY_15",
+     "Housing fund — receives the 1 % employee CFC contribution."),
+]
+
+# ── Component → authority mapping seed definitions ───────────────────────────
+# Each entry: (component_code, authority_code, side, line_kind, fraction)
+# Fraction is a decimal-like string in (0, 1.0]; 1.0 = full component amount
+# flows to that authority on the chosen side.
+
+COMPONENT_AUTHORITY_MAP_SEEDS: list[tuple[str, str, str, str, str]] = [
+    # ── CNPS ─────────────────────────────────────────────────────────────────
+    ("EMPLOYEE_CNPS", "CNPS", "employee", "contribution", "1.0"),
+    ("EMPLOYER_CNPS", "CNPS", "employer", "contribution", "1.0"),
+    ("EMPLOYER_AF", "CNPS", "employer", "contribution", "1.0"),
+    ("ACCIDENT_RISK_EMPLOYER", "CNPS", "employer", "contribution", "1.0"),
+    # ── DGI ──────────────────────────────────────────────────────────────────
+    ("IRPP", "DGI", "employee", "withholding", "1.0"),
+    ("CAC", "DGI", "employee", "tax", "1.0"),
+    ("TDL", "DGI", "employee", "tax", "1.0"),
+    ("CRTV", "DGI", "employee", "withholding", "1.0"),
+    # ── FNE ──────────────────────────────────────────────────────────────────
+    ("FNE_EMPLOYEE", "FNE", "employee", "contribution", "1.0"),
+    ("FNE", "FNE", "employer", "contribution", "1.0"),
+    # ── CFC ──────────────────────────────────────────────────────────────────
+    ("CFC_HLF", "CFC", "employee", "contribution", "1.0"),
 ]
 
 # ── Bracket type alias ────────────────────────────────────────────────────────
@@ -448,6 +520,87 @@ RULE_SET_SEEDS: list[tuple[str, str, str, str, list[_Bracket], VerificationRecor
         ],
         VerificationRecord(VerificationStatus.VERIFIED, "Code du Travail Art. 80",
                            "Night overtime at 150 % (50 % premium)."),
+    ),
+    # ── Benefits in Kind statutory rates ─────────────────────────────────────
+    # Per Arrêté N° 039/CAB/MINFI — Cameroon statutory BIK valuation schedule.
+    # Rate = percentage of basic salary; engine uses this as authoritative source.
+    # Each component has its own rule set so rates can be updated independently.
+    (
+        "HOUSING_BIK_MAIN",
+        "Housing Benefit in Kind Rate",
+        "bik",
+        "basic_salary",
+        [
+            (1, None, None, _D("15.00"), None, None, None),
+        ],
+        VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI",
+                           "15 % of basic salary for in-kind housing provision."),
+    ),
+    (
+        "ELECTRICITY_BIK_MAIN",
+        "Electricity Benefit in Kind Rate",
+        "bik",
+        "basic_salary",
+        [
+            (1, None, None, _D("4.00"), None, None, None),
+        ],
+        VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI",
+                           "4 % of basic salary for in-kind electricity provision."),
+    ),
+    (
+        "WATER_BIK_MAIN",
+        "Water Benefit in Kind Rate",
+        "bik",
+        "basic_salary",
+        [
+            (1, None, None, _D("2.00"), None, None, None),
+        ],
+        VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI",
+                           "2 % of basic salary for in-kind water provision."),
+    ),
+    (
+        "DOMESTIC_BIK_MAIN",
+        "Domestic Staff Benefit in Kind Rate",
+        "bik",
+        "basic_salary",
+        [
+            (1, None, None, _D("5.00"), None, None, None),
+        ],
+        VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI",
+                           "5 % of basic salary for in-kind domestic staff provision."),
+    ),
+    (
+        "MEAL_BIK_MAIN",
+        "Meal Benefit in Kind Rate",
+        "bik",
+        "basic_salary",
+        [
+            (1, None, None, _D("10.00"), None, None, None),
+        ],
+        VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI",
+                           "10 % of basic salary for in-kind meal provision."),
+    ),
+    (
+        "VEHICLE_BIK_MAIN",
+        "Vehicle Benefit in Kind Rate (1 vehicle)",
+        "bik",
+        "basic_salary",
+        [
+            (1, None, None, _D("10.00"), None, None, None),
+        ],
+        VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI",
+                           "10 % of basic salary for one company vehicle."),
+    ),
+    (
+        "VEHICLE_BIK_2_MAIN",
+        "Vehicle Benefit in Kind Rate (2+ vehicles)",
+        "bik",
+        "basic_salary",
+        [
+            (1, None, None, _D("15.00"), None, None, None),
+        ],
+        VerificationRecord(VerificationStatus.PROVISIONAL, "Arrêté N° 039/CAB/MINFI",
+                           "15 % of basic salary for two or more company vehicles."),
     ),
 ]
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 from decimal import Decimal
 
 import datetime
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -17,8 +20,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -59,9 +60,12 @@ from seeker_accounting.modules.reporting.ui.dialogs.financial_statement_export_d
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.help_button import install_help_button
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class IasIncomeStatementWindow(QDialog):
@@ -314,15 +318,25 @@ class IasIncomeStatementWindow(QDialog):
         layout.setContentsMargins(20, 0, 20, 20)
         layout.setSpacing(0)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(3)
-        self._table.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_table_double_clicked)
-        self._table.setColumnWidth(0, 92)
-        self._table.setColumnWidth(1, 720)
-        self._table.setColumnWidth(2, 180)
+        self._model = QStandardItemModel(0, 3, panel)
+        self._model.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="ref", title="Ref"),
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_table_double_clicked)
+        self._table.view().setColumnWidth(0, 92)
+        self._table.view().setColumnWidth(1, 720)
+        self._table.view().setColumnWidth(2, 180)
         layout.addWidget(self._table)
         return panel
 
@@ -385,8 +399,12 @@ class IasIncomeStatementWindow(QDialog):
             show_error(self, "IAS Income Statement Builder", str(exc))
             self._stack.setCurrentIndex(1)
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "IAS Income Statement Builder", str(exc))
+
+        except Exception:
+            _log.exception("IAS Income Statement Builder")
+            show_error(self, "IAS Income Statement Builder", "An unexpected error occurred. See application log for details.")
             self._stack.setCurrentIndex(1)
             return
 
@@ -432,7 +450,7 @@ class IasIncomeStatementWindow(QDialog):
         dlg = QDialog(self)
         dlg.setWindowTitle("Validation Issues")
         dlg.setModal(True)
-        dlg.resize(540, 380)
+        apply_window_size(dlg, "modules.reporting.ui.dialogs.ias.income.statement.window.0")
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -472,15 +490,15 @@ class IasIncomeStatementWindow(QDialog):
 
     def _bind_report(self, report: IasIncomeStatementReportDTO) -> None:
         template = self._current_template
-        self._table.setRowCount(len(report.lines))
+        self._model.removeRows(0, self._model.rowCount())
         for row_index, line in enumerate(report.lines):
             ref_text = line.code if line.row_kind_code != "group" else ""
-            ref_item = QTableWidgetItem(ref_text)
+            ref_item = self._make_item(ref_text)
             label_text = line.label
             if line.indent_level > 0:
                 label_text = f"{'    ' * line.indent_level}{label_text}"
-            label_item = QTableWidgetItem(label_text)
-            amount_item = QTableWidgetItem(self._fmt(line.signed_amount or _ZERO))
+            label_item = self._make_item(label_text)
+            amount_item = self._make_item(self._fmt(line.signed_amount or _ZERO))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             ref_item.setData(Qt.ItemDataRole.UserRole, line.code)
             ref_item.setData(Qt.ItemDataRole.UserRole + 1, line.can_drilldown)
@@ -492,16 +510,14 @@ class IasIncomeStatementWindow(QDialog):
             else:
                 self._apply_row_style(ref_item, label_item, amount_item, template.statement_background, False)
 
-            self._table.setRowHeight(row_index, template.row_height)
-            self._table.setItem(row_index, 0, ref_item)
-            self._table.setItem(row_index, 1, label_item)
-            self._table.setItem(row_index, 2, amount_item)
+            self._model.appendRow([ref_item, label_item, amount_item])
+            self._table.view().setRowHeight(row_index, template.row_height)
 
     def _apply_row_style(
         self,
-        ref_item: QTableWidgetItem,
-        label_item: QTableWidgetItem,
-        amount_item: QTableWidgetItem,
+        ref_item: QStandardItem,
+        label_item: QStandardItem,
+        amount_item: QStandardItem,
         background_hex: str,
         bold: bool,
     ) -> None:
@@ -516,6 +532,14 @@ class IasIncomeStatementWindow(QDialog):
         amount_font.setPointSize(self._current_template.amount_font_size)
         amount_font.setBold(bold)
         amount_item.setFont(amount_font)
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_company_changed(self, company_id: object, company_name: object) -> None:  # noqa: ARG002
         if isinstance(company_id, int):
@@ -581,8 +605,12 @@ class IasIncomeStatementWindow(QDialog):
                 result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Failed", str(exc))
+
+        except Exception:
+            _log.exception("Export Failed")
+            show_error(self, "Export Failed", "An unexpected error occurred. See application log for details.")
 
     def _on_manage_mappings(self) -> None:
         company_id = self._current_filter.company_id
@@ -609,8 +637,13 @@ class IasIncomeStatementWindow(QDialog):
             parent=self,
         )
 
-    def _on_table_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        ref_item = self._table.item(row, 0)
+    def _on_table_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        ref_item = self._model.item(row, 0)
         if ref_item is None:
             return
         line_code = ref_item.data(Qt.ItemDataRole.UserRole)

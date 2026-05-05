@@ -79,7 +79,7 @@ class PayrollInputService:
             repo = self._batch_repo_factory(uow.session)
             batch = repo.get_by_id(company_id, batch_id)
             if batch is None:
-                raise NotFoundError("Payroll input batch not found.")
+                raise NotFoundError("Variable input not found.")
             return self._to_batch_detail_dto(batch)
 
     # ── Batch commands ────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ class PayrollInputService:
             repo = self._batch_repo_factory(uow.session)
             batch = repo.get_by_id(company_id, batch_id)
             if batch is None:
-                raise NotFoundError("Payroll input batch not found.")
+                raise NotFoundError("Variable input not found.")
             if batch.status_code != "draft":
                 raise ValidationError("Only draft batches can be submitted.")
             batch.status_code = "approved"
@@ -124,7 +124,7 @@ class PayrollInputService:
             repo = self._batch_repo_factory(uow.session)
             batch = repo.get_by_id(company_id, batch_id)
             if batch is None:
-                raise NotFoundError("Payroll input batch not found.")
+                raise NotFoundError("Variable input not found.")
             if batch.status_code == "voided":
                 raise ValidationError("Batch is already voided.")
             batch.status_code = "voided"
@@ -139,7 +139,7 @@ class PayrollInputService:
             batch_repo = self._batch_repo_factory(uow.session)
             batch = batch_repo.get_by_id(company_id, batch_id)
             if batch is None:
-                raise NotFoundError("Payroll input batch not found.")
+                raise NotFoundError("Variable input not found.")
             if batch.status_code != "draft":
                 raise ValidationError("Lines can only be added to draft batches.")
 
@@ -182,7 +182,7 @@ class PayrollInputService:
             batch_repo = self._batch_repo_factory(uow.session)
             batch = batch_repo.get_by_id(company_id, batch_id)
             if batch is None:
-                raise NotFoundError("Payroll input batch not found.")
+                raise NotFoundError("Variable input not found.")
             if batch.status_code != "draft":
                 raise ValidationError("Lines can only be edited in draft batches.")
 
@@ -207,7 +207,7 @@ class PayrollInputService:
             batch_repo = self._batch_repo_factory(uow.session)
             batch = batch_repo.get_by_id(company_id, batch_id)
             if batch is None:
-                raise NotFoundError("Payroll input batch not found.")
+                raise NotFoundError("Variable input not found.")
             if batch.status_code != "draft":
                 raise ValidationError("Lines can only be deleted from draft batches.")
 

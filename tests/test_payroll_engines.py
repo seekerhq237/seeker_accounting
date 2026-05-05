@@ -26,6 +26,7 @@ from seeker_accounting.modules.payroll.engines.engine_types import (
     EngineLineResult,
     RuleBracketInput,
     RuleSetInput,
+    quantize_xaf,
 )
 from seeker_accounting.modules.payroll.engines.earnings_engine import run_earnings_engine
 from seeker_accounting.modules.payroll.engines.overtime_engine import run_overtime_engine
@@ -269,7 +270,7 @@ class TestEarningsEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp])
         lines = run_earnings_engine(ctx)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("300000.0000"))
+        self.assertEqual(lines[0].component_amount, _D("300000"))
 
     def test_percentage_allowance(self):
         comp = _make_component(
@@ -278,7 +279,7 @@ class TestEarningsEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp])
         lines = run_earnings_engine(ctx)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("30000.0000"))
+        self.assertEqual(lines[0].component_amount, _D("30000"))
         self.assertEqual(lines[0].rate_applied, _D("0.10"))
 
     def test_input_amount_overrides_base(self):
@@ -286,7 +287,7 @@ class TestEarningsEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp])
         lines = run_earnings_engine(ctx)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("350000.0000"))
+        self.assertEqual(lines[0].component_amount, _D("350000"))
 
     def test_manual_input_zero_when_no_input(self):
         comp = _make_component("BONUS", method_code="manual_input")
@@ -328,7 +329,7 @@ class TestOvertimeEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp], _cameroon_overtime_rule_sets())
         lines = run_overtime_engine(ctx)
         self.assertEqual(len(lines), 1)
-        expected = (self._hourly("300000") * _D("8") * _D("1.20")).quantize(_D("0.0001"))
+        expected = quantize_xaf(self._hourly("300000") * _D("8") * _D("1.20"))
         self.assertEqual(lines[0].component_amount, expected)
 
     def test_day_tier2_130pct(self):
@@ -338,7 +339,7 @@ class TestOvertimeEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp], _cameroon_overtime_rule_sets())
         lines = run_overtime_engine(ctx)
         self.assertEqual(len(lines), 1)
-        expected = (self._hourly("300000") * _D("8") * _D("1.30")).quantize(_D("0.0001"))
+        expected = quantize_xaf(self._hourly("300000") * _D("8") * _D("1.30"))
         self.assertEqual(lines[0].component_amount, expected)
 
     def test_day_tier3_140pct(self):
@@ -348,7 +349,7 @@ class TestOvertimeEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp], _cameroon_overtime_rule_sets())
         lines = run_overtime_engine(ctx)
         self.assertEqual(len(lines), 1)
-        expected = (self._hourly("300000") * _D("4") * _D("1.40")).quantize(_D("0.0001"))
+        expected = quantize_xaf(self._hourly("300000") * _D("4") * _D("1.40"))
         self.assertEqual(lines[0].component_amount, expected)
 
     def test_night_150pct(self):
@@ -358,7 +359,7 @@ class TestOvertimeEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp], _cameroon_overtime_rule_sets())
         lines = run_overtime_engine(ctx)
         self.assertEqual(len(lines), 1)
-        expected = (self._hourly("300000") * _D("10") * _D("1.50")).quantize(_D("0.0001"))
+        expected = quantize_xaf(self._hourly("300000") * _D("10") * _D("1.50"))
         self.assertEqual(lines[0].component_amount, expected)
 
     def test_legacy_overtime_standard_150pct(self):
@@ -368,7 +369,7 @@ class TestOvertimeEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp], _cameroon_overtime_rule_sets())
         lines = run_overtime_engine(ctx)
         self.assertEqual(len(lines), 1)
-        expected = (self._hourly("300000") * _D("10") * _D("1.50")).quantize(_D("0.0001"))
+        expected = quantize_xaf(self._hourly("300000") * _D("10") * _D("1.50"))
         self.assertEqual(lines[0].component_amount, expected)
 
     def test_manual_amount_override(self):
@@ -380,7 +381,7 @@ class TestOvertimeEngine(unittest.TestCase):
         lines = run_overtime_engine(ctx)
         self.assertEqual(len(lines), 1)
         # input_amount takes precedence over input_quantity
-        self.assertEqual(lines[0].component_amount, _D("50000.0000"))
+        self.assertEqual(lines[0].component_amount, _D("50000"))
 
     def test_no_input_skipped(self):
         comp = _make_component("OVERTIME_DAY_T1", method_code="hourly")
@@ -396,7 +397,7 @@ class TestOvertimeEngine(unittest.TestCase):
         lines = run_overtime_engine(ctx)
         self.assertEqual(len(lines), 1)
         # Falls back to 50% premium (150%)
-        expected = (self._hourly("300000") * _D("8") * _D("1.50")).quantize(_D("0.0001"))
+        expected = quantize_xaf(self._hourly("300000") * _D("8") * _D("1.50"))
         self.assertEqual(lines[0].component_amount, expected)
 
 
@@ -409,7 +410,7 @@ class TestBenefitsInKindEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp])
         lines = run_benefits_in_kind_engine(ctx)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("50000.0000"))
+        self.assertEqual(lines[0].component_amount, _D("50000"))
 
     def test_transport_bik_percentage(self):
         comp = _make_component(
@@ -418,7 +419,7 @@ class TestBenefitsInKindEngine(unittest.TestCase):
         ctx = _make_context("300000", [comp])
         lines = run_benefits_in_kind_engine(ctx)
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("15000.0000"))
+        self.assertEqual(lines[0].component_amount, _D("15000"))
 
     def test_non_bik_code_skipped(self):
         comp = _make_component("BASE_SALARY", base_amount="300000")
@@ -457,14 +458,14 @@ class TestCnpsEngine(unittest.TestCase):
         lines = run_cnps_engine(ctx, _D("300000"))
         self.assertEqual(len(lines), 2)
         for line in lines:
-            self.assertEqual(line.component_amount, _D("12600.0000"))
+            self.assertEqual(line.component_amount, _D("12600"))
 
     def test_at_cap(self):
         ctx = self._make_cnps_context()
         lines = run_cnps_engine(ctx, _D("750000"))
         self.assertEqual(len(lines), 2)
         for line in lines:
-            self.assertEqual(line.component_amount, _D("31500.0000"))
+            self.assertEqual(line.component_amount, _D("31500"))
 
     def test_above_cap(self):
         ctx = self._make_cnps_context()
@@ -472,7 +473,7 @@ class TestCnpsEngine(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         for line in lines:
             # Capped at 750,000 base → 750,000 × 4.2 % = 31,500
-            self.assertEqual(line.component_amount, _D("31500.0000"))
+            self.assertEqual(line.component_amount, _D("31500"))
 
     def test_zero_base_no_lines(self):
         ctx = self._make_cnps_context()
@@ -485,7 +486,7 @@ class TestCnpsEngine(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         for line in lines:
             # Fallback: 4.2 % of 300,000 = 12,600
-            self.assertEqual(line.component_amount, _D("12600.0000"))
+            self.assertEqual(line.component_amount, _D("12600"))
 
     def test_fallback_cap_applies(self):
         ctx = self._make_cnps_context(rule_sets={})
@@ -493,7 +494,7 @@ class TestCnpsEngine(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         for line in lines:
             # Fallback cap is 750,000 → 750,000 × 4.2 % = 31,500
-            self.assertEqual(line.component_amount, _D("31500.0000"))
+            self.assertEqual(line.component_amount, _D("31500"))
 
 
 # ── Salary Deductions Engine ─────────────────────────────────────────────────
@@ -514,7 +515,7 @@ class TestSalaryDeductionsEngine(unittest.TestCase):
         lines = run_salary_deductions_engine(ctx, _D("300000"))
         self.assertEqual(len(lines), 2)
         for line in lines:
-            self.assertEqual(line.component_amount, _D("3000.0000"))
+            self.assertEqual(line.component_amount, _D("3000"))
 
     def test_zero_gross_no_lines(self):
         ctx = self._make_deduction_context()
@@ -539,8 +540,8 @@ class TestSalaryDeductionsEngine(unittest.TestCase):
         fne = _line_by_code(lines, ctx, "FNE_EMPLOYEE")
         self.assertIsNotNone(cfc)
         self.assertIsNotNone(fne)
-        self.assertEqual(cfc.component_amount, _D("6000.0000"))
-        self.assertEqual(fne.component_amount, _D("4500.0000"))
+        self.assertEqual(cfc.component_amount, _D("6000"))
+        self.assertEqual(fne.component_amount, _D("4500"))
 
     def test_fallback_rates_when_no_rule_sets(self):
         ctx = self._make_deduction_context(rule_sets={})
@@ -548,7 +549,7 @@ class TestSalaryDeductionsEngine(unittest.TestCase):
         self.assertEqual(len(lines), 2)
         for line in lines:
             # Fallback: 1 % of 300,000 = 3,000
-            self.assertEqual(line.component_amount, _D("3000.0000"))
+            self.assertEqual(line.component_amount, _D("3000"))
 
 
 # ── TDL Engine ────────────────────────────────────────────────────────────────
@@ -569,13 +570,13 @@ class TestTdlEngine(unittest.TestCase):
         ctx = self._make_tdl_context()
         lines = run_tdl_engine(ctx, _D("100000"))
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("167.0000"))
+        self.assertEqual(lines[0].component_amount, _D("167"))
 
     def test_bracket_3_at_300k(self):
         ctx = self._make_tdl_context()
         lines = run_tdl_engine(ctx, _D("300000"))
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("250.0000"))
+        self.assertEqual(lines[0].component_amount, _D("250"))
 
     def test_boundary_50k_is_exempt(self):
         """50,000 XAF is ≤ the lower_bound of bracket 2, so still in bracket 1 (exempt)."""
@@ -587,7 +588,7 @@ class TestTdlEngine(unittest.TestCase):
         ctx = self._make_tdl_context()
         lines = run_tdl_engine(ctx, _D("50001"))
         self.assertEqual(len(lines), 1)
-        self.assertEqual(lines[0].component_amount, _D("167.0000"))
+        self.assertEqual(lines[0].component_amount, _D("167"))
 
     def test_zero_base_no_lines(self):
         ctx = self._make_tdl_context()
@@ -623,7 +624,7 @@ class TestIrppEngine(unittest.TestCase):
         irpp = _line_by_code(lines, ctx, "IRPP")
         self.assertIsNotNone(irpp)
         # 150,000 × 12 = 1,800,000 annual → 1,800,000 × 10 % = 180,000 → / 12 = 15,000
-        self.assertEqual(irpp.component_amount, _D("15000.0000"))
+        self.assertEqual(irpp.component_amount, _D("15000"))
 
     def test_irpp_crosses_bracket_2(self):
         """250,000 monthly → annual 3,000,000 → bracket 1 + bracket 2."""
@@ -633,8 +634,8 @@ class TestIrppEngine(unittest.TestCase):
         self.assertIsNotNone(irpp)
         # bracket 1: 2,000,000 × 10 % = 200,000
         # bracket 2: 1,000,000 × 15 % = 150,000
-        # total annual = 350,000 → monthly = 29,166.6667
-        self.assertEqual(irpp.component_amount, _D("29166.6667"))
+        # total annual = 350,000 → monthly = 29,166.67 → rounded XAF = 29,167
+        self.assertEqual(irpp.component_amount, _D("29167"))
 
     def test_irpp_crosses_bracket_3(self):
         """416,666.6667 monthly → annual 5,000,000 → brackets 1+2+3."""
@@ -646,8 +647,8 @@ class TestIrppEngine(unittest.TestCase):
         # bracket 1: 2M × 10 % = 200K
         # bracket 2: 1M × 15 % = 150K
         # bracket 3: 2M × 25 % = 500K
-        # total annual = 850K → monthly = 70,833.3333
-        self.assertEqual(irpp.component_amount, _D("70833.3333"))
+        # total annual = 850K → monthly = 70,833.33 → rounded XAF = 70,833
+        self.assertEqual(irpp.component_amount, _D("70833"))
 
     def test_quotient_familial_2_parts_bracket_1(self):
         """With 2 parts, income is halved for bracket lookup then doubled back."""
@@ -657,7 +658,7 @@ class TestIrppEngine(unittest.TestCase):
         lines = run_irpp_engine(ctx, _D("150000"), _D("300000"))
         irpp = _line_by_code(lines, ctx, "IRPP")
         self.assertIsNotNone(irpp)
-        self.assertEqual(irpp.component_amount, _D("15000.0000"))
+        self.assertEqual(irpp.component_amount, _D("15000"))
 
     def test_quotient_familial_2_parts_reduces_tax(self):
         """With 2 parts on higher income, tax is reduced."""
@@ -668,7 +669,7 @@ class TestIrppEngine(unittest.TestCase):
         lines = run_irpp_engine(ctx, _D("250000"), _D("500000"))
         irpp = _line_by_code(lines, ctx, "IRPP")
         self.assertIsNotNone(irpp)
-        self.assertEqual(irpp.component_amount, _D("25000.0000"))
+        self.assertEqual(irpp.component_amount, _D("25000"))
 
     def test_quotient_familial_2_5_parts(self):
         """Fractional parts work correctly."""
@@ -679,7 +680,7 @@ class TestIrppEngine(unittest.TestCase):
         lines = run_irpp_engine(ctx, _D("250000"), _D("500000"))
         irpp = _line_by_code(lines, ctx, "IRPP")
         self.assertIsNotNone(irpp)
-        self.assertEqual(irpp.component_amount, _D("25000.0000"))
+        self.assertEqual(irpp.component_amount, _D("25000"))
 
     def test_cac_10pct_of_irpp(self):
         ctx = self._make_irpp_context()
@@ -688,7 +689,7 @@ class TestIrppEngine(unittest.TestCase):
         cac = _line_by_code(lines, ctx, "CAC")
         self.assertIsNotNone(irpp)
         self.assertIsNotNone(cac)
-        expected_cac = (irpp.component_amount * _D("0.10")).quantize(_D("0.0001"))
+        expected_cac = quantize_xaf(irpp.component_amount * _D("0.10"))
         self.assertEqual(cac.component_amount, expected_cac)
 
     def test_crtv_bracket_lookup_300k(self):
@@ -697,7 +698,7 @@ class TestIrppEngine(unittest.TestCase):
         crtv = _line_by_code(lines, ctx, "CRTV")
         self.assertIsNotNone(crtv)
         # 300,000 exactly = upper bound of bracket 4 (200K–300K) → upper-inclusive → 3,250
-        self.assertEqual(crtv.component_amount, _D("3250.0000"))
+        self.assertEqual(crtv.component_amount, _D("3250"))
 
     def test_crtv_upper_inclusive_100k(self):
         """100,000 exactly sits at upper bound of bracket 2 → stays in bracket 2."""
@@ -705,14 +706,14 @@ class TestIrppEngine(unittest.TestCase):
         lines = run_irpp_engine(ctx, _D("50000"), _D("100000"))
         crtv = _line_by_code(lines, ctx, "CRTV")
         self.assertIsNotNone(crtv)
-        self.assertEqual(crtv.component_amount, _D("750.0000"))
+        self.assertEqual(crtv.component_amount, _D("750"))
 
     def test_crtv_above_1m(self):
         ctx = self._make_irpp_context()
         lines = run_irpp_engine(ctx, _D("400000"), _D("1500000"))
         crtv = _line_by_code(lines, ctx, "CRTV")
         self.assertIsNotNone(crtv)
-        self.assertEqual(crtv.component_amount, _D("13000.0000"))
+        self.assertEqual(crtv.component_amount, _D("13000"))
 
     def test_zero_taxable_base_still_produces_crtv(self):
         ctx = self._make_irpp_context()
@@ -722,7 +723,7 @@ class TestIrppEngine(unittest.TestCase):
         self.assertIsNone(irpp)  # Zero base → no IRPP
         self.assertIsNotNone(crtv)
         # 300K → bracket 4 upper-inclusive → 3,250
-        self.assertEqual(crtv.component_amount, _D("3250.0000"))
+        self.assertEqual(crtv.component_amount, _D("3250"))
 
     def test_crtv_below_50k_exempt(self):
         ctx = self._make_irpp_context()
@@ -750,29 +751,31 @@ class TestEmployerContributionEngine(unittest.TestCase):
 
     def test_fne_employer_2_5pct(self):
         ctx = self._make_employer_context()
-        lines = run_employer_contribution_engine(ctx, _D("300000"))
+        lines = run_employer_contribution_engine(ctx, _D("300000"), _D("300000"))
         fne = _line_by_code(lines, ctx, "FNE")
         self.assertIsNotNone(fne)
-        self.assertEqual(fne.component_amount, _D("7500.0000"))
+        self.assertEqual(fne.component_amount, _D("7500"))
 
     def test_fne_employer_fallback_rate(self):
         ctx = self._make_employer_context(rule_sets={})
-        lines = run_employer_contribution_engine(ctx, _D("300000"))
+        lines = run_employer_contribution_engine(ctx, _D("300000"), _D("300000"))
         fne = _line_by_code(lines, ctx, "FNE")
         self.assertIsNotNone(fne)
         # Fallback: 2.5 % of 300,000 = 7,500
-        self.assertEqual(fne.component_amount, _D("7500.0000"))
+        self.assertEqual(fne.component_amount, _D("7500"))
 
     def test_af_general_regime_7pct(self):
         ctx = self._make_employer_context()
-        lines = run_employer_contribution_engine(ctx, _D("300000"))
+        # AF uses cnps_contributory_base (pensionable base) — pass same as gross here
+        lines = run_employer_contribution_engine(ctx, _D("300000"), _D("300000"))
         af = _line_by_code(lines, ctx, "EMPLOYER_AF")
         self.assertIsNotNone(af)
-        self.assertEqual(af.component_amount, _D("21000.0000"))
+        self.assertEqual(af.component_amount, _D("21000"))
 
     def test_af_capped_at_ceiling(self):
         ctx = self._make_employer_context()
-        lines = run_employer_contribution_engine(ctx, _D("1000000"))
+        # AF uses cnps_contributory_base — cap rule: 7% of min(1000000, 750000)=52500
+        lines = run_employer_contribution_engine(ctx, _D("1000000"), _D("1000000"))
         af = _line_by_code(lines, ctx, "EMPLOYER_AF")
         self.assertIsNotNone(af)
         # 1,000,000 × 7 % = 70,000 but cap = 52,500
@@ -780,26 +783,27 @@ class TestEmployerContributionEngine(unittest.TestCase):
 
     def test_accident_risk_group_a(self):
         ctx = self._make_employer_context()
-        lines = run_employer_contribution_engine(ctx, _D("300000"))
+        # AT/MP uses cnps_contributory_base — same as gross when all earnings pensionable
+        lines = run_employer_contribution_engine(ctx, _D("300000"), _D("300000"))
         ar = _line_by_code(lines, ctx, "ACCIDENT_RISK_EMPLOYER")
         self.assertIsNotNone(ar)
-        self.assertEqual(ar.component_amount, _D("5250.0000"))
+        self.assertEqual(ar.component_amount, _D("5250"))
 
     def test_zero_gross_no_lines(self):
         ctx = self._make_employer_context()
-        lines = run_employer_contribution_engine(ctx, _D("0"))
+        lines = run_employer_contribution_engine(ctx, _D("0"), _D("0"))
         self.assertEqual(len(lines), 0)
 
     def test_employer_cnps_skipped(self):
         """EMPLOYER_CNPS is handled by the CNPS engine, not this engine."""
         ctx = self._make_employer_context()
-        lines = run_employer_contribution_engine(ctx, _D("300000"))
+        lines = run_employer_contribution_engine(ctx, _D("300000"), _D("300000"))
         cnps = _line_by_code(lines, ctx, "EMPLOYER_CNPS")
         self.assertIsNone(cnps)
 
     def test_all_three_contributions_present(self):
         ctx = self._make_employer_context()
-        lines = run_employer_contribution_engine(ctx, _D("300000"))
+        lines = run_employer_contribution_engine(ctx, _D("300000"), _D("300000"))
         # Should have FNE, AF, and Accident Risk (not CNPS)
         self.assertEqual(len(lines), 3)
 

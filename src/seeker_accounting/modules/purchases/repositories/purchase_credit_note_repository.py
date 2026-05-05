@@ -124,5 +124,6 @@ class PurchaseCreditNoteRepository:
             posted_by_user_id=r.posted_by_user_id,
             contract_id=r.contract_id,
             project_id=r.project_id,
+            tax_point_date=r.tax_point_date,
             lines=line_dtos,
         )

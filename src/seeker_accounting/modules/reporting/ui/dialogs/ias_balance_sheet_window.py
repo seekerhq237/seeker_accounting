@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 import datetime
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -13,8 +15,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -50,9 +50,12 @@ from seeker_accounting.modules.reporting.ui.dialogs.financial_statement_export_d
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class IasBalanceSheetWindow(QFrame):
@@ -313,15 +316,25 @@ class IasBalanceSheetWindow(QFrame):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 0, 20, 20)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(3)
-        self._table.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_table_double_clicked)
-        self._table.setColumnWidth(0, 180)
-        self._table.setColumnWidth(1, 760)
-        self._table.setColumnWidth(2, 180)
+        self._model = QStandardItemModel(0, 3, panel)
+        self._model.setHorizontalHeaderLabels(["Ref", "Line", "Amount"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="ref", title="Ref"),
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_table_double_clicked)
+        self._table.view().setColumnWidth(0, 180)
+        self._table.view().setColumnWidth(1, 760)
+        self._table.view().setColumnWidth(2, 180)
         layout.addWidget(self._table)
         return panel
 
@@ -366,8 +379,12 @@ class IasBalanceSheetWindow(QFrame):
             show_error(self, "IAS/IFRS Balance Sheet", str(exc))
             self._stack.setCurrentIndex(1)
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "IAS/IFRS Balance Sheet", str(exc))
+
+        except Exception:
+            _log.exception("IAS/IFRS Balance Sheet")
+            show_error(self, "IAS/IFRS Balance Sheet", "An unexpected error occurred. See application log for details.")
             self._stack.setCurrentIndex(1)
             return
 
@@ -397,26 +414,24 @@ class IasBalanceSheetWindow(QFrame):
 
     def _bind_report(self, report: IasBalanceSheetReportDTO) -> None:
         template = self._current_template
-        self._table.setRowCount(len(report.lines))
+        self._model.removeRows(0, self._model.rowCount())
         for row_index, line in enumerate(report.lines):
-            ref_item = QTableWidgetItem("" if line.row_kind_code == "section" else line.code)
+            ref_item = self._make_item("" if line.row_kind_code == "section" else line.code)
             ref_item.setData(Qt.ItemDataRole.UserRole, line.code)
             ref_item.setData(Qt.ItemDataRole.UserRole + 1, line.can_drilldown)
             label_text = f"{'    ' * line.indent_level}{line.label}"
-            label_item = QTableWidgetItem(label_text)
+            label_item = self._make_item(label_text)
             amount_item = self._amount_item(line.amount)
 
             self._apply_row_style(ref_item, label_item, amount_item, line.row_kind_code, line.is_formula, template)
-            self._table.setRowHeight(row_index, template.row_height)
-            self._table.setItem(row_index, 0, ref_item)
-            self._table.setItem(row_index, 1, label_item)
-            self._table.setItem(row_index, 2, amount_item)
+            self._model.appendRow([ref_item, label_item, amount_item])
+            self._table.view().setRowHeight(row_index, template.row_height)
 
     def _apply_row_style(
         self,
-        ref_item: QTableWidgetItem,
-        label_item: QTableWidgetItem,
-        amount_item: QTableWidgetItem,
+        ref_item: QStandardItem,
+        label_item: QStandardItem,
+        amount_item: QStandardItem,
         row_kind_code: str,
         is_formula: bool,
         template,
@@ -442,9 +457,17 @@ class IasBalanceSheetWindow(QFrame):
         font.setPointSize(template.amount_font_size)
         amount_item.setFont(font)
 
-    def _amount_item(self, amount: Decimal | None) -> QTableWidgetItem:
-        item = QTableWidgetItem("" if amount is None else self._fmt(amount))
+    def _amount_item(self, amount: "Decimal | None") -> QStandardItem:
+        item = self._make_item("" if amount is None else self._fmt(amount))
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
         return item
 
     def _on_company_changed(self, company_id: object, company_name: object) -> None:  # noqa: ARG002
@@ -500,8 +523,12 @@ class IasBalanceSheetWindow(QFrame):
                 result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Failed", str(exc))
+
+        except Exception:
+            _log.exception("Export Failed")
+            show_error(self, "Export Failed", "An unexpected error occurred. See application log for details.")
 
     def _on_review_unclassified(self) -> None:
         try:
@@ -514,8 +541,13 @@ class IasBalanceSheetWindow(QFrame):
             return
         IasBalanceSheetLineDetailDialog.open(self._service_registry, detail, parent=self)
 
-    def _on_table_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        ref_item = self._table.item(row, 0)
+    def _on_table_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        ref_item = self._model.item(row, 0)
         if ref_item is None or not ref_item.data(Qt.ItemDataRole.UserRole + 1):
             return
         line_code = ref_item.data(Qt.ItemDataRole.UserRole)

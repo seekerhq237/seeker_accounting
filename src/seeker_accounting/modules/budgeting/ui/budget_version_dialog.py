@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QDialog,
@@ -19,8 +22,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,10 +43,10 @@ from seeker_accounting.modules.budgeting.dto.project_budget_dto import (
     ProjectBudgetVersionListItemDTO,
 )
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _VERSION_TYPE_OPTIONS = (
     ("original", "Original"),
@@ -56,6 +57,9 @@ _VERSION_TYPE_OPTIONS = (
 
 
 # ── Version Form Dialog ──────────────────────────────────────────────────
+
+
+_log = logging.getLogger(__name__)
 
 
 class BudgetVersionFormDialog(BaseDialog):
@@ -81,7 +85,7 @@ class BudgetVersionFormDialog(BaseDialog):
         title = "New Budget Version" if version_id is None else "Edit Budget Version"
         super().__init__(title, parent, help_key="dialog.budget_version")
         self.setObjectName("BudgetVersionFormDialog")
-        self.resize(600, 500)
+        apply_window_size(self, "modules.budgeting.ui.budget.version.dialog.0")
 
         intro = QLabel(f"Budget version for project {project_code}.", self)
         intro.setObjectName("PageSummary")
@@ -344,7 +348,7 @@ class BudgetVersionsDialog(BaseDialog):
         self._versions: list[ProjectBudgetVersionListItemDTO] = []
 
         self.setObjectName("BudgetVersionsDialog")
-        self.resize(940, 560)
+        apply_window_size(self, "modules.budgeting.ui.budget.version.dialog.1")
 
         self.body_layout.addWidget(self._build_toolbar())
         self.body_layout.addWidget(self._build_table_card(), 1)
@@ -429,16 +433,29 @@ class BudgetVersionsDialog(BaseDialog):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(12)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("BudgetVersionsTable")
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(
-            ("V#", "Version Name", "Type", "Budget Date", "Total Amount", "Status")
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="v_num", title="V#"),
+                DataTableColumn(key="version_name", title="Version Name"),
+                DataTableColumn(key="version_type", title="Type"),
+                DataTableColumn(key="budget_date", title="Budget Date"),
+                DataTableColumn(key="total_amount", title="Total Amount"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(lambda *_: self._open_edit())
+        self._model = QStandardItemModel(0, 6, card)
+        self._model.setHorizontalHeaderLabels(
+            ["V#", "Version Name", "Type", "Budget Date", "Total Amount", "Status"]
+        )
+        self._table.set_model(self._model)
+        self._status_chip_delegate = apply_status_chip_to_column(self._table.view(), 5)
+        self._table.selection_changed.connect(self._update_action_state)
+        self._table.view().doubleClicked.connect(lambda *_: self._open_edit())
         layout.addWidget(self._table)
         return card
 
@@ -451,51 +468,50 @@ class BudgetVersionsDialog(BaseDialog):
             self._versions = self._service_registry.project_budget_service.list_versions(
                 self._project_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Budget Versions", str(exc))
+
+        except Exception:
+            _log.exception("Budget Versions")
+            show_error(self, "Budget Versions", "An unexpected error occurred. See application log for details.")
             self._versions = []
 
         self._populate_table()
         self._update_action_state()
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for v in self._versions:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
+            num_item = self._make_item(str(v.version_number))
+            num_item.setData(v.id, Qt.ItemDataRole.UserRole)
+            num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
-            num_item = QTableWidgetItem(str(v.version_number))
-            num_item.setData(Qt.ItemDataRole.UserRole, v.id)
-            num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 0, num_item)
+            type_item = self._make_item(v.version_type_code)
+            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
-            self._table.setItem(row, 1, QTableWidgetItem(v.version_name))
-            type_item = QTableWidgetItem(v.version_type_code)
-            type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 2, type_item)
-            self._table.setItem(row, 3, QTableWidgetItem(str(v.budget_date)))
+            amount_item = self._make_item(f"{v.total_budget_amount:,.2f}")
+            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-            amount_item = QTableWidgetItem(f"{v.total_budget_amount:,.2f}")
-            amount_item.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            self._table.setItem(row, 4, amount_item)
+            status_item = self._make_item(v.status_code.lower() if v.status_code else "")
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
-            status_item = QTableWidgetItem(v.status_code)
-            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 5, status_item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            self._model.appendRow([
+                num_item,
+                self._make_item(v.version_name),
+                type_item,
+                self._make_item(str(v.budget_date)),
+                amount_item,
+                status_item,
+            ])
 
         count = len(self._versions)
         self._count_label.setText(
@@ -503,10 +519,10 @@ class BudgetVersionsDialog(BaseDialog):
         )
 
     def _selected_version(self) -> ProjectBudgetVersionListItemDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         if item is None:
             return None
         version_id = item.data(Qt.ItemDataRole.UserRole)

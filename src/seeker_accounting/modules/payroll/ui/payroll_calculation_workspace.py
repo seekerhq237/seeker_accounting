@@ -14,8 +14,8 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -24,8 +24,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -53,12 +51,16 @@ from seeker_accounting.modules.payroll.ui.dialogs.payroll_run_employee_detail_di
 from seeker_accounting.modules.payroll.ui.payroll_input_batch_window import (
     PayrollInputBatchWindow,
 )
+from seeker_accounting.modules.payroll.ui.payroll_run_cockpit_window import (
+    PayrollRunCockpitWindow,
+)
 from seeker_accounting.modules.payroll.ui.payroll_run_employee_window import (
     PayrollRunEmployeeWindow,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _TOKENS
 
 _log = logging.getLogger(__name__)
 
@@ -105,10 +107,10 @@ class PayrollCalculationWorkspace(RibbonHostMixin, QWidget):
         self._inputs_tab = _VariableInputsTab(service_registry, self)
         self._runs_tab = _PayrollRunsTab(service_registry, self)
 
-        self._tabs.addTab(self._profiles_tab, "Compensation Profiles")
+        self._tabs.addTab(self._profiles_tab, "Compensation")
         self._tabs.addTab(self._assignments_tab, "Recurring Components")
-        self._tabs.addTab(self._inputs_tab, "Variable Inputs")
-        self._tabs.addTab(self._runs_tab, "Payroll Runs")
+        self._tabs.addTab(self._inputs_tab, "Variable inputs")
+        self._tabs.addTab(self._runs_tab, "Payroll runs")
 
         self._tabs.currentChanged.connect(self._on_tab_changed)
         self._registry.active_company_context.active_company_changed.connect(
@@ -118,19 +120,22 @@ class PayrollCalculationWorkspace(RibbonHostMixin, QWidget):
         # Notify the shell whenever the selection inside a tab changes, so
         # the ribbon surface can flip between ``.none`` / ``.selected`` /
         # ``.run_selected`` / ``.employee_selected`` variants.
-        self._profiles_tab._table.selectionModel().selectionChanged.connect(
+        self._profiles_tab._table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
-        self._assignments_tab._table.selectionModel().selectionChanged.connect(
+        self._assignments_tab._table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
-        self._inputs_tab._table.selectionModel().selectionChanged.connect(
+        self._inputs_tab._table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
-        self._runs_tab._runs_table.selectionModel().selectionChanged.connect(
+        self._runs_tab._runs_table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
-        self._runs_tab._emp_table.selectionModel().selectionChanged.connect(
+        self._runs_tab._runs_table.view().doubleClicked.connect(
+            self._on_run_row_double_clicked
+        )
+        self._runs_tab._emp_table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
 
@@ -200,33 +205,80 @@ class PayrollCalculationWorkspace(RibbonHostMixin, QWidget):
         self._registry.navigation_service.navigate(nav_ids.PAYROLL_SETUP)
 
     def _on_payroll_run_wizard(self) -> None:
+        """Open the run cockpit (Phase 3 / P3.S1 — replaces legacy 7-step wizard).
+
+        If no draft exists for the active period the user is prompted to
+        create one via :class:`PayrollRunDialog`; otherwise the most recent
+        run is opened directly. Either path lands in the single-page cockpit.
+        """
         if self._company_id is None:
-            show_error(self, "Payroll Run", "Select a company first.")
+            show_error(self, "Payroll run", "Select a company first.")
             return
-        # Lazy import: avoid cost for sessions that never open the wizard.
-        from seeker_accounting.modules.payroll.ui.wizards.payroll_run_wizard import (
-            PayrollRunWizardDialog,
-        )
-        company_name = ""
+
+        # Pick a target run: prefer an existing draft/calculated run, else
+        # prompt the user to create one. The expert "New Run" button still
+        # exists for direct creation.
+        target_run_id: int | None = None
         try:
-            company = self._registry.company_service.get_company(self._company_id)
-            company_name = company.display_name
+            runs = self._registry.payroll_run_service.list_runs(self._company_id)
         except Exception:  # noqa: BLE001
-            company_name = f"Company {self._company_id}"
-        result = PayrollRunWizardDialog.run(
-            self._registry, self._company_id, company_name, parent=self
-        )
-        if result is None:
+            _log.warning("Form data load error", exc_info=True)
+            runs = []
+
+        active = [r for r in runs if r.status_code in ("draft", "calculated")]
+        if active:
+            # Most recent active run by period.
+            active.sort(key=lambda r: (r.period_year, r.period_month), reverse=True)
+            target_run_id = active[0].id
+        else:
+            dlg = PayrollRunDialog(self._registry, self._company_id, self)
+            if dlg.exec() != QDialog.DialogCode.Accepted:
+                return
+            target_run_id = dlg.created_run_id
+
+        if target_run_id is None:
             return
-        # Switch to the Runs tab and refresh so the new run is visible.
+
+        # Switch to the Runs tab so the list reflects the new state when
+        # the cockpit closes, then open the cockpit child window.
         self._tabs.setCurrentWidget(self._runs_tab)
         if hasattr(self._runs_tab, "refresh"):
             self._runs_tab.refresh()
         self._notify_ribbon_context_changed()
-        show_info(
-            self,
-            result.summary or f"Payroll run {result.run_reference} ready.",
+        self._open_run_cockpit(target_run_id)
+
+    def _open_run_cockpit(self, run_id: int) -> None:
+        """Open the run cockpit child window for ``run_id``."""
+        if self._company_id is None:
+            return
+        manager = getattr(self._registry, "child_window_manager", None)
+        if manager is None:
+            # Fallback: instantiate as a top-level window.
+            window = PayrollRunCockpitWindow(
+                self._registry,
+                company_id=self._company_id,
+                run_id=run_id,
+            )
+            window.show()
+            return
+
+        def _factory() -> PayrollRunCockpitWindow:
+            return PayrollRunCockpitWindow(
+                self._registry,
+                company_id=self._company_id,
+                run_id=run_id,
+            )
+
+        manager.open_document(
+            PayrollRunCockpitWindow.DOC_TYPE,
+            run_id,
+            _factory,
         )
+
+    def _on_run_row_double_clicked(self, *_args: object) -> None:
+        run = self._runs_tab._selected_run()
+        if run is not None:
+            self._open_run_cockpit(run.id)
 
     def _ribbon_commands(self):
         return {
@@ -313,8 +365,9 @@ class _CompensationProfilesTab(QWidget):
         filter_bar = QHBoxLayout()
         filter_bar.setSpacing(8)
 
+        _sz = _TOKENS.sizes
         self._emp_filter = QComboBox()
-        self._emp_filter.setMinimumWidth(220)
+        self._emp_filter.setMinimumWidth(_sz.toolbar_filter_min_w)
         self._emp_filter.addItem("All Employees", None)
         self._emp_filter.currentIndexChanged.connect(self.refresh)
         filter_bar.addWidget(QLabel("Employee:"))
@@ -322,13 +375,13 @@ class _CompensationProfilesTab(QWidget):
         filter_bar.addStretch()
 
         self._btn_new = QPushButton("New Profile…")
-        self._btn_new.setFixedHeight(26)
+        self._btn_new.setFixedHeight(_sz.data_table_row_height)
         self._btn_new.clicked.connect(self._on_new)
         self._btn_edit = QPushButton("Edit")
-        self._btn_edit.setFixedHeight(26)
+        self._btn_edit.setFixedHeight(_sz.data_table_row_height)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_toggle = QPushButton("Toggle Active")
-        self._btn_toggle.setFixedHeight(26)
+        self._btn_toggle.setFixedHeight(_sz.data_table_row_height)
         self._btn_toggle.clicked.connect(self._on_toggle)
 
         filter_bar.addWidget(self._btn_new)
@@ -336,15 +389,25 @@ class _CompensationProfilesTab(QWidget):
         filter_bar.addWidget(self._btn_toggle)
         layout.addLayout(filter_bar)
 
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels([
-            "Employee", "Profile Name", "Basic Salary", "Currency", "From", "To", "Active"
+        self._model = QStandardItemModel(0, 7)
+        self._model.setHorizontalHeaderLabels([
+            "Employee", "Compensation name", "Basic Salary", "Currency", "From", "To", "Active"
         ])
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(self._on_edit)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="employee", title="Employee"),
+                DataTableColumn(key="comp_name", title="Compensation name"),
+                DataTableColumn(key="basic_salary", title="Basic Salary", is_numeric=True),
+                DataTableColumn(key="currency", title="Currency"),
+                DataTableColumn(key="from", title="From"),
+                DataTableColumn(key="to", title="To"),
+                DataTableColumn(key="active", title="Active"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_edit)
         layout.addWidget(self._table)
 
     def set_company(self, company_id: int) -> None:
@@ -386,36 +449,42 @@ class _CompensationProfilesTab(QWidget):
             _log.warning("Form data load error", exc_info=True)
             return
 
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         for p in profiles:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(p.employee_display_name))
-            self._table.setItem(row, 1, QTableWidgetItem(p.profile_name))
-            salary = QTableWidgetItem(f"{p.basic_salary:,.2f}")
-            salary.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 2, salary)
-            self._table.setItem(row, 3, QTableWidgetItem(p.currency_code))
-            self._table.setItem(row, 4, QTableWidgetItem(str(p.effective_from)))
-            self._table.setItem(row, 5, QTableWidgetItem(str(p.effective_to) if p.effective_to else "Open"))
-            self._table.setItem(row, 6, QTableWidgetItem("Yes" if p.is_active else "No"))
-            self._table.item(row, 0).setData(Qt.ItemDataRole.UserRole, p)
+            id_item = self._make_item(p.employee_display_name, user_data=p)
+            self._model.appendRow([
+                id_item,
+                self._make_item(p.profile_name),
+                self._make_item(f"{p.basic_salary:,.2f}"),
+                self._make_item(p.currency_code),
+                self._make_item(str(p.effective_from)),
+                self._make_item(str(p.effective_to) if p.effective_to else "Open"),
+                self._make_item("Yes" if p.is_active else "No"),
+            ])
 
         self._table.resizeColumnsToContents()
 
     def _selected_profile(self):
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_new(self) -> None:
         if self._company_id is None:
             return
         emp_id = self._emp_filter.currentData()
         if emp_id is None:
-            show_error(self, "Payroll Calculation", "Select an employee filter first to create a profile.")
+            show_error(self, "Payroll Calculation", "Select an employee filter first to create compensation.")
             return
         emp_name = self._emp_filter.currentText()
         dlg = CompensationProfileDialog(
@@ -444,8 +513,11 @@ class _CompensationProfilesTab(QWidget):
                 self._company_id, profile.id
             )
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Calculation", str(exc))
+        except Exception:
+            _log.exception("Payroll Calculation")
+            show_error(self, "Payroll Calculation", "An unexpected error occurred. See application log for details.")
 
 
 # ── Tab: Component Assignments ─────────────────────────────────────────────────
@@ -464,20 +536,20 @@ class _ComponentAssignmentsTab(QWidget):
         filter_bar.setSpacing(8)
 
         self._emp_filter = QComboBox()
-        self._emp_filter.setMinimumWidth(220)
+        self._emp_filter.setMinimumWidth(_TOKENS.sizes.toolbar_filter_min_w)
         self._emp_filter.currentIndexChanged.connect(self.refresh)
         filter_bar.addWidget(QLabel("Employee:"))
         filter_bar.addWidget(self._emp_filter)
         filter_bar.addStretch()
 
-        self._btn_new = QPushButton("Assign Component…")
-        self._btn_new.setFixedHeight(26)
+        self._btn_new = QPushButton("Assign payroll component...")
+        self._btn_new.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_new.clicked.connect(self._on_new)
         self._btn_edit = QPushButton("Edit")
-        self._btn_edit.setFixedHeight(26)
+        self._btn_edit.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_edit.clicked.connect(self._on_edit)
         self._btn_toggle = QPushButton("Toggle Active")
-        self._btn_toggle.setFixedHeight(26)
+        self._btn_toggle.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_toggle.clicked.connect(self._on_toggle)
 
         filter_bar.addWidget(self._btn_new)
@@ -485,15 +557,25 @@ class _ComponentAssignmentsTab(QWidget):
         filter_bar.addWidget(self._btn_toggle)
         layout.addLayout(filter_bar)
 
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels([
-            "Component", "Type", "Method", "Override Amt", "Override Rate", "From", "Active"
+        self._model = QStandardItemModel(0, 7)
+        self._model.setHorizontalHeaderLabels([
+            "Payroll component", "Type", "Method", "Override Amt", "Override Rate", "From", "Active"
         ])
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(self._on_edit)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="component", title="Payroll component"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="method", title="Method"),
+                DataTableColumn(key="ovr_amt", title="Override Amt", is_numeric=True),
+                DataTableColumn(key="ovr_rate", title="Override Rate", is_numeric=True),
+                DataTableColumn(key="from", title="From"),
+                DataTableColumn(key="active", title="Active"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_edit)
         layout.addWidget(self._table)
 
     def set_company(self, company_id: int) -> None:
@@ -522,7 +604,7 @@ class _ComponentAssignmentsTab(QWidget):
             return
         emp_id = self._emp_filter.currentData()
         if emp_id is None:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             return
 
         try:
@@ -533,31 +615,35 @@ class _ComponentAssignmentsTab(QWidget):
             _log.warning("Form data load error", exc_info=True)
             return
 
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         for a in assignments:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(f"{a.component_code} — {a.component_name}"))
-            self._table.setItem(row, 1, QTableWidgetItem(a.component_type_code))
-            self._table.setItem(row, 2, QTableWidgetItem(a.calculation_method_code))
-            ovr_amt = QTableWidgetItem(f"{a.override_amount:,.4f}" if a.override_amount else "")
-            ovr_amt.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 3, ovr_amt)
-            ovr_rate = QTableWidgetItem(f"{float(a.override_rate) * 100:.4f}%" if a.override_rate else "")
-            ovr_rate.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 4, ovr_rate)
-            self._table.setItem(row, 5, QTableWidgetItem(str(a.effective_from)))
-            self._table.setItem(row, 6, QTableWidgetItem("Yes" if a.is_active else "No"))
-            self._table.item(row, 0).setData(Qt.ItemDataRole.UserRole, a)
+            id_item = self._make_item(f"{a.component_code} — {a.component_name}", user_data=a)
+            self._model.appendRow([
+                id_item,
+                self._make_item(a.component_type_code),
+                self._make_item(a.calculation_method_code),
+                self._make_item(f"{a.override_amount:,.4f}" if a.override_amount else ""),
+                self._make_item(f"{float(a.override_rate) * 100:.4f}%" if a.override_rate else ""),
+                self._make_item(str(a.effective_from)),
+                self._make_item("Yes" if a.is_active else "No"),
+            ])
 
         self._table.resizeColumnsToContents()
 
     def _selected_assignment(self):
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_new(self) -> None:
         emp_id = self._emp_filter.currentData()
@@ -583,8 +669,11 @@ class _ComponentAssignmentsTab(QWidget):
         try:
             self._registry.component_assignment_service.toggle_active(self._company_id, a.id)
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Calculation", str(exc))
+        except Exception:
+            _log.exception("Payroll Calculation")
+            show_error(self, "Payroll Calculation", "An unexpected error occurred. See application log for details.")
 
 
 # ── Tab: Variable Inputs ───────────────────────────────────────────────────────
@@ -602,25 +691,34 @@ class _VariableInputsTab(QWidget):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(6)
         self._btn_new = QPushButton("New Batch…")
-        self._btn_new.setFixedHeight(26)
+        self._btn_new.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_new.clicked.connect(self._on_new)
         self._btn_open = QPushButton("Open / Manage…")
-        self._btn_open.setFixedHeight(26)
+        self._btn_open.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_open.clicked.connect(self._on_open)
         toolbar.addWidget(self._btn_new)
         toolbar.addWidget(self._btn_open)
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels([
+        self._model = QStandardItemModel(0, 6)
+        self._model.setHorizontalHeaderLabels([
             "Reference", "Period", "Status", "Description", "Lines", ""
         ])
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(self._on_open)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="period", title="Period"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="lines", title="Lines", is_numeric=True),
+                DataTableColumn(key="extra", title=""),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_open)
         layout.addWidget(self._table)
 
     def set_company(self, company_id: int) -> None:
@@ -636,29 +734,36 @@ class _VariableInputsTab(QWidget):
             _log.warning("Form data load error", exc_info=True)
             return
 
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         for b in batches:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(b.batch_reference))
-            self._table.setItem(row, 1, QTableWidgetItem(
-                f"{_MONTHS.get(b.period_month, str(b.period_month))} {b.period_year}"
-            ))
-            self._table.setItem(row, 2, QTableWidgetItem(_STATUS_CHIP.get(b.status_code, b.status_code)))
-            self._table.setItem(row, 3, QTableWidgetItem(b.description or ""))
-            count = QTableWidgetItem(str(b.line_count))
-            count.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 4, count)
-            self._table.item(row, 0).setData(Qt.ItemDataRole.UserRole, b.id)
+            id_item = self._make_item(b.batch_reference, user_data=b.id)
+            self._model.appendRow([
+                id_item,
+                self._make_item(
+                    f"{_MONTHS.get(b.period_month, str(b.period_month))} {b.period_year}"
+                ),
+                self._make_item(_STATUS_CHIP.get(b.status_code, b.status_code)),
+                self._make_item(b.description or ""),
+                self._make_item(str(b.line_count)),
+                self._make_item(""),
+            ])
 
         self._table.resizeColumnsToContents()
 
     def _selected_batch_id(self) -> int | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_new(self) -> None:
         if self._company_id is None:
@@ -720,22 +825,22 @@ class _PayrollRunsTab(QWidget):
         toolbar = QHBoxLayout()
         toolbar.setSpacing(6)
         self._btn_new = QPushButton("New Run…")
-        self._btn_new.setFixedHeight(26)
+        self._btn_new.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_new.clicked.connect(self._on_new)
         self._btn_calculate = QPushButton("Calculate")
-        self._btn_calculate.setFixedHeight(26)
+        self._btn_calculate.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_calculate.clicked.connect(self._on_calculate)
         self._btn_approve = QPushButton("Approve")
-        self._btn_approve.setFixedHeight(26)
+        self._btn_approve.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_approve.clicked.connect(self._on_approve)
         self._btn_void = QPushButton("Void")
-        self._btn_void.setFixedHeight(26)
+        self._btn_void.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_void.clicked.connect(self._on_void)
         self._btn_detail = QPushButton("Employee Detail…")
-        self._btn_detail.setFixedHeight(26)
+        self._btn_detail.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_detail.clicked.connect(self._on_detail)
         self._btn_allocations = QPushButton("Project Allocations…")
-        self._btn_allocations.setFixedHeight(26)
+        self._btn_allocations.setFixedHeight(_TOKENS.sizes.data_table_row_height)
         self._btn_allocations.clicked.connect(self._on_allocations)
 
         for btn in (self._btn_new, self._btn_calculate, self._btn_approve,
@@ -745,15 +850,26 @@ class _PayrollRunsTab(QWidget):
         layout.addLayout(toolbar)
 
         # Runs table
-        self._runs_table = QTableWidget()
-        configure_compact_table(self._runs_table)
-        self._runs_table.setColumnCount(7)
-        self._runs_table.setHorizontalHeaderLabels([
-            "Reference", "Period", "Status", "Employees", "Net Payable", "Run Date", "Currency"
+        self._runs_model = QStandardItemModel(0, 8)
+        self._runs_model.setHorizontalHeaderLabels([
+            "Reference", "Period", "Type", "Status", "Employees", "Net Payable", "Run Date", "Currency"
         ])
-        self._runs_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._runs_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._runs_table.selectionModel().selectionChanged.connect(self._on_run_selected)
+        self._runs_table = DataTable(
+            columns=(
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="period", title="Period"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="employees", title="Employees", is_numeric=True),
+                DataTableColumn(key="net_payable", title="Net Payable", is_numeric=True),
+                DataTableColumn(key="run_date", title="Run Date"),
+                DataTableColumn(key="currency", title="Currency"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._runs_table.set_model(self._runs_model)
+        self._runs_table.view().selectionModel().selectionChanged.connect(self._on_run_selected)
         layout.addWidget(self._runs_table, 2)
 
         # Employees sub-table
@@ -761,15 +877,25 @@ class _PayrollRunsTab(QWidget):
         emp_header.setStyleSheet("font-size: 11px; font-weight: 600; margin-top: 6px;")
         layout.addWidget(emp_header)
 
-        self._emp_table = QTableWidget()
-        configure_compact_table(self._emp_table)
-        self._emp_table.setColumnCount(7)
-        self._emp_table.setHorizontalHeaderLabels([
+        self._emp_model = QStandardItemModel(0, 7)
+        self._emp_model.setHorizontalHeaderLabels([
             "Employee", "Gross", "Deductions", "Taxes", "Net Payable", "Employer Cost", "Status"
         ])
-        self._emp_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._emp_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._emp_table.doubleClicked.connect(self._on_detail)
+        self._emp_table = DataTable(
+            columns=(
+                DataTableColumn(key="employee", title="Employee"),
+                DataTableColumn(key="gross", title="Gross", is_numeric=True),
+                DataTableColumn(key="deductions", title="Deductions", is_numeric=True),
+                DataTableColumn(key="taxes", title="Taxes", is_numeric=True),
+                DataTableColumn(key="net_payable", title="Net Payable", is_numeric=True),
+                DataTableColumn(key="employer_cost", title="Employer Cost", is_numeric=True),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._emp_table.set_model(self._emp_model)
+        self._emp_table.view().doubleClicked.connect(self._on_detail)
         layout.addWidget(self._emp_table, 3)
 
     def set_company(self, company_id: int) -> None:
@@ -785,46 +911,47 @@ class _PayrollRunsTab(QWidget):
             _log.warning("Form data load error", exc_info=True)
             return
 
-        self._runs_table.setRowCount(0)
+        self._runs_model.removeRows(0, self._runs_model.rowCount())
         for r in runs:
-            row = self._runs_table.rowCount()
-            self._runs_table.insertRow(row)
-            self._runs_table.setItem(row, 0, QTableWidgetItem(r.run_reference))
-            self._runs_table.setItem(row, 1, QTableWidgetItem(
-                f"{_MONTHS.get(r.period_month, str(r.period_month))} {r.period_year}"
-            ))
-            self._runs_table.setItem(row, 2, QTableWidgetItem(_STATUS_CHIP.get(r.status_code, r.status_code)))
-            count = QTableWidgetItem(str(r.employee_count))
-            count.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._runs_table.setItem(row, 3, count)
-            net = QTableWidgetItem(f"{r.total_net_payable:,.2f}")
-            net.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._runs_table.setItem(row, 4, net)
-            self._runs_table.setItem(row, 5, QTableWidgetItem(str(r.run_date)))
-            self._runs_table.setItem(row, 6, QTableWidgetItem(r.currency_code))
-            self._runs_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, r)
+            id_item = self._make_item(r.run_reference, user_data=r)
+            type_label = "Off-cycle" if getattr(r, "run_type_code", "regular") == "off_cycle" else "Regular"
+            sequence = getattr(r, "run_sequence", 1) or 1
+            if type_label == "Off-cycle":
+                type_label = f"{type_label} #{sequence}"
+            self._runs_model.appendRow([
+                id_item,
+                self._make_item(
+                    f"{_MONTHS.get(r.period_month, str(r.period_month))} {r.period_year}"
+                ),
+                self._make_item(type_label),
+                self._make_item(_STATUS_CHIP.get(r.status_code, r.status_code)),
+                self._make_item(str(r.employee_count)),
+                self._make_item(f"{r.total_net_payable:,.2f}"),
+                self._make_item(str(r.run_date)),
+                self._make_item(r.currency_code),
+            ])
 
         self._runs_table.resizeColumnsToContents()
-        self._emp_table.setRowCount(0)
+        self._emp_model.removeRows(0, self._emp_model.rowCount())
 
     def _selected_run(self):
-        row = self._runs_table.currentRow()
-        if row < 0:
+        rows = self._runs_table.selected_rows()
+        if not rows:
             return None
-        item = self._runs_table.item(row, 0)
+        item = self._runs_model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _selected_run_employee_id(self) -> int | None:
-        row = self._emp_table.currentRow()
-        if row < 0:
+        rows = self._emp_table.selected_rows()
+        if not rows:
             return None
-        item = self._emp_table.item(row, 0)
+        item = self._emp_model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_run_selected(self) -> None:
         run = self._selected_run()
         if run is None:
-            self._emp_table.setRowCount(0)
+            self._emp_model.removeRows(0, self._emp_model.rowCount())
             return
         try:
             employees = self._registry.payroll_run_service.list_run_employees(
@@ -834,22 +961,18 @@ class _PayrollRunsTab(QWidget):
             _log.warning("Form data load error", exc_info=True)
             return
 
-        self._emp_table.setRowCount(0)
+        self._emp_model.removeRows(0, self._emp_model.rowCount())
         for e in employees:
-            row = self._emp_table.rowCount()
-            self._emp_table.insertRow(row)
-            self._emp_table.setItem(row, 0, QTableWidgetItem(e.employee_display_name))
-            for col, val in enumerate((
-                e.gross_earnings, e.total_employee_deductions, e.total_taxes,
-                e.net_payable, e.employer_cost_base
-            ), start=1):
-                item = QTableWidgetItem(f"{val:,.2f}")
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self._emp_table.setItem(row, col, item)
-            self._emp_table.setItem(row, 6, QTableWidgetItem(
-                _STATUS_CHIP.get(e.status_code, e.status_code)
-            ))
-            self._emp_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, e.id)
+            id_item = self._make_item(e.employee_display_name, user_data=e.id)
+            self._emp_model.appendRow([
+                id_item,
+                self._make_item(f"{e.gross_earnings:,.2f}"),
+                self._make_item(f"{e.total_employee_deductions:,.2f}"),
+                self._make_item(f"{e.total_taxes:,.2f}"),
+                self._make_item(f"{e.net_payable:,.2f}"),
+                self._make_item(f"{e.employer_cost_base:,.2f}"),
+                self._make_item(_STATUS_CHIP.get(e.status_code, e.status_code)),
+            ])
 
         self._emp_table.resizeColumnsToContents()
 
@@ -859,6 +982,14 @@ class _PayrollRunsTab(QWidget):
         dlg = PayrollRunDialog(self._registry, self._company_id, self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.refresh()
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_calculate(self) -> None:
         run = self._selected_run()
@@ -876,8 +1007,11 @@ class _PayrollRunsTab(QWidget):
             self._registry.payroll_run_service.calculate_run(self._company_id, run.id)
             show_info(self, "Payroll calculation complete.")
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Calculation", str(exc))
+        except Exception:
+            _log.exception("Payroll Calculation")
+            show_error(self, "Payroll Calculation", "An unexpected error occurred. See application log for details.")
 
     def _on_approve(self) -> None:
         run = self._selected_run()
@@ -894,8 +1028,11 @@ class _PayrollRunsTab(QWidget):
         try:
             self._registry.payroll_run_service.approve_run(self._company_id, run.id)
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Calculation", str(exc))
+        except Exception:
+            _log.exception("Payroll Calculation")
+            show_error(self, "Payroll Calculation", "An unexpected error occurred. See application log for details.")
 
     def _on_void(self) -> None:
         run = self._selected_run()
@@ -908,8 +1045,11 @@ class _PayrollRunsTab(QWidget):
         try:
             self._registry.payroll_run_service.void_run(self._company_id, run.id)
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Calculation", str(exc))
+        except Exception:
+            _log.exception("Payroll Calculation")
+            show_error(self, "Payroll Calculation", "An unexpected error occurred. See application log for details.")
 
     def _on_detail(self) -> None:
         run_emp_id = self._selected_run_employee_id()

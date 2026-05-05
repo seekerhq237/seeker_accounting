@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -19,8 +20,6 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -35,7 +34,7 @@ from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, 
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _log = logging.getLogger(__name__)
 
@@ -67,7 +66,7 @@ class CommitmentLineFormDialog(BaseDialog):
         title = "New Commitment Line" if line_id is None else "Edit Commitment Line"
         super().__init__(title, parent, help_key="dialog.project_commitment_line")
         self.setObjectName("CommitmentLineFormDialog")
-        self.resize(620, 520)
+        apply_window_size(self, "modules.job.costing.ui.project.commitment.lines.dialog.0")
 
         self._error_label = QLabel(self)
         self._error_label.setObjectName("DialogErrorLabel")
@@ -386,7 +385,7 @@ class ProjectCommitmentLinesDialog(BaseDialog):
         self._lines: list[ProjectCommitmentLineDTO] = []
 
         self.setObjectName("ProjectCommitmentLinesDialog")
-        self.resize(940, 500)
+        apply_window_size(self, "modules.job.costing.ui.project.commitment.lines.dialog.1")
 
         self.body_layout.addWidget(self._build_toolbar())
         self.body_layout.addWidget(self._build_table_card(), 1)
@@ -464,22 +463,43 @@ class ProjectCommitmentLinesDialog(BaseDialog):
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(12)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("CommitmentLinesTable")
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels(
-            ("#", "Cost Code", "Job", "Description", "Qty", "Unit Rate", "Amount")
+        self._model = QStandardItemModel(0, 7, card)
+        self._model.setHorizontalHeaderLabels(
+            ["#", "Cost Code", "Job", "Description", "Qty", "Unit Rate", "Amount"]
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(lambda *_: self._edit_line())
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="num", title="#"),
+                DataTableColumn(key="cost_code", title="Cost Code"),
+                DataTableColumn(key="job", title="Job"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="qty", title="Qty"),
+                DataTableColumn(key="unit_rate", title="Unit Rate"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._table.selection_changed.connect(self._update_action_state)
+        self._table.view().doubleClicked.connect(lambda *_: self._edit_line())
         layout.addWidget(self._table)
         return card
 
     # ------------------------------------------------------------------
     # Data
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _reload(self) -> None:
         try:
@@ -488,68 +508,45 @@ class ProjectCommitmentLinesDialog(BaseDialog):
             )
             self._lines = detail.lines
             self._commitment_status = detail.status_code
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Commitment Lines", str(exc))
+
+        except Exception:
+            _log.exception("Commitment Lines")
+            show_error(self, "Commitment Lines", "An unexpected error occurred. See application log for details.")
             self._lines = []
 
         self._populate_table()
         self._update_action_state()
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         total = Decimal("0.00")
         for ln in self._lines:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-
-            num_item = QTableWidgetItem(str(ln.line_number))
-            num_item.setData(Qt.ItemDataRole.UserRole, ln.id)
-            num_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._table.setItem(row, 0, num_item)
-
-            self._table.setItem(row, 1, QTableWidgetItem(ln.cost_code_name))
-            self._table.setItem(row, 2, QTableWidgetItem(ln.job_name or ""))
-            self._table.setItem(row, 3, QTableWidgetItem(ln.description or ""))
-
-            qty_item = QTableWidgetItem(str(ln.quantity) if ln.quantity is not None else "")
-            qty_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 4, qty_item)
-
-            rate_item = QTableWidgetItem(str(ln.unit_rate) if ln.unit_rate is not None else "")
-            rate_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 5, rate_item)
-
-            amount_item = QTableWidgetItem(f"{ln.line_amount:,.2f}")
-            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 6, amount_item)
-
+            self._model.appendRow([
+                self._make_item(str(ln.line_number), user_data=ln.id),
+                self._make_item(ln.cost_code_name),
+                self._make_item(ln.job_name or ""),
+                self._make_item(ln.description or ""),
+                self._make_item(str(ln.quantity) if ln.quantity is not None else ""),
+                self._make_item(str(ln.unit_rate) if ln.unit_rate is not None else ""),
+                self._make_item(f"{ln.line_amount:,.2f}"),
+            ])
             total += ln.line_amount
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
 
         count = len(self._lines)
         self._count_label.setText(f"{count} line" if count == 1 else f"{count} lines")
         self._total_label.setText(f"Total: {total:,.2f}  ")
 
     def _selected_line(self) -> ProjectCommitmentLineDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
-        if item is None:
+        id_item = self._model.item(rows[0], 0)
+        if id_item is None:
             return None
-        line_id = item.data(Qt.ItemDataRole.UserRole)
+        line_id = id_item.data(Qt.ItemDataRole.UserRole)
         for ln in self._lines:
             if ln.id == line_id:
                 return ln

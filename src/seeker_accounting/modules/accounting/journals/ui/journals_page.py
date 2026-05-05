@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -13,8 +15,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -24,14 +24,17 @@ from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.modules.accounting.journals.dto.journal_dto import JournalEntryListItemDTO
 from seeker_accounting.modules.accounting.journals.ui.journal_entry_dialog import JournalEntryDialog
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
-from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
+from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, PermissionDeniedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.exceptions.error_resolution_resolver import ErrorResolutionResolver
 from seeker_accounting.shared.ui.guided_resolution_coordinator import GuidedResolutionCoordinator
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 from seeker_accounting.shared.ui.register import RegisterPage
+
+
+_log = logging.getLogger(__name__)
 
 
 class JournalsPage(QWidget):
@@ -69,7 +72,7 @@ class JournalsPage(QWidget):
 
         if active_company is None:
             self._journal_entries = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
             return
@@ -81,7 +84,7 @@ class JournalsPage(QWidget):
             )
         except Exception as exc:
             self._journal_entries = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
             show_error(self, "Journal", f"Entry data could not be loaded.\n\n{exc}")
@@ -166,27 +169,33 @@ class JournalsPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._table = QTableWidget(container)
-        self._table.setObjectName("JournalsTable")
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
-            (
-                "",
-                "Txn Date",
-                "Reference",
-                "Description",
-                "Status",
-                "Total Debit",
-                "Total Credit",
-                "Posted At",
-            )
+        self._model = QStandardItemModel(0, 8, container)
+        self._model.setHorizontalHeaderLabels(
+            ["", "Txn Date", "Reference", "Description", "Status", "Total Debit", "Total Credit", "Posted At"]
         )
-        configure_dense_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
-        self._table.itemChanged.connect(self._on_checkbox_changed)
-        self._table.horizontalHeader().sectionClicked.connect(self._handle_header_section_clicked)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="chk", title=""),
+                DataTableColumn(key="txn_date", title="Txn Date"),
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="debit", title="Total Debit"),
+                DataTableColumn(key="credit", title="Total Credit"),
+                DataTableColumn(key="posted_at", title="Posted At"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=container,
+        )
+        self._table.set_model(self._model)
+        apply_status_chip_to_column(self._table.view(), 4)
+        self._table.selection_changed.connect(lambda _rows: self._update_action_state())
+        self._table.view().doubleClicked.connect(self._handle_item_double_clicked)
+        self._model.dataChanged.connect(self._on_model_data_changed)
+        self._table.view().horizontalHeader().sectionClicked.connect(self._handle_header_section_clicked)
         layout.addWidget(self._table)
         return container
 
@@ -263,6 +272,13 @@ class JournalsPage(QWidget):
     def _active_company(self) -> ActiveCompanyDTO | None:
         return self._service_registry.company_context_service.get_active_company()
 
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Journal",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
     def _status_filter_value(self) -> str | None:
         value = self._status_filter_combo.currentData()
         return value if isinstance(value, str) and value else None
@@ -277,69 +293,80 @@ class JournalsPage(QWidget):
         self._stack.setCurrentWidget(self._empty_state)
 
     def _populate_table(self) -> None:
-        self._table.blockSignals(True)
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.blockSignals(True)
+        self._model.removeRows(0, self._model.rowCount())
 
         for entry in self._journal_entries:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-
-            # Column 0 — checkbox; stores entry ID as UserRole
-            chk_item = QTableWidgetItem()
+            chk_item = QStandardItem()
             chk_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             chk_item.setCheckState(Qt.CheckState.Unchecked)
-            chk_item.setData(Qt.ItemDataRole.UserRole, entry.id)
-            self._table.setItem(row_index, 0, chk_item)
+            chk_item.setData(entry.id, Qt.ItemDataRole.UserRole)
+            chk_item.setEditable(False)
 
-            # Columns 1–7 — data
-            values = (
-                self._format_optional_date(entry.transaction_date),
-                entry.reference_text or "",
-                entry.description or "",
-                entry.status_code.title(),
-                self._format_decimal(entry.total_debit),
-                self._format_decimal(entry.total_credit),
-                self._format_datetime(entry.posted_at),
-            )
-            for col_offset, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col_offset in {0, 3, 4, 5, 6}:  # date, status, dr, cr, posted_at
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, col_offset + 1, item)
+            def _mi(text, align=None):
+                i = QStandardItem("" if text is None else str(text))
+                i.setEditable(False)
+                if align is not None:
+                    i.setTextAlignment(align)
+                return i
 
-        self._table.blockSignals(False)
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.Fixed)
-        self._table.setColumnWidth(0, 36)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            center = Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter
+            self._model.appendRow([
+                chk_item,
+                _mi(self._format_optional_date(entry.transaction_date), center),
+                _mi(entry.reference_text or ""),
+                _mi(entry.description or ""),
+                _mi(entry.status_code.lower()),
+                _mi(self._format_decimal(entry.total_debit), center),
+                _mi(self._format_decimal(entry.total_credit), center),
+                _mi(self._format_datetime(entry.posted_at), center),
+            ])
+
+        self._model.blockSignals(False)
+        view = self._table.view()
+        view.resizeColumnsToContents()
+        header = view.horizontalHeader()
+        from PySide6.QtWidgets import QHeaderView
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        view.setColumnWidth(0, 36)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
 
     def _restore_selection(self, selected_journal_entry_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if self._model.rowCount() == 0:
             return
         if selected_journal_entry_id is None:
-            self._table.selectRow(0)
+            target = 0
+        else:
+            target = 0
+            for row_index in range(self._model.rowCount()):
+                item = self._model.item(row_index, 0)
+                if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_journal_entry_id:
+                    target = row_index
+                    break
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_journal_entry_id:
-                self._table.selectRow(row_index)
-                return
-        self._table.selectRow(0)
+        src_index = self._model.index(target, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_entry(self) -> JournalEntryListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
+        item = self._model.item(rows[0], 0)
         if item is None:
             return None
         journal_entry_id = item.data(Qt.ItemDataRole.UserRole)
@@ -352,19 +379,25 @@ class JournalsPage(QWidget):
         active_company = self._active_company()
         selected_entry = self._selected_entry()
         has_active_company = active_company is not None
+        perm = self._service_registry.permission_service
+        is_draft = selected_entry is not None and selected_entry.status_code == "DRAFT"
 
-        self._new_button.setEnabled(has_active_company)
+        self._new_button.setEnabled(
+            has_active_company and perm.has_permission("journals.create")
+        )
         self._edit_button.setEnabled(
-            has_active_company and selected_entry is not None and selected_entry.status_code == "DRAFT"
+            has_active_company and is_draft and perm.has_permission("journals.edit")
         )
         self._delete_button.setEnabled(
-            has_active_company and selected_entry is not None and selected_entry.status_code == "DRAFT"
+            has_active_company and is_draft and perm.has_permission("journals.delete")
         )
         self._post_button.setEnabled(
-            has_active_company and selected_entry is not None and selected_entry.status_code == "DRAFT"
+            has_active_company and is_draft and perm.has_permission("journals.post")
         )
         self._batch_post_button.setEnabled(
-            has_active_company and self._count_checked_drafts() > 0
+            has_active_company
+            and self._count_checked_drafts() > 0
+            and perm.has_permission("journals.post")
         )
         self._print_button.setEnabled(has_active_company and selected_entry is not None)
         self._export_list_button.setEnabled(has_active_company and bool(self._journal_entries))
@@ -439,35 +472,35 @@ class JournalsPage(QWidget):
                 return
             widget = widget.parent()
 
-    def _on_checkbox_changed(self, item: QTableWidgetItem) -> None:
-        if item.column() == 0:
+    def _on_model_data_changed(self, top_left, bottom_right, roles) -> None:
+        if Qt.ItemDataRole.CheckStateRole in roles and top_left.column() == 0:
             self._update_action_state()
 
     def _handle_header_section_clicked(self, logical_index: int) -> None:
         """Click column-0 header to toggle all checkboxes (select-all / deselect-all)."""
         if logical_index != 0:
             return
-        row_count = self._table.rowCount()
+        row_count = self._model.rowCount()
         if row_count == 0:
             return
         all_checked = all(
-            self._table.item(row, 0) is not None
-            and self._table.item(row, 0).checkState() == Qt.CheckState.Checked
+            self._model.item(row, 0) is not None
+            and self._model.item(row, 0).checkState() == Qt.CheckState.Checked
             for row in range(row_count)
         )
         new_state = Qt.CheckState.Unchecked if all_checked else Qt.CheckState.Checked
-        self._table.blockSignals(True)
+        self._model.blockSignals(True)
         for row in range(row_count):
-            item = self._table.item(row, 0)
+            item = self._model.item(row, 0)
             if item is not None:
                 item.setCheckState(new_state)
-        self._table.blockSignals(False)
+        self._model.blockSignals(False)
         self._update_action_state()
 
     def _count_checked_drafts(self) -> int:
         count = 0
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
+        for row in range(self._model.rowCount()):
+            item = self._model.item(row, 0)
             if item is None or item.checkState() != Qt.CheckState.Checked:
                 continue
             entry_id = item.data(Qt.ItemDataRole.UserRole)
@@ -479,8 +512,8 @@ class JournalsPage(QWidget):
 
     def _get_checked_draft_entries(self) -> list[JournalEntryListItemDTO]:
         result: list[JournalEntryListItemDTO] = []
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
+        for row in range(self._model.rowCount()):
+            item = self._model.item(row, 0)
             if item is None or item.checkState() != Qt.CheckState.Checked:
                 continue
             entry_id = item.data(Qt.ItemDataRole.UserRole)
@@ -493,6 +526,9 @@ class JournalsPage(QWidget):
     def _batch_post_checked(self) -> None:
         active_company = self._active_company()
         if active_company is None:
+            return
+        if not self._service_registry.permission_service.has_permission("journals.post"):
+            self._show_permission_denied("journals.post")
             return
 
         entries = self._get_checked_draft_entries()
@@ -549,6 +585,9 @@ class JournalsPage(QWidget):
         if active_company is None:
             show_info(self, "Journal", "Select an active company before creating entries.")
             return
+        if not self._service_registry.permission_service.has_permission("journals.create"):
+            self._show_permission_denied("journals.create")
+            return
 
         journal_entry = JournalEntryDialog.create_journal(
             self._service_registry,
@@ -569,6 +608,9 @@ class JournalsPage(QWidget):
         if entry.status_code != "DRAFT":
             show_info(self, "Journal", "Posted entries open in read-only detail mode.")
             self._open_view_dialog()
+            return
+        if not self._service_registry.permission_service.has_permission("journals.edit"):
+            self._show_permission_denied("journals.edit")
             return
 
         # Route through the ChildWindowManager so editing a journal entry
@@ -630,6 +672,9 @@ class JournalsPage(QWidget):
         if active_company is None or entry is None:
             show_info(self, "Journal", "Select a draft entry to delete.")
             return
+        if not self._service_registry.permission_service.has_permission("journals.delete"):
+            self._show_permission_denied("journals.delete")
+            return
 
         choice = QMessageBox.question(
             self,
@@ -641,6 +686,9 @@ class JournalsPage(QWidget):
 
         try:
             self._service_registry.journal_service.delete_draft_journal(active_company.company_id, entry.id)
+        except PermissionDeniedError:
+            self._show_permission_denied("journals.delete")
+            return
         except (ValidationError, NotFoundError) as exc:
             show_error(self, "Journal", str(exc))
             self.reload_entries(selected_journal_entry_id=entry.id)
@@ -653,6 +701,9 @@ class JournalsPage(QWidget):
         entry = self._selected_entry()
         if active_company is None or entry is None:
             show_info(self, "Journal", "Select a draft entry to post.")
+            return
+        if not self._service_registry.permission_service.has_permission("journals.post"):
+            self._show_permission_denied("journals.post")
             return
 
         choice = QMessageBox.question(
@@ -792,8 +843,12 @@ class JournalsPage(QWidget):
                 active_company.company_id, entry.id, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Journal", f"Export failed.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Journal")
+            show_error(self, "Journal", "An unexpected error occurred. See application log for details.")
 
     def _print_entry_list(self) -> None:
         active_company = self._active_company()
@@ -807,5 +862,9 @@ class JournalsPage(QWidget):
                 active_company.company_id, self._journal_entries, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Journal", f"Export failed.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Journal")
+            show_error(self, "Journal", "An unexpected error occurred. See application log for details.")

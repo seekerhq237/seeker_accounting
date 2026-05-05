@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QFrame, QLabel, QVBoxLayout, QWidget
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
@@ -29,7 +30,7 @@ class GeneratePeriodsDialog(BaseDialog):
 
         super().__init__("Generate Fiscal Periods", parent, help_key="dialog.generate_periods")
         self.setObjectName("GeneratePeriodsDialog")
-        self.resize(560, 320)
+        apply_window_size(self, "modules.accounting.fiscal.periods.ui.generate.periods.dialog.0")
 
         intro_label = QLabel(
             "Generate the company calendar from the fiscal year boundary using the locked first-pass monthly pattern.",

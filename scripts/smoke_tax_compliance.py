@@ -284,8 +284,9 @@ def main() -> int:
             print(f"dsf_phase4_{form_code.lower()}_fiches_ok", True)
 
     # Selection reactivity on returns table (no returns yet => disabled file/payment).
-    print("file_button_enabled_no_selection", page._file_button.isEnabled())
-    print("payment_button_enabled_no_selection", page._payment_button.isEnabled())
+    _state = page.ribbon_state()
+    print("file_button_enabled_no_selection", _state.get("tax_compliance.file_return", False))
+    print("payment_button_enabled_no_selection", _state.get("tax_compliance.record_payment", False))
 
     # Clear active company → page collapses to no-company card.
     registry.company_context_service.clear_active_company()

@@ -173,22 +173,17 @@ class SalesCreditNoteService:
             cn.total_amount = grand_total
             cn.contract_id = cmd.contract_id
             cn.project_id = cmd.project_id
+            cn.tax_point_date = cmd.tax_point_date
 
-            for ln in lines:
-                ln.sales_credit_note_id = cn.id
-
-            line_repo = self._credit_note_line_repository_factory(uow.session)
-            line_repo.replace_lines(cmd.company_id, cn.id, lines)
-            repo.save(cn)
             uow.commit()
 
             self._try_record_audit(
-                    cmd.company_id,
-                    event_type_catalog.SALES_CREDIT_NOTE_UPDATED,
-                    "sales_credit_note",
-                    cn.id,
-                    f"Sales credit note {cn.credit_number} updated.",
-                )
+                cmd.company_id,
+                event_type_catalog.SALES_CREDIT_NOTE_UPDATED,
+                "sales_credit_note",
+                cn.id,
+                f"Sales credit note {cn.credit_number} updated.",
+            )
 
             with self._unit_of_work_factory() as uow2:
                 repo2 = self._credit_note_repository_factory(uow2.session)

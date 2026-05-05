@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtCore import QDate
@@ -63,7 +64,7 @@ class PayrollRuleSetFormDialog(QDialog):
         is_edit = rule_set_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Payroll Rule Set — {company_name}")
         self.setModal(True)
-        self.resize(480, 440)
+        apply_window_size(self, "modules.payroll.ui.dialogs.payroll.rule.set.form.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

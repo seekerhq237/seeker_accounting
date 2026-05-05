@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
@@ -53,7 +54,7 @@ class SupplierPaymentDialog(QDialog):
         is_edit = payment_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Supplier Payment - {company_name}")
         self.setModal(True)
-        self.resize(920, 640)
+        apply_window_size(self, "modules.purchases.ui.supplier.payment.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)

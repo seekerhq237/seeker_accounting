@@ -305,6 +305,9 @@ class WorkspaceHost(QFrame):
         if nav_id == nav_ids.JOURNALS:
             from seeker_accounting.modules.accounting.journals.ui.journals_page import JournalsPage
             return JournalsPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.DEFERRALS:
+            from seeker_accounting.modules.accounting.deferrals.ui.deferral_list_page import DeferralListPage
+            return DeferralListPage(self._service_registry, self._stack)
         if nav_id == nav_ids.CUSTOMER_QUOTES:
             from seeker_accounting.modules.sales.ui.customer_quotes_page import CustomerQuotesPage
             return CustomerQuotesPage(self._service_registry, self._stack)
@@ -368,6 +371,18 @@ class WorkspaceHost(QFrame):
         if nav_id == nav_ids.STOCK_POSITION:
             from seeker_accounting.modules.inventory.ui.inventory_stock_view import InventoryStockView
             return InventoryStockView(self._service_registry, self._stack)
+        if nav_id == nav_ids.INVENTORY_DASHBOARD:
+            from seeker_accounting.modules.inventory.ui.inventory_dashboard_page import InventoryDashboardPage
+            return InventoryDashboardPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.PRICE_LISTS:
+            from seeker_accounting.modules.inventory.ui.price_list_page import PriceListPage
+            return PriceListPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.REORDER_PLANNING:
+            from seeker_accounting.modules.inventory.ui.reorder_planning_page import ReorderPlanningPage
+            return ReorderPlanningPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.INVENTORY_REPORTS:
+            from seeker_accounting.modules.inventory.ui.inventory_reports_page import InventoryReportsPage
+            return InventoryReportsPage(self._service_registry, self._stack)
         if nav_id == nav_ids.ASSET_CATEGORIES:
             from seeker_accounting.modules.fixed_assets.ui.asset_categories_page import AssetCategoriesPage
             return AssetCategoriesPage(self._service_registry, self._stack)

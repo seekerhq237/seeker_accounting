@@ -3,14 +3,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -23,7 +22,7 @@ from seeker_accounting.modules.reporting.dto.reporting_filter_dto import Reporti
 from seeker_accounting.modules.reporting.ui.dialogs.ledger_drilldown_dialog import (
     LedgerDrilldownDialog,
 )
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
 
@@ -53,12 +52,23 @@ class ChartDetailDialog(QDialog):
         if detail_dto.warning_message:
             root.addWidget(self._build_warning_band(detail_dto.warning_message))
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(["Account", "Name", "Note", "Amount"])
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._model = QStandardItemModel(0, 4, self)
+        self._model.setHorizontalHeaderLabels(["Account", "Name", "Note", "Amount"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="note", title="Note"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         root.addWidget(self._table, 1)
 
         self._footer = QLabel("", self)
@@ -110,28 +120,30 @@ class ChartDetailDialog(QDialog):
 
     def _bind_detail(self) -> None:
         rows = self._detail_dto.rows
-        self._table.setRowCount(len(rows))
-        for row_index, row in enumerate(rows):
-            account_item = QTableWidgetItem(row.account_code)
-            if row.account_id is not None:
-                account_item.setData(Qt.ItemDataRole.UserRole, row.account_id)
-            name_item = QTableWidgetItem(row.account_name)
-            note_item = QTableWidgetItem(row.note or "")
-            amount_item = QTableWidgetItem(self._fmt(row.amount))
+        self._model.removeRows(0, self._model.rowCount())
+        for row in rows:
+            amount_item = self._make_item(self._fmt(row.amount))
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row_index, 0, account_item)
-            self._table.setItem(row_index, 1, name_item)
-            self._table.setItem(row_index, 2, note_item)
-            self._table.setItem(row_index, 3, amount_item)
+            self._model.appendRow([
+                self._make_item(row.account_code, user_data=row.account_id),
+                self._make_item(row.account_name),
+                self._make_item(row.note or ""),
+                amount_item,
+            ])
         self._footer.setText(
             "Double-click an account row to open the contributing ledger lines."
         )
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 0)
-        if item is None:
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        account_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        account_id = id_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(account_id, int):
             return
         LedgerDrilldownDialog.open(
@@ -146,6 +158,14 @@ class ChartDetailDialog(QDialog):
             ),
             parent=self,
         )
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _add_pair(self, layout: QHBoxLayout, label: str, value: str) -> None:
         pair = QWidget(self)

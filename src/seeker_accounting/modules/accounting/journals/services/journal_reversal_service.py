@@ -163,6 +163,10 @@ class JournalReversalService:
                     debit_amount=Decimal(src_line.credit_amount),
                     credit_amount=Decimal(src_line.debit_amount),
                     line_description=(src_line.line_description or "Reversal"),
+                    contract_id=src_line.contract_id,
+                    project_id=src_line.project_id,
+                    project_job_id=src_line.project_job_id,
+                    project_cost_code_id=src_line.project_cost_code_id,
                 )
                 uow.session.add(rev_line)
                 reversal_lines.append(rev_line)

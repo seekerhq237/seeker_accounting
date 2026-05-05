@@ -3,19 +3,18 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker_accounting.modules.reporting.dto.ratio_analysis_dto import RatioDetailDTO
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 
 class RatioDetailDialog(QDialog):
@@ -39,11 +38,22 @@ class RatioDetailDialog(QDialog):
         layout.setSpacing(10)
         layout.addWidget(self._build_header())
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(3)
-        self._table.setHorizontalHeaderLabels(["Component", "Source", "Amount"])
-        configure_compact_table(self._table)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="component", title="Component"),
+                DataTableColumn(key="source", title="Source"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._model = QStandardItemModel(0, 3, self)
+        self._model.setHorizontalHeaderLabels(["Component", "Source", "Amount"])
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
@@ -101,26 +111,41 @@ class RatioDetailDialog(QDialog):
         return card
 
     def _bind_rows(self) -> None:
-        self._table.setRowCount(len(self._detail_dto.components))
-        for row_index, component in enumerate(self._detail_dto.components):
-            label_item = QTableWidgetItem(component.label)
+        self._model.removeRows(0, self._model.rowCount())
+        for component in self._detail_dto.components:
+            label_item = self._make_item(component.label)
             if component.detail_key:
-                label_item.setData(Qt.ItemDataRole.UserRole, component.detail_key)
-            self._table.setItem(row_index, 0, label_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(component.source_label))
-            amount_item = QTableWidgetItem("" if component.amount is None else f"{component.amount:,.2f}")
+                label_item.setData(component.detail_key, Qt.ItemDataRole.UserRole)
+            amount_item = self._make_item("" if component.amount is None else f"{component.amount:,.2f}")
             amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row_index, 2, amount_item)
+            self._model.appendRow([
+                label_item,
+                self._make_item(component.source_label),
+                amount_item,
+            ])
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
+    def _on_row_double_clicked(self, index) -> None:
         if self._detail_opener is None:
             return
-        item = self._table.item(row, 0)
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        item = self._model.item(row, 0)
         if item is None:
             return
         detail_key = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(detail_key, str) and detail_key:
             self._detail_opener(detail_key)
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     @classmethod
     def open(

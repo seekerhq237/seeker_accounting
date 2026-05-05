@@ -13,20 +13,20 @@ from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QPushButton,
     QSpinBox,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.shell.ribbon import RibbonHostMixin
@@ -49,8 +49,8 @@ def _money(value: Decimal | float | int | None) -> str:
     return f"{Decimal(value):,.2f}"
 
 
-def _right(item: QTableWidgetItem) -> QTableWidgetItem:
-    item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
+def _right(item: QStandardItem) -> QStandardItem:
+    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     return item
 
 
@@ -208,7 +208,7 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         h = QLabel("By tax type", by_type_section)
         h.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
         v.addWidget(h)
-        self._by_type_table = self._build_table(by_type_section, self.BY_TYPE_COLUMNS, min_height=140)
+        self._by_type_model, self._by_type_table = self._build_table(by_type_section, self.BY_TYPE_COLUMNS, min_height=140)
         v.addWidget(self._by_type_table)
         layout.addWidget(by_type_section)
 
@@ -221,7 +221,7 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         h2 = QLabel("Upcoming obligations (top 10)", upcoming_section)
         h2.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
         v2.addWidget(h2)
-        self._upcoming_table = self._build_table(upcoming_section, self.UPCOMING_COLUMNS, min_height=220)
+        self._upcoming_model, self._upcoming_table = self._build_table(upcoming_section, self.UPCOMING_COLUMNS, min_height=220)
         v2.addWidget(self._upcoming_table)
         layout.addWidget(upcoming_section)
 
@@ -270,19 +270,14 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         v.addLayout(grid)
         return section
 
-    def _build_table(self, parent: QWidget, columns: tuple[str, ...], *, min_height: int) -> QTableWidget:
-        table = QTableWidget(0, len(columns), parent)
-        table.setHorizontalHeaderLabels(list(columns))
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.verticalHeader().setVisible(False)
-        table.setAlternatingRowColors(True)
-        header = table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setStretchLastSection(True)
+    def _build_table(self, parent: QWidget, columns: tuple[str, ...], *, min_height: int) -> tuple[QStandardItemModel, DataTable]:
+        model = QStandardItemModel(0, len(columns), self)
+        model.setHorizontalHeaderLabels(list(columns))
+        dt_columns = tuple(DataTableColumn(key=str(i), title=col) for i, col in enumerate(columns))
+        table = DataTable(columns=dt_columns, show_search=False, parent=parent)
+        table.set_model(model)
         table.setMinimumHeight(min_height)
-        return table
+        return model, table
 
     # ── Reload ────────────────────────────────────────────────────────
 
@@ -327,6 +322,12 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         self._stack.setCurrentWidget(self._workspace)
         self._render_snapshot()
 
+    @staticmethod
+    def _make_item(text: str | None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        return item
+
     def _render_snapshot(self) -> None:
         snap = self._snapshot
         # KPI tiles
@@ -343,26 +344,30 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
 
         # Per-tax-type
         rows = list(snap.by_tax_type) if snap else []
-        self._by_type_table.setRowCount(len(rows))
-        for ri, item in enumerate(rows):
-            self._by_type_table.setItem(ri, 0, QTableWidgetItem(item.tax_type_code))
-            self._by_type_table.setItem(ri, 1, _right(QTableWidgetItem(str(item.open_count))))
-            self._by_type_table.setItem(ri, 2, _right(QTableWidgetItem(str(item.overdue_count))))
-            self._by_type_table.setItem(ri, 3, _right(QTableWidgetItem(str(item.paid_count))))
+        self._by_type_model.removeRows(0, self._by_type_model.rowCount())
+        for item in rows:
+            self._by_type_model.appendRow([
+                self._make_item(item.tax_type_code),
+                _right(self._make_item(str(item.open_count))),
+                _right(self._make_item(str(item.overdue_count))),
+                _right(self._make_item(str(item.paid_count))),
+            ])
 
         # Upcoming
         upcoming = list(snap.upcoming) if snap else []
-        self._upcoming_table.setRowCount(len(upcoming))
-        for ri, item in enumerate(upcoming):
-            self._upcoming_table.setItem(ri, 0, QTableWidgetItem(item.due_date.isoformat()))
-            self._upcoming_table.setItem(ri, 1, QTableWidgetItem(item.tax_type_code))
-            self._upcoming_table.setItem(ri, 2, QTableWidgetItem(item.period_start.isoformat()))
-            self._upcoming_table.setItem(ri, 3, QTableWidgetItem(item.period_end.isoformat()))
-            self._upcoming_table.setItem(ri, 4, QTableWidgetItem(item.status_code))
-            days_item = QTableWidgetItem(str(item.days_until_due))
+        self._upcoming_model.removeRows(0, self._upcoming_model.rowCount())
+        for item in upcoming:
+            days_item = self._make_item(str(item.days_until_due))
             if item.days_until_due < 0:
-                days_item.setForeground(Qt.GlobalColor.red)
-            self._upcoming_table.setItem(ri, 5, _right(days_item))
+                days_item.setForeground(QBrush(QColor("red")))
+            self._upcoming_model.appendRow([
+                self._make_item(item.due_date.isoformat()),
+                self._make_item(item.tax_type_code),
+                self._make_item(item.period_start.isoformat()),
+                self._make_item(item.period_end.isoformat()),
+                self._make_item(item.status_code),
+                _right(days_item),
+            ])
 
     # ── IRibbonHost ───────────────────────────────────────────────────
 

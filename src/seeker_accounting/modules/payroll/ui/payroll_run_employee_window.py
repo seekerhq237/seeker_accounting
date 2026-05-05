@@ -29,6 +29,7 @@ from seeker_accounting.app.shell.ribbon.ribbon_registry import RibbonRegistry
 from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
     PayrollRunEmployeeDetailDTO,
 )
+from seeker_accounting.platform.exceptions import AppError
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
@@ -126,7 +127,7 @@ class PayrollRunEmployeeWindow(ChildWindowBase):
         configure_compact_table(self._table)
         self._table.setColumnCount(5)
         self._table.setHorizontalHeaderLabels(
-            ("Component", "Type", "Basis", "Rate", "Amount")
+            ("Payroll component", "Type", "Basis", "Rate", "Amount")
         )
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -145,8 +146,12 @@ class PayrollRunEmployeeWindow(ChildWindowBase):
             detail = self._registry.payroll_run_service.get_run_employee_detail(
                 self._company_id, self._run_employee_id
             )
-        except Exception as exc:  # noqa: BLE001 — surface any load failure
+        except AppError as exc:
             show_error(self, "Employee Payroll Detail", str(exc))
+            return
+        except Exception:
+            _log.exception("Failed to load run employee detail=%s", self._run_employee_id)
+            show_error(self, "Employee Payroll Detail", "Could not load detail. See application log for details.")
             return
 
         self._detail = detail

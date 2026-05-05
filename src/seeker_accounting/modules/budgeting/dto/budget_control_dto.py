@@ -19,3 +19,5 @@ class BudgetControlCheckDTO:
     remaining_after_request: Decimal
     would_exceed_budget: bool
     message: str
+    project_job_id: int | None = None
+    project_cost_code_id: int | None = None

@@ -52,6 +52,7 @@ class MainWindow(QMainWindow):
             permission_service=service_registry.permission_service,
             company_logo_service=service_registry.company_logo_service,
             theme_manager=service_registry.theme_manager,
+            feature_flag_service=service_registry.feature_flag_service,
             parent=shell_root,
         )
         self._sidebar = sidebar

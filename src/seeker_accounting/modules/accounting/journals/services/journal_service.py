@@ -42,12 +42,19 @@ from seeker_accounting.modules.accounting.journals.repositories.journal_entry_li
 from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import (
     JournalEntryRepository,
 )
+from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.job_costing.services.project_dimension_validation_service import (
     ProjectDimensionValidationService,
 )
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
+from seeker_accounting.platform.validation import (
+    require_code,
+    require_minimum_int,
+    require_non_negative_decimal,
+    require_text,
+)
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -70,6 +77,7 @@ class JournalService:
         fiscal_period_repository_factory: FiscalPeriodRepositoryFactory,
         company_repository_factory: CompanyRepositoryFactory,
         project_dimension_validation_service: ProjectDimensionValidationService,
+        permission_service: PermissionService,
         audit_service: "AuditService | None" = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -80,6 +88,7 @@ class JournalService:
         self._fiscal_period_repository_factory = fiscal_period_repository_factory
         self._company_repository_factory = company_repository_factory
         self._project_dimension_validation_service = project_dimension_validation_service
+        self._permission_service = permission_service
         self._audit_service = audit_service
 
     def list_journal_entries(
@@ -114,6 +123,7 @@ class JournalService:
         company_id: int,
         command: CreateJournalEntryCommand,
     ) -> JournalEntryDetailDTO:
+        self._permission_service.require_permission("journals.create")
         normalized_command = self._normalize_create_command(command)
 
         with self._unit_of_work_factory() as uow:
@@ -174,6 +184,7 @@ class JournalService:
         journal_entry_id: int,
         command: UpdateJournalEntryCommand,
     ) -> JournalEntryDetailDTO:
+        self._permission_service.require_permission("journals.edit")
         normalized_command = self._normalize_update_command(command)
 
         with self._unit_of_work_factory() as uow:
@@ -229,6 +240,7 @@ class JournalService:
             return self._to_journal_entry_detail_dto(entry)
 
     def delete_draft_journal(self, company_id: int, journal_entry_id: int) -> None:
+        self._permission_service.require_permission("journals.delete")
         with self._unit_of_work_factory() as uow:
             self._require_company_exists(uow.session, company_id)
             entry_repository = self._require_journal_entry_repository(uow.session)
@@ -397,16 +409,17 @@ class JournalService:
     def _normalize_amount(self, value: Decimal | None) -> Decimal:
         if value is None:
             return Decimal("0.00")
-        if value < Decimal("0.00"):
-            raise ValidationError("Journal line amounts cannot be negative.")
-        return value.quantize(Decimal("0.01"))
+        return require_non_negative_decimal(value, "Journal line amounts").quantize(Decimal("0.01"))
 
     def _normalize_optional_id(self, value: int | None) -> int | None:
         if value is None:
             return None
-        if value <= 0:
-            raise ValidationError("Dimension identifiers must be greater than zero.")
-        return value
+        return require_minimum_int(
+            value,
+            "Dimension identifiers",
+            minimum=1,
+            message="Dimension identifiers must be greater than zero.",
+        )
 
     def _require_date(self, value: date | None, label: str) -> date:
         if value is None:
@@ -414,13 +427,10 @@ class JournalService:
         return value
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _require_code(self, value: str, label: str) -> str:
-        return self._require_text(value, label).upper().replace(" ", "_")
+        return require_code(value, label).replace(" ", "_")
 
     def _normalize_optional_text(self, value: str | None) -> str | None:
         if value is None:

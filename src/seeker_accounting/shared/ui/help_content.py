@@ -27,10 +27,20 @@ class HelpArticle:
 # ---------------------------------------------------------------------------
 
 HELP_CONTENT: dict[str, HelpArticle] = {}
+REQUIRED_HELP_KEYS: set[str] = set()
 
 
 def _register(key: str, title: str, summary: str, body_html: str) -> None:
     HELP_CONTENT[key] = HelpArticle(key=key, title=title, summary=summary, body_html=body_html)
+
+
+def register_required_help_keys(keys: set[str] | tuple[str, ...] | list[str]) -> None:
+    REQUIRED_HELP_KEYS.update(keys)
+
+
+def audit_help_content(required_keys: set[str] | tuple[str, ...] | list[str] | None = None) -> tuple[str, ...]:
+    keys = set(required_keys or REQUIRED_HELP_KEYS)
+    return tuple(sorted(key for key in keys if key not in HELP_CONTENT))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -86,6 +96,64 @@ _register(
     <p><b>Tip:</b> The page refreshes automatically when you switch companies.
     Select a company from the sidebar or top bar to see its data.</p>
     """,
+)
+
+_register(
+    "dashboard.setup_checklist",
+    "Setup Checklist",
+    "A first-run readiness list for the active company.",
+    """
+    <p>The <b>Setup Checklist</b> shows whether the active company has the
+    minimum foundation needed for reliable day-to-day accounting work.</p>
+
+    <p>Items include fiscal periods, the chart of accounts, document
+    numbering, trading partners, items and services, and payroll employees
+    where payroll is in use.</p>
+
+    <p>Open an incomplete item to go directly to the responsible setup
+    workspace. Completed items stay visible so administrators can confirm
+    readiness before users begin posting operational documents.</p>
+    """,
+)
+
+_register(
+    "help.keyboard_accessibility",
+    "Keyboard and Accessibility",
+    "Core workbench shortcuts, focus behavior, and accessible names.",
+    """
+    <p>Workbench panes expose stable keyboard shortcuts for refresh, pane
+    switching, table density, and selection cleanup. Focus rings use the
+    application theme focus colour so keyboard users can see the active
+    control clearly.</p>
+
+    <p>Interactive table controls, empty states, and setup actions carry
+    accessible names and descriptions so screen readers can identify their
+    purpose without relying on visual layout alone.</p>
+    """,
+)
+
+_register(
+    "help.validation_audit_telemetry",
+    "Validation, Audit, and Telemetry",
+    "How validation issues, audit events, and opt-in telemetry are handled.",
+    """
+    <p>Service-layer validation reports structured issues before state is
+    changed. Business services can raise clean validation errors with field,
+    code, severity, and context for UI summaries.</p>
+
+    <p>Audit requirements cover lifecycle transitions, overrides, and guided
+    business-process steps. Anonymous funnel telemetry is disabled by default
+    and records only coarse event codes after explicit opt-in.</p>
+    """,
+)
+
+register_required_help_keys(
+    [
+        "dashboard",
+        "dashboard.setup_checklist",
+        "help.keyboard_accessibility",
+        "help.validation_audit_telemetry",
+    ]
 )
 
 # ── Customers ─────────────────────────────────────────────────────────────
@@ -186,25 +254,87 @@ _register(
 _register(
     "tax_codes",
     "Tax Codes",
-    "Define and manage company tax rates and account mappings.",
+    "Define and manage company tax rates, CAC splits, exemption kinds, and DGI return-box mappings.",
     """
-    <p><b>Tax Codes</b> represent the different tax rates your company applies
-    to sales and purchases (e.g. VAT 19.25%, VAT Exempt).</p>
+    <p><b>Tax codes</b> are the named, versioned definitions of every
+    tax rate the system applies on sales and purchase line items. They
+    drive: tax-amount calculation, GL posting (via account mappings),
+    DGI return-box assignment, recoverability behaviour, and the
+    Cameroon-specific CAC (<em>Centimes Additionnels Communaux</em>)
+    split required on the VAT statement.</p>
 
-    <p><b>How to use:</b></p>
+    <h3>What this page shows</h3>
+    <p>One row per tax code with: code, name, type, rate, recoverable
+    flag, CAC indicator, exemption kind, DGI box code, and effective
+    date range. Use the <b>Account Mappings</b> button to attach a
+    code to its GL accounts.</p>
+
+    <h3>How to use</h3>
+    <ol>
+      <li>Click <em>New Tax Code</em>; the dialog has its own help.</li>
+      <li>Save the code, then click <em>Account Mappings</em> on its
+          row and link it to the four mapping accounts (sales,
+          purchase, liability, asset).</li>
+      <li>End-date a code only when retiring a rate — never edit a
+          code that has appeared on posted documents.</li>
+    </ol>
+
+    <h3>Key concepts</h3>
     <ul>
-      <li>Click <em>New Tax Code</em> to define a tax rate.</li>
-      <li>Each tax code has a code, name, rate percentage, and linked
-          GL accounts for tax collected and tax paid.</li>
-      <li>Tax codes are assigned on invoice and bill line items to
-          calculate tax amounts automatically.</li>
+      <li><b>Tax type</b> — VAT, WITHHOLDING, SALES_TAX, SERVICE_TAX,
+          or any custom code.</li>
+      <li><b>CAC split</b> — the Cameroon VAT 19.25% rate is in fact
+          17.5% base VAT plus a 10% CAC surcharge on the VAT
+          (17.5 × 1.10 = 19.25). Codes flagged <em>has CAC</em> store
+          base and CAC rates separately so the DGI VAT statement can
+          report the split.</li>
+      <li><b>Recoverable</b> — controls whether input VAT on purchases
+          is reclaimed (posts to 4452) or expensed (stays on the line
+          expense account).</li>
+      <li><b>Exemption kind</b> — NONE / EXPORT / EXEMPT / STATE_BORNE
+          / OUT_OF_SCOPE. Drives how the line is reported even when
+          the rate is 0%.</li>
+      <li><b>Return box code</b> — the DGI VAT statement box (e.g.
+          <em>L17</em> for taxable sales output, <em>L21</em> for
+          recoverable input, <em>L22</em> for exempt). The box code
+          is what the Tax Compliance draft step uses to bucket totals.</li>
+      <li><b>Effective from / to</b> — versioning. End-date the old
+          rate the day before a change, create a new code starting
+          the next day.</li>
     </ul>
 
-    <p><b>Account mapping:</b> Each tax code must be mapped to appropriate
-    GL accounts so that tax amounts post correctly to the general ledger.</p>
+    <h3>Standard codes for a Cameroon SME</h3>
+    <ul>
+      <li><b>VAT-19.25</b> — VAT, 19.25%, has CAC (base 17.5 + CAC 10%),
+          recoverable, box <em>L17</em>. Used on virtually all taxable
+          sales and purchases.</li>
+      <li><b>VAT-EXEMPT</b> — VAT, 0%, exemption_kind=EXEMPT, box
+          <em>L22</em>. Used for medical, educational, and exempt
+          essentials.</li>
+      <li><b>VAT-EXPORT</b> — VAT, 0%, exemption_kind=EXPORT,
+          recoverable. Exports zero-rate at output but you still
+          recover input VAT.</li>
+      <li><b>WHT-5.5</b>, <b>WHT-11</b>, <b>WHT-15.4</b> —
+          withholding rates by service type.</li>
+      <li><b>TSR-15</b> — Special Service Tax for non-resident
+          providers.</li>
+    </ul>
 
-    <p><b>Tip:</b> Set up all required tax codes before creating sales
-    invoices or purchase bills.</p>
+    <h3>Worked example — 19.25% VAT split</h3>
+    <p>Sales line of 1,000,000 XAF (excl. VAT) with VAT-19.25:</p>
+    <ul>
+      <li>Total tax: 192,500 XAF (1,000,000 × 19.25%)</li>
+      <li>Base VAT portion: 175,000 XAF (1,000,000 × 17.5%)</li>
+      <li>CAC portion: 17,500 XAF (175,000 × 10%)</li>
+      <li>Both portions report under box L17, but the DSF lists
+          them separately.</li>
+    </ul>
+
+    <h3>Tip</h3>
+    <p>Set up all required tax codes <em>before</em> creating any
+    sales invoice or purchase bill, and complete the account mappings
+    immediately after. Posting refuses to run when a referenced tax
+    code has no mapping for the relevant side (sales or purchase).</p>
     """,
 )
 
@@ -2319,7 +2449,7 @@ _register(
 _register(
     "dialog.tax_code",
     "Tax Code",
-    "Define a company tax code — rate, type, calculation method, and effective dates.",
+    "Define a company tax code — rate, type, calculation method, CAC split, exemption kind, DGI box, and effective dates.",
     """
     <p>A <b>tax code</b> is the named, versioned definition of a tax rate the system
     uses when calculating tax on invoice and bill lines. Every tax line on a document
@@ -2397,71 +2527,171 @@ _register(
 
     <p><b>After saving</b><br/>
     Use the <b>Account Mappings</b> button on the Tax Codes list to link this
-    code to GL accounts. This step is required before the code can be used on
-    posted documents:</p>
+    code to its four GL anchor accounts (sales, purchase, tax liability, tax
+    asset). This step is required before the code can be used on posted
+    documents. See the <em>Tax Code Account Mapping</em> dialog help for
+    details — typical mapping is sales 4432, purchase 4452, liability 4432,
+    asset 4452.</p>
+
+    <p><b>CAC Split</b> (Cameroon VAT only)<br/>
+    The Cameroon standard VAT rate of 19.25% is composed of a 17.5%
+    base VAT plus a 10% CAC (<em>Centimes Additionnels Communaux</em>)
+    surcharge applied on top of the base VAT. The DGI VAT statement
+    requires both portions to be reported separately.</p>
     <ul>
-      <li><b>Tax Collected account</b> — output/sales tax held as a liability
-          until remitted to the authority
-          (e.g. 4431 — TVA collectée).</li>
-      <li><b>Tax Paid account</b> — input/purchase tax, either posted as a
-          recoverable asset (e.g. 4452 — TVA déductible) or expensed directly
-          if non-recoverable.</li>
+      <li>Tick <b>Has CAC</b> on standard VAT codes.</li>
+      <li><b>Base rate %</b> — the VAT base, e.g. 17.5.</li>
+      <li><b>CAC rate %</b> — the surcharge on the VAT, e.g. 10.</li>
+      <li>The combined effective rate is computed as
+          <code>base × (1 + cac/100)</code> and must reconcile to the
+          stored <em>Rate Percent</em> within 0.01 (validation).</li>
     </ul>
+
+    <p><b>Exemption Kind</b><br/>
+    Even when a code has 0% rate, it still needs a correct
+    classification for DSF reporting:</p>
+    <ul>
+      <li><b>NONE</b> — the code is fully taxable; this field is not
+          relevant.</li>
+      <li><b>EXPORT</b> — zero-rated for export. Output is 0% but
+          input VAT is still recoverable.</li>
+      <li><b>EXEMPT</b> — statutory exemption (medical, educational,
+          essential goods). No output VAT, no input recovery.</li>
+      <li><b>STATE_BORNE</b> — VAT is borne by the state on this
+          line (typically donor-funded projects).</li>
+      <li><b>OUT_OF_SCOPE</b> — transaction outside the VAT system
+          entirely.</li>
+    </ul>
+
+    <p><b>Return Box Code</b><br/>
+    The DGI VAT-statement box where amounts under this tax code
+    aggregate. Common Cameroon boxes:</p>
+    <ul>
+      <li><b>L17</b> — standard taxable sales output.</li>
+      <li><b>L18</b> — reduced-rate output (rare in Cameroon).</li>
+      <li><b>L21</b> — input VAT recoverable on purchases.</li>
+      <li><b>L22</b> — exempt / out-of-scope.</li>
+      <li><b>L23</b> — imports.</li>
+    </ul>
+    <p>The Tax Compliance <em>Draft Return</em> step uses these box
+    codes to bucket the period totals.</p>
 
     <p><b>Standard codes to create for Cameroon:</b></p>
     <ul>
-      <li><i>VAT_STD</i> — VAT · 19.25% · PERCENTAGE · Recoverable: Yes</li>
-      <li><i>VAT_EXEMPT</i> — VAT · 0% · EXEMPT · Recoverable: No</li>
-      <li><i>WHT_SVC</i> — Withholding · 15.4% · PERCENTAGE · Recoverable: No</li>
-      <li><i>WHT_RENT</i> — Withholding · 15.4% · PERCENTAGE · Recoverable: No</li>
+      <li><b>VAT-19.25</b> — VAT · 19.25% · has CAC (17.5 base + 10%
+          CAC) · Recoverable: Yes · Box L17</li>
+      <li><b>VAT-EXEMPT</b> — VAT · 0% · exemption_kind=EXEMPT ·
+          Recoverable: No · Box L22</li>
+      <li><b>VAT-EXPORT</b> — VAT · 0% · exemption_kind=EXPORT ·
+          Recoverable: Yes · Box L17</li>
+      <li><b>WHT-5.5</b> — Withholding · 5.5% · Recoverable: No</li>
+      <li><b>WHT-11</b> — Withholding · 11% · Recoverable: No</li>
+      <li><b>WHT-15.4</b> — Withholding · 15.4% · Recoverable: No</li>
     </ul>
+
+    <p><b>Worked example — VAT-19.25 on a 1,000,000 XAF line</b></p>
+    <ul>
+      <li>Net: 1,000,000 · Combined rate: 19.25%</li>
+      <li>Tax total: 192,500 = base 175,000 (17.5%) + CAC 17,500 (10% of base)</li>
+      <li>Gross: 1,192,500</li>
+      <li>If tax-inclusive flag is on for the document, the same
+          gross is entered and the system reverses the calculation.</li>
+    </ul>
+
+    <p><b>Tip:</b> Always end-date a code rather than overwrite
+    it when DGI changes a rate. Posted documents must keep their
+    historical rate intact.</p>
     """,
 )
 
 _register(
     "dialog.tax_code_account_mapping",
     "Tax Code Account Mapping",
-    "Map a tax code to specific GL accounts for posting.",
+    "Link a tax code to its four GL anchor accounts (sales, purchase, liability, asset).",
     """
-    <p>Use this dialog to link a tax code to the GL accounts where tax
-    amounts should be posted when invoices and bills are recorded.</p>
+    <p>Each tax code carries <b>four</b> GL account mappings. Together
+    they tell the posting engine where tax amounts land for sales,
+    purchases, output liability, and input asset/expense behaviour.
+    Posting fails until all required mappings are present for the side
+    being posted.</p>
 
-    <p><b>Fields:</b></p>
+    <h3>The four mappings</h3>
     <ul>
-      <li><b>Tax Collected Account</b> — the liability account where
-          output (sales) tax is posted. When you issue a sales invoice
-          with this tax code, the calculated tax amount is credited
-          to this account.
-          <br/><em>Example:</em> 4431 — TVA Collected (for Cameroon
-          19.25% VAT).</li>
-      <li><b>Tax Paid Account</b> — the asset account where input
-          (purchase) tax is posted. When you enter a purchase bill
-          with this tax code, the tax amount is debited to this
-          account.
-          <br/><em>Example:</em> 4451 — TVA Deductible on Purchases.</li>
+      <li><b>Sales Account</b> — the credit account used when this
+          tax code appears on a sales line. For VAT this is typically
+          the same as the <em>Tax Liability</em> account (output VAT
+          collected). Used by sales invoices, sales orders, and
+          customer quotes.</li>
+      <li><b>Purchase Account</b> — the debit account used when this
+          code appears on a purchase line. For recoverable VAT this is
+          the input VAT asset (e.g. 4452); for non-recoverable VAT this
+          field is unused (the line expense account absorbs the tax).</li>
+      <li><b>Tax Liability Account</b> — anchor account for the
+          “output” / payable side. Used when settling and when the
+          settlement journal credits VAT payable.</li>
+      <li><b>Tax Asset Account</b> — anchor for the recoverable
+          “input” side. Used by the settlement journal to clear input
+          VAT.</li>
+    </ul>
+    <p>All four are nullable on the model, but the posting service
+    enforces presence on whichever side the document touches.</p>
+
+    <h3>How posting flows in practice</h3>
+    <ul>
+      <li><b>Sales invoice</b> with VAT-19.25 posting:
+          <code>Dr 411 (AR) / Cr 70x (revenue) / Cr 4432 (output VAT,
+          via the Sales Account mapping)</code>.</li>
+      <li><b>Purchase bill</b> with VAT-19.25, recoverable:
+          <code>Dr 60x (expense) / Dr 4452 (input VAT recoverable, via
+          the Purchase Account mapping) / Cr 401 (AP)</code>.</li>
+      <li><b>Purchase bill</b> with a tax code where
+          <em>recoverable=False</em>: tax routes to the line
+          <em>expense</em> account instead of the Purchase Account
+          — no asset is created.</li>
+      <li><b>Settlement</b>:
+          <code>Dr 4432 (Tax Liability) / Cr 4452 (Tax Asset) / plug to
+          4441 (VAT payable) or 4449 (VAT credit c/f)</code>.</li>
     </ul>
 
-    <p><b>How it works in practice:</b></p>
+    <h3>Standard SYSCOHADA accounts (Cameroon chart)</h3>
     <ul>
-      <li>When a <b>sales invoice</b> with TVA 19.25% is posted:
-          Debit AR, Credit Revenue, Credit 4431 TVA Collected.</li>
-      <li>When a <b>purchase bill</b> with TVA 19.25% is posted:
-          Debit Expense, Debit 4451 TVA Deductible, Credit AP.</li>
-      <li>At tax filing time, the net tax liability is:
-          TVA Collected (4431) minus TVA Deductible (4451).</li>
+      <li><b>4432</b> — TVA collectée (output VAT)</li>
+      <li><b>4452</b> — TVA déductible sur achats (input VAT
+          recoverable)</li>
+      <li><b>4441</b> — TVA à décaisser (VAT payable to DGI)</li>
+      <li><b>4449</b> — Crédit de TVA à reporter (VAT credit
+          carry-forward)</li>
+      <li><b>4421</b> — Impôts retenus à la source (WHT due)</li>
+      <li><b>4478</b> — Autres impôts et taxes à reverser (TSR
+          payable)</li>
+      <li><b>6412</b> — Patente (expense)</li>
+      <li><b>6468</b> — Autres droits et taxes (customs duty
+          expense)</li>
     </ul>
 
-    <p><b>Common Cameroon tax accounts:</b></p>
+    <h3>Recommended mappings</h3>
+    <table border="0" cellpadding="4">
+      <tr><th align="left">Tax code</th><th align="left">Sales</th>
+          <th align="left">Purchase</th><th align="left">Liability</th>
+          <th align="left">Asset</th></tr>
+      <tr><td>VAT-19.25</td><td>4432</td><td>4452</td><td>4432</td><td>4452</td></tr>
+      <tr><td>VAT-EXEMPT</td><td>4432</td><td>(unused)</td><td>4432</td><td>(unused)</td></tr>
+      <tr><td>WHT-5.5</td><td>(unused)</td><td>4421</td><td>4421</td><td>(unused)</td></tr>
+    </table>
+
+    <h3>Validation</h3>
     <ul>
-      <li>4431 — TVA Collected (output)</li>
-      <li>4451 — TVA Deductible on Purchases (input)</li>
-      <li>4432 — TVA Collected on Services</li>
-      <li>4441 — Withholding Tax Due</li>
+      <li>Each chosen account must exist, be active, and allow
+          manual posting.</li>
+      <li>Liability accounts must be class 4 (third-party).</li>
+      <li>Wrong-class mappings (e.g. picking a class 7 revenue
+          account as Tax Liability) fail validation at save.</li>
     </ul>
 
-    <p><b>Important:</b> Both accounts must exist in the chart of
-    accounts and be active. Incorrect mappings will cause tax amounts
-    to post to the wrong accounts, leading to misstated tax returns.</p>
+    <p><b>Tip:</b> The OHADA chart-of-accounts wizard seeds these
+    mappings automatically for the standard VAT-19.25 and VAT-EXEMPT
+    codes. Verify the mappings on first run and adjust only if your
+    chart customisation moved the anchor accounts.</p>
     """,
 )
 
@@ -3054,43 +3284,86 @@ _register(
 _register(
     "dialog.sales_invoice",
     "Sales Invoice",
-    "Create or edit a sales invoice.",
+    "Create or edit a sales invoice — with line tax codes, optional tax-inclusive pricing, and posting that feeds the VAT return.",
     """
-    <p>Use this dialog to create a new sales invoice or edit a draft.</p>
+    <p>Use this dialog to create a sales invoice or edit a draft. The
+    document drives the receivable balance, revenue, output VAT, and
+    — once posted — the underlying <em>posted tax lines</em> that the
+    Tax Compliance VAT draft step aggregates each month.</p>
 
-    <p><b>Header fields:</b></p>
+    <h3>Header fields</h3>
     <ul>
-      <li><b>Customer</b> — select the customer being invoiced.</li>
-      <li><b>Invoice date</b> — the date of the invoice.</li>
-      <li><b>Due date</b> — auto-calculated from payment terms.</li>
-      <li><b>Reference</b> — auto-generated from the document sequence.</li>
+      <li><b>Customer</b> — select the customer being invoiced. The
+          customer's NIU (if state-segment) flows through to any
+          inbound WHT certificate later linked to this invoice.</li>
+      <li><b>Invoice date</b> — the document date. Drives the period
+          line tax facts fall into.</li>
+      <li><b>Due date</b> — auto-calculated from the customer's
+          payment terms; editable.</li>
+      <li><b>Reference</b> — auto-generated from the document
+          sequence (e.g. SI-2026-0188).</li>
+      <li><b>Tax inclusive</b> — when ticked, the per-line
+          <em>amount</em> is treated as gross (incl. VAT) and the
+          system back-calculates net + tax. When unticked, the line
+          amount is net and tax is added on top. Default comes from
+          the company tax profile.</li>
     </ul>
 
-    <p><b>Line items:</b></p>
+    <h3>Line items</h3>
+    <p>Each line has: description, quantity, unit price, line tax
+    code, revenue account. The <b>line tax code</b> is the per-line
+    pointer into the company's tax-code list (e.g. VAT-19.25,
+    VAT-EXEMPT, VAT-EXPORT). On posting it produces a child
+    <em>posted tax line</em> capturing the rate, recoverable flag,
+    return box code, and base/CAC split where applicable. These
+    rows are the canonical input to the monthly VAT return draft.</p>
+
+    <h3>Posting flow</h3>
+    <ol>
+      <li>Click <b>Post</b> on a balanced draft.</li>
+      <li>Journal entry: Dr 411 (AR) / Cr 70x (revenue) / Cr 4432
+          (output VAT — from the tax code's Sales Account mapping).</li>
+      <li>Posted tax-line rows are written, one per invoice line
+          carrying a tax code.</li>
+      <li>The invoice becomes immutable; only voiding is possible.</li>
+    </ol>
+
+    <h3>Worked example — standard 19.25% VAT</h3>
+    <p>Invoice to Brasseries du Cameroun (tax-exclusive):</p>
     <ul>
-      <li>Each line has a description, quantity, unit price, tax code, and
-          revenue account.</li>
-      <li>Line totals and tax are calculated automatically.</li>
+      <li>Line 1: Cement 50kg × 100 @ 4,500 · VAT-19.25 → net
+          450,000 · tax 86,625</li>
+      <li>Line 2: Delivery 25,000 · VAT-19.25 → net 25,000 · tax
+          4,813</li>
+      <li>Subtotal 475,000 · VAT 91,438 · Total 566,438 XAF</li>
+    </ul>
+    <pre>
+  Dr 411  Brasseries du Cameroun        566,438
+    Cr 7011  Sales of goods                          450,000
+    Cr 7041  Service revenue                          25,000
+    Cr 4432  TVA collectée                            91,438
+    </pre>
+    <p>Two posted-tax-line rows feed the next VAT return: one for
+    86,625 (base 78,750 + CAC 7,875), one for 4,813.</p>
+
+    <h3>Worked example — export (zero-rated)</h3>
+    <p>Invoice to a Nigerian customer with line tax code
+    <em>VAT-EXPORT</em>:</p>
+    <ul>
+      <li>Net 5,000,000 · Tax 0 · Total 5,000,000 XAF</li>
+      <li>Posted tax line: rate 0%, exemption_kind=EXPORT, box L17.
+          Output is zero, but input VAT used to produce the exported
+          goods stays recoverable.</li>
     </ul>
 
-    <p><b>Actions:</b></p>
-    <ul>
-      <li><b>Save Draft</b> — save without posting (no GL impact).</li>
-      <li><b>Post</b> — create the GL journal entry (AR debit, Revenue
-          and Tax credits).</li>
-    </ul>
+    <h3>Permissions</h3>
+    <p><code>sales_invoices.manage</code> to draft / edit;
+    <code>sales_invoices.post</code> to post.</p>
 
-    <p><b>Tip:</b> Review all line items, taxes, and totals before posting.
-    Posted invoices cannot be edited — only voided.</p>
-
-    <p><b>Example:</b> Invoice to Brasseries du Cameroun:
-    <br/>↕ Line 1: Cement 50kg × 100 bags @ 4,500 = 450,000 XAF
-    <br/>↕ Line 2: Delivery fee = 25,000 XAF
-    <br/>↕ Subtotal: 475,000 XAF
-    <br/>↕ TVA 19.25%: 91,438 XAF
-    <br/>↕ Total: 566,438 XAF
-    <br/>On posting: Debit 411000 AR 566,438 | Credit 701000
-    Revenue 475,000 | Credit 4431 TVA 91,438.</p>
+    <p><b>Tip:</b> If a state-sector customer later issues you a WHT
+    certificate against this invoice, register it on the Withholding
+    Certificates page and link it back here. The link is what makes
+    the certificate countable on your annual DSF.</p>
     """,
 )
 
@@ -3154,42 +3427,86 @@ _register(
 _register(
     "dialog.purchase_bill",
     "Purchase Bill",
-    "Create or edit a purchase bill from a supplier.",
+    "Create or edit a purchase bill — with line tax codes, recoverable vs non-recoverable VAT routing, and DGI-compliant posting.",
     """
-    <p>Use this dialog to record a purchase bill (supplier invoice).</p>
+    <p>Use this dialog to record a supplier invoice (purchase bill).
+    Posting drives the payable balance, the expense / asset, and —
+    when the line tax code is recoverable VAT — the input VAT asset
+    that flows into the next VAT return draft.</p>
 
-    <p><b>Header fields:</b></p>
+    <h3>Header fields</h3>
     <ul>
       <li><b>Supplier</b> — the supplier issuing the bill.</li>
-      <li><b>Bill date</b> — the date on the supplier's invoice.</li>
+      <li><b>Bill date</b> — the date on the supplier's invoice;
+          drives the period the input VAT lands in.</li>
       <li><b>Due date</b> — auto-calculated from payment terms.</li>
-      <li><b>External reference</b> — the supplier's invoice number.</li>
+      <li><b>External reference</b> — the supplier's invoice number.
+          Required for DGI input-VAT recovery on audit.</li>
+      <li><b>Tax inclusive</b> — when ticked, line amounts are gross
+          (incl. VAT) and net + tax are back-calculated. Default
+          comes from the company tax profile.</li>
     </ul>
 
-    <p><b>Line items:</b></p>
+    <h3>Line items</h3>
+    <p>Each line has: description, amount, line tax code, expense /
+    asset account. The <b>line tax code</b> determines:</p>
     <ul>
-      <li>Each line has a description, amount, tax code, and expense
-          or asset account.</li>
+      <li>The tax amount (rate × net, with CAC split where
+          applicable).</li>
+      <li>Whether the input VAT is <em>recoverable</em> (debits the
+          tax-code's Purchase Account, typically 4452) or
+          <em>non-recoverable</em> (the tax amount is added to the
+          line's expense account instead).</li>
+      <li>The DGI return box (L21 recoverable, L22 exempt, L23
+          imports).</li>
     </ul>
 
-    <p><b>Actions:</b></p>
+    <h3>Posting flow</h3>
+    <ol>
+      <li>Click <b>Post</b> on a balanced draft.</li>
+      <li>Journal entry: Dr 60x (expense) / Dr 4452 (input VAT — if
+          recoverable) / Cr 401 (AP).</li>
+      <li>Posted tax-line rows are written, used by the VAT return
+          draft.</li>
+      <li>Bill becomes immutable; only voiding is possible.</li>
+    </ol>
+
+    <h3>Worked example — recoverable VAT</h3>
+    <p>Bill from Cimencam (their invoice FAC-2026-118):</p>
     <ul>
-      <li><b>Save Draft</b> — save without posting.</li>
-      <li><b>Post</b> — create the GL journal entry (Expense/Asset debit,
-          AP and Tax credits).</li>
+      <li>Line 1: Cement CEM II 50kg × 200 @ 4,200 → 840,000 ·
+          VAT-19.25 → tax 161,700 · expense 6011</li>
+      <li>Line 2: Iron rods 12mm × 50 @ 8,500 → 425,000 · VAT-19.25
+          → tax 81,813 · expense 6011</li>
+      <li>Subtotal 1,265,000 · VAT 243,513 · Total 1,508,513 XAF</li>
     </ul>
+    <pre>
+  Dr 6011  Purchases of materials       1,265,000
+  Dr 4452  TVA déductible                 243,513
+    Cr 401  Cimencam (AP)                          1,508,513
+    </pre>
+    <p>The 243,513 will reduce next month's net VAT due (DGI box
+    L21).</p>
 
-    <p><b>Tip:</b> Always enter the supplier's invoice number in the
-    external reference field for easy cross-referencing.</p>
+    <h3>Worked example — non-recoverable VAT</h3>
+    <p>Some VAT is non-recoverable by law in Cameroon (staff
+    entertainment, certain car rentals). Use a tax code with
+    <em>recoverable=False</em>. The tax amount is then expensed:</p>
+    <pre>
+  Dr 6256  Restaurant expenses (incl. VAT)  1,192,500
+    Cr 401  Restaurant (AP)                          1,192,500
+    </pre>
+    <p>No 4452 entry; nothing flows into the VAT return.</p>
 
-    <p><b>Example:</b> Bill from Cimencam (their invoice #FAC-2026-118):
-    <br/>↕ Line 1: Cement CEM II 50kg × 200 bags @ 4,200 = 840,000 XAF
-    <br/>↕ Line 2: Iron rods 12mm × 50 @ 8,500 = 425,000 XAF
-    <br/>↕ Subtotal: 1,265,000 XAF
-    <br/>↕ TVA 19.25%: 243,513 XAF
-    <br/>↕ Total: 1,508,513 XAF
-    <br/>On posting: Debit 601000 Purchases 1,265,000 | Debit 4451
-    TVA Deductible 243,513 | Credit 401000 AP 1,508,513.</p>
+    <h3>Permissions</h3>
+    <p><code>purchase_bills.manage</code> to draft / edit;
+    <code>purchase_bills.post</code> to post.</p>
+
+    <p><b>Tip:</b> If you withhold tax on the supplier payment (e.g.
+    5.5% on professional services), record an OUTBOUND WHT certificate
+    on the Withholding Certificates page and link it to this bill.
+    The link makes the certificate counted in the monthly WHT return
+    aggregation.</p>
     """,
 )
 
@@ -5920,6 +6237,289 @@ _register(
     """,
 )
 
+# ── Payroll Workbench Panes (P12.S4) ─────────────────────────────────────
+
+_register(
+    "payroll_workbench",
+    "Payroll Workbench",
+    "Overview of the payroll workbench and its navigation panes.",
+    """
+    <p>The <b>Payroll Workbench</b> is your central hub for all payroll
+    operations.  It is organised into eight panes accessible from the
+    left navigation bar:</p>
+    <ul>
+      <li><b>Dashboard</b> — period readiness, next actions, and recent activity.</li>
+      <li><b>Payroll Runs</b> — create, calculate, approve, and post pay runs.</li>
+      <li><b>People</b> — employee directory and hire wizard.</li>
+      <li><b>Compensation</b> — per-employee compensation profiles.</li>
+      <li><b>Setup</b> — settings, departments, positions, and payroll components.</li>
+      <li><b>Statutory</b> — CNPS/tax authority remittance tracking.</li>
+      <li><b>Reports</b> — payslips, payroll summaries, and statutory returns.</li>
+      <li><b>Audit</b> — audit trail for all payroll actions.</li>
+    </ul>
+    <p>All panes are company-scoped.  Select the active company before
+    navigating to a pane.</p>
+    """,
+)
+
+_register(
+    "payroll.dashboard",
+    "Payroll Dashboard",
+    "The payroll dashboard shows period status, readiness checks, and recent run activity.",
+    """
+    <p>The <b>Payroll Dashboard</b> gives you a at-a-glance view of the
+    current pay period.  It has three sections:</p>
+
+    <p><b>Period card</b> — shows the current fiscal period name, its
+    state (open / locked / closed), and the overall readiness badge
+    (Ready, Warnings, or Blocking Errors).</p>
+
+    <p><b>Next actions</b> — lists readiness-check findings that require
+    attention before the payroll run can be calculated.  Errors must be
+    resolved; warnings are advisory.  Click any item to navigate directly
+    to the problem.</p>
+
+    <p><b>Recent payroll runs</b> — shows the last few runs for the
+    company, with their period, status, and net payable amount.</p>
+
+    <p><b>First-run checklist</b> — for new companies, a checklist
+    guides you through the seven mandatory setup steps before you can
+    run payroll for the first time.  The checklist disappears once all
+    steps are complete.</p>
+    """,
+)
+
+_register(
+    "payroll.run",
+    "Payroll Runs",
+    "Create, calculate, approve, post, and void payroll runs.",
+    """
+    <p>The <b>Payroll Runs</b> pane lists every payroll run for the
+    active company.  A run covers all employees for one pay period.</p>
+
+    <p><b>Lifecycle:</b></p>
+    <ol>
+      <li><b>Draft</b> — created but not yet calculated.</li>
+      <li><b>Calculated</b> — engine has computed net pay for each employee.</li>
+      <li><b>Approved</b> — figures confirmed; no further edits allowed.</li>
+      <li><b>Posted</b> — journal entries created in the general ledger.</li>
+      <li><b>Voided</b> — reversed; all associated journal entries are cancelled.</li>
+    </ol>
+
+    <p>Click <b>New payroll run</b> to start a regular or off-cycle run.
+    Select a run and click <b>Open</b> to enter the run cockpit where you
+    calculate, review, approve, and post.</p>
+    """,
+)
+
+_register(
+    "payroll.people",
+    "Payroll People (Employee Directory)",
+    "View and manage the employee register — hire, edit, and deactivate employees.",
+    """
+    <p>The <b>People</b> pane shows all employees for the active company.
+    Each row displays the employee number, name, department, position,
+    hire date, and status.</p>
+
+    <p><b>Actions:</b></p>
+    <ul>
+      <li><b>Hire employee</b> — opens the Employee Hire wizard to
+          onboard a new person with employment and payroll-setup steps
+          in a single guided flow.</li>
+      <li><b>Edit</b> — opens the employee form to update identity,
+          employment details, or statutory identifiers.</li>
+      <li><b>Show inactive</b> — toggles display of terminated or
+          suspended employees.</li>
+    </ul>
+
+    <p><b>Tip:</b> An employee with no compensation profile or no active
+    payroll-setup record will appear with a warning badge.  Resolve these
+    before the next payroll run to avoid blocking errors.</p>
+    """,
+)
+
+_register(
+    "payroll.compensation",
+    "Compensation Profiles",
+    "Manage per-employee compensation records: basic salary, currency, and effective dates.",
+    """
+    <p>The <b>Compensation</b> pane lists all compensation records for the
+    active company.  A compensation record defines an employee's basic
+    salary, currency, and the effective date range during which it applies.</p>
+
+    <p><b>Multiple records per employee</b> are allowed and are used to
+    track salary changes over time.  The payroll engine always uses the
+    record whose effective date range covers the run period.</p>
+
+    <p>Click <b>New compensation</b> to create a record.  Use the
+    Compensation Change wizard to record a salary revision with a proper
+    audit trail.</p>
+    """,
+)
+
+_register(
+    "payroll.statutory",
+    "Statutory Remittances",
+    "Track CNPS contributions, IRPP withholdings, and other statutory obligations owed to authorities.",
+    """
+    <p>The <b>Statutory</b> pane shows all statutory remittance records
+    for the active company.  These are the amounts calculated in payroll
+    runs that must be forwarded to:</p>
+    <ul>
+      <li>The <b>CNPS</b> — social-security contributions (employer + employee).</li>
+      <li>The <b>DGI</b> — income tax (IRPP) withheld from employees.</li>
+    </ul>
+
+    <p>Each remittance record is linked to the payroll run that generated
+    it.  Mark a remittance as paid once the bank transfer has been made
+    to the authority — this clears the statutory liability in the GL.</p>
+
+    <p><b>Statutory pack</b> — if no pack is applied, a warning is shown.
+    Apply a statutory pack in <em>Setup → Statutory Pack</em> to enable
+    automatic rate calculations.</p>
+    """,
+)
+
+_register(
+    "payroll.reports",
+    "Payroll Reports",
+    "Generate payslips, payroll summaries, and statutory returns for any completed payroll run.",
+    """
+    <p>The <b>Payroll Reports</b> pane provides access to all standard
+    payroll outputs once at least one run has been calculated or posted:</p>
+    <ul>
+      <li><b>Payslips</b> — individual employee pay statements for any period.</li>
+      <li><b>Payroll summary</b> — aggregate earnings, deductions, and net
+          payable by department or for the whole company.</li>
+      <li><b>Statutory declaration</b> — a formatted CNPS or DGI submission
+          report for the selected period.</li>
+      <li><b>Bank payment list</b> — an employee-by-employee net-pay
+          transfer schedule for upload to internet banking.</li>
+    </ul>
+    <p>Select a run and a report type, then click <b>Generate</b>.
+    All reports can be previewed and exported to PDF.</p>
+    """,
+)
+
+# ── Payroll Wizards (P12.S4) ──────────────────────────────────────────────
+
+_register(
+    "wizard.employee_hire",
+    "Hire Employee Wizard",
+    "Step-by-step guide to onboarding a new employee including employment details and payroll setup.",
+    """
+    <p>The <b>Hire Employee</b> wizard walks you through creating a new
+    employee record in four steps:</p>
+    <ol>
+      <li><b>Identity</b> — employee number, name, gender, and date of birth.</li>
+      <li><b>Employment</b> — hire date, department, position, and contract type.</li>
+      <li><b>Statutory IDs</b> — tax ID (NIU) and CNPS registration number.</li>
+      <li><b>Payroll setup</b> — assign the employee to a payroll group and
+          choose their CNPS regime and risk class.</li>
+    </ol>
+    <p>The wizard does not create a compensation record automatically.
+    After hiring, go to the <em>Compensation</em> pane to add the
+    employee's salary.</p>
+    """,
+)
+
+_register(
+    "wizard.employee_payroll_setup",
+    "Employee Payroll Setup Wizard",
+    "Assign payroll group, statutory settings, and component overrides for an existing employee.",
+    """
+    <p>The <b>Employee Payroll Setup</b> wizard is used when a previously
+    hired employee needs to be linked to the payroll engine for the first
+    time, or when their payroll configuration needs to change.</p>
+
+    <p>The wizard collects:</p>
+    <ul>
+      <li><b>Payroll group</b> — determines the pay frequency and GL
+          account mappings for this employee.</li>
+      <li><b>CNPS regime</b> — private sector, agro-industrial, or
+          public enterprise regime, which sets the applicable CNPS rates.</li>
+      <li><b>Risk class</b> — occupational risk category A, B, or C
+          for CNPS accident-insurance purposes.</li>
+      <li><b>BIK mode</b> — how non-cash benefits are valued for
+          tax and CNPS purposes.</li>
+      <li><b>Component overrides</b> — individual-level adjustments to
+          standard payroll components (e.g. a transport allowance that
+          differs from the default).</li>
+    </ul>
+    """,
+)
+
+_register(
+    "wizard.compensation_change",
+    "Compensation Change Wizard",
+    "Record a salary or compensation revision with a full audit trail.",
+    """
+    <p>The <b>Compensation Change</b> wizard is the correct way to revise
+    an employee's salary.  It creates a new compensation record with an
+    effective date so historical pay calculations remain accurate.</p>
+
+    <p><b>Steps:</b></p>
+    <ol>
+      <li>Select the employee and the type of change (promotion, cost-of-living
+          adjustment, renegotiation, etc.).</li>
+      <li>Enter the new basic salary and confirm the effective date.</li>
+      <li>Review and confirm — the wizard closes the previous compensation
+          record and opens the new one on the effective date.</li>
+    </ol>
+    <p><b>Important:</b> Effective dates in the past are allowed but the
+    change will affect any <em>re-calculated</em> runs from that date onward.
+    Runs that are already posted are not retroactively affected.</p>
+    """,
+)
+
+_register(
+    "wizard.payroll_activation",
+    "Payroll Activation Wizard",
+    "Enable the payroll module for a company and configure the foundational settings.",
+    """
+    <p>The <b>Payroll Activation</b> wizard is a one-time setup flow
+    performed when enabling payroll for a new company.  It guides you
+    through:</p>
+    <ol>
+      <li><b>Pay frequency</b> — monthly, bi-weekly, or weekly pay cycles.</li>
+      <li><b>Base currency</b> — the currency used for all payroll calculations
+          and payslips.</li>
+      <li><b>Statutory identifiers</b> — the company's NIU (tax ID) and CNPS
+          employer number, required for statutory declarations.</li>
+      <li><b>GL account mappings</b> — link the payroll expense, liability,
+          and net payable accounts in the chart of accounts.</li>
+    </ol>
+    <p>After activation, use the first-run setup checklist on the Payroll
+    Dashboard to complete the remaining steps before running payroll.</p>
+    """,
+)
+
+# ── Payroll Dialogs — Remittance (P12.S4) ────────────────────────────────
+
+_register(
+    "dialog.remittance_editor",
+    "Remittance Editor",
+    "Record or update a statutory remittance payment made to CNPS or the tax authority.",
+    """
+    <p>The <b>Remittance Editor</b> records the actual payment made to a
+    statutory authority (CNPS or DGI) against an open remittance liability.</p>
+
+    <p><b>Fields:</b></p>
+    <ul>
+      <li><b>Authority</b> — the recipient (CNPS or DGI).</li>
+      <li><b>Payment date</b> — the date the bank transfer was executed.</li>
+      <li><b>Amount paid</b> — the amount remitted.  Must equal the full
+          liability unless a partial payment is authorised.</li>
+      <li><b>Reference</b> — bank reference or authority receipt number.
+          Keep this for your records; it is the proof of payment.</li>
+      <li><b>Notes</b> — optional free text (e.g. late-payment penalty
+          details).</li>
+    </ul>
+    <p>Once saved, the remittance liability is marked as paid and the
+    corresponding GL entries are updated.</p>
+    """,
+)
+
 # ── Reporting Dialogs ─────────────────────────────────────────────────────
 
 _register(
@@ -7431,3 +8031,1463 @@ _register(
     financial review document.</p>
     """,
 )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  TAXATION — PAGES
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Company Tax Profile ───────────────────────────────────────────────────
+
+_register(
+    "tax_profile",
+    "Company Tax Profile",
+    "The company's tax-compliance identity: NIU, regime, VAT liability, CIT profile, DSF form.",
+    """
+    <p>The <b>Company Tax Profile</b> is the single source of truth for
+    how Seeker Accounting handles every tax obligation, return, and
+    DSF export for the active company. Configure it before generating
+    any compliance calendar or filing any return — most taxation
+    workflows refuse to run until the profile is complete.</p>
+
+    <h3>What this page shows</h3>
+    <p>A two-column read-only field display covering five sections:
+    <b>Tax Identity</b> (NIU, taxpayer segment, regime),
+    <b>VAT</b> (liability flag, VAT-effective date),
+    <b>CIT</b> (rate profile, installment cadence),
+    <b>DSF</b> (form family, submission channel),
+    <b>Other Settings</b> (default tax-inclusive flag, fiscal-year boundary
+    overrides). A banner appears at the top when the profile has not yet
+    been configured.</p>
+
+    <h3>How to configure</h3>
+    <ol>
+      <li>Click <b>Modify</b> in the page toolbar (requires
+          <code>taxation.profile.manage</code>).</li>
+      <li>Fill in NIU, regime, segment, VAT liability, DSF form, etc.
+          (see the dialog help for field-by-field guidance).</li>
+      <li>Save. The profile is upserted (one record per company).</li>
+      <li>Cross-check on the Chart of Accounts: tax-mapping accounts
+          (output VAT, input VAT, VAT payable) must exist and be
+          marked <em>active</em>.</li>
+    </ol>
+
+    <h3>Key concepts</h3>
+    <ul>
+      <li><b>NIU</b> — <i>Numéro d'Identifiant Unique</i>, the 14-character
+          DGI taxpayer ID (e.g. <code>M020100012345A</code>). Required for
+          every Cameroon return and DSF export.</li>
+      <li><b>Regime</b> — <em>Régime du Réel</em>, <em>Régime Simplifié</em>,
+          or <em>Régime de l'Impôt Libératoire</em>. Drives which CIT and
+          VAT rules apply.</li>
+      <li><b>Taxpayer segment</b> — Large Taxpayer (CIME), Medium-sized
+          (CDIME), SME, Small Taxpayer. Affects DSF form and filing
+          channel.</li>
+      <li><b>CIT rate profile</b> — Standard 33% (incl. 10% CAC) for
+          régime du réel; minimum CIT for loss-making years; reduced
+          rates for sector exemptions.</li>
+      <li><b>DSF form</b> — annual statistical & tax declaration. Form
+          family must match the regime (Normal / Simplifié / Libératoire).</li>
+    </ul>
+
+    <h3>Worked example — Cameroon SME</h3>
+    <p>A construction company in Yaoundé under <em>Régime du Réel</em>:</p>
+    <ul>
+      <li>NIU: <code>M020100012345A</code></li>
+      <li>Regime: REGIME_REEL · Segment: SME</li>
+      <li>VAT liable: Yes, since 2024-01-01</li>
+      <li>CIT rate profile: STANDARD_33 (incl. 10% CAC)</li>
+      <li>Installment cadence: QUARTERLY</li>
+      <li>DSF form: NORMAL · Submission: ELECTRONIC</li>
+      <li>Default tax-inclusive flag on documents: <em>Off</em>
+          (line totals exclude VAT)</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <ul>
+      <li><code>taxation.profile.view</code> — see this page.</li>
+      <li><code>taxation.profile.manage</code> — open the Modify
+          dialog and save changes.</li>
+    </ul>
+
+    <p><b>Tip:</b> Profile fields drive validation in the Tax Compliance
+    workspace and the DSF readiness check. If readiness flags
+    <em>NO_TAX_PROFILE</em>, <em>MISSING_NIU</em>, or
+    <em>MISSING_DSF_FORM</em> appear, return here first.</p>
+    """,
+)
+
+# ── Tax Compliance workspace ──────────────────────────────────────────────
+
+_register(
+    "tax_compliance",
+    "Tax Compliance",
+    "The compliance calendar workspace — generate obligations, draft & file returns, settle, and pay.",
+    """
+    <p>The <b>Tax Compliance</b> workspace is where all periodic Cameroon
+    tax workflows happen: VAT, CIT installments, withholding, Patente,
+    TSR, and customs duty. The page is a single workbench with three
+    stacked tables and a ribbon of actions that change behaviour with
+    your selection.</p>
+
+    <h3>The three tables</h3>
+    <ul>
+      <li><b>Obligations</b> (top) — the compliance calendar. Each row
+          is a tax-period entry with status
+          (<em>OPEN / IN_PROGRESS / FILED / PAID / OVERDUE / CANCELLED</em>),
+          due date, and tax type. This is your worklist.</li>
+      <li><b>Returns</b> (middle) — drafted and filed returns. Selecting
+          a return loads its payments below. A FILED VAT return with
+          no journal entry is the eligibility target for <b>Settle</b>.</li>
+      <li><b>Payments</b> (bottom) — money already paid against the
+          selected return, with treasury account, date, amount, and
+          method.</li>
+    </ul>
+
+    <h3>End-to-end VAT workflow</h3>
+    <ol>
+      <li><b>Generate VAT Calendar</b> for the year — produces 12
+          monthly OPEN obligations (idempotent: re-running for the same
+          year is safe).</li>
+      <li>Pick an OPEN obligation and click <b>Draft Return</b> — the
+          system aggregates posted output and input VAT from sales
+          invoices and purchase bills for the period and writes a
+          DRAFT return with one line per VAT box (L17, L21, L22,
+          etc.).</li>
+      <li>Open the draft (double-click), review the box amounts, and
+          adjust if the DGI requires a correction.</li>
+      <li>Click <b>File Return</b> — captures filing date and OTP /
+          external reference, locks the return as FILED.</li>
+      <li>Click <b>Settle Return</b> — previews and posts the
+          settlement journal (Dr 4432 / Cr 4452 / Cr 4441 or Dr 4449
+          for credit carry-forward).</li>
+      <li>Click <b>Record Payment</b> — books the bank-side journal
+          (Dr 4441 / Cr treasury). Obligation moves to PAID once
+          fully settled.</li>
+    </ol>
+
+    <h3>Other tax types</h3>
+    <ul>
+      <li><b>CIT installments</b> — quarterly, <em>Generate CIT
+          Installments</em> creates 4 obligations per year.</li>
+      <li><b>Withholding (WHT)</b>, <b>TSR</b> — monthly calendars,
+          like VAT.</li>
+      <li><b>Patente</b> — annual, single obligation (default due
+          Feb 28).</li>
+      <li><b>Customs Duty</b> — per-declaration via <em>Customs
+          Duty</em> button. One row per declaration date / reference.</li>
+    </ul>
+    <p>For Patente / TSR / Customs the <b>Draft Return</b> button
+    opens the assessed-amount one-shot dialog instead — no
+    aggregation, you simply enter the DGI-assessed amount and file
+    immediately.</p>
+
+    <h3>Action gating</h3>
+    <p>Buttons enable / disable based on selection and permissions:</p>
+    <ul>
+      <li><b>Draft Return</b> — needs OPEN obligation +
+          <code>taxation.returns.manage</code>.</li>
+      <li><b>File Return</b> — DRAFT return +
+          <code>taxation.returns.file</code>.</li>
+      <li><b>Settle Return</b> — FILED VAT return without JE +
+          <code>taxation.returns.settle</code>.</li>
+      <li><b>Record Payment</b> — FILED return (settled for VAT) +
+          <code>taxation.payments.manage</code>.</li>
+      <li><b>Export DSF</b> — annual generator,
+          <code>taxation.dsf.export</code>.</li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>January 2026 VAT for Brasseries du Cameroun:</p>
+    <ul>
+      <li>Obligation: VAT · 2026-01-01 → 2026-01-31 · due 2026-02-15</li>
+      <li>Drafted: Output VAT 1,925,000 · Input recoverable 580,000 ·
+          Net due 1,345,000 XAF</li>
+      <li>Filed 2026-02-12 · OTP <em>OTP-2026-0142</em></li>
+      <li>Settled 2026-02-15 — JE-2026-0298 posted</li>
+      <li>Paid 2026-02-15 from BICEC operating (5121) · 1,345,000 XAF</li>
+      <li>Obligation status → PAID · Calendar entry green</li>
+    </ul>
+
+    <p><b>Tip:</b> Cross-link from the ribbon: <em>Tax Profile</em>,
+    <em>Tax Codes</em>, <em>Chart of Accounts</em>. Settling and
+    payment posting both refuse to run when the fiscal period covering
+    the date is locked.</p>
+    """,
+)
+
+# ── Tax Dashboard ─────────────────────────────────────────────────────────
+
+_register(
+    "tax_dashboard",
+    "Tax Dashboard",
+    "Read-only year-at-a-glance summary of obligations, returns, and payments by tax type.",
+    """
+    <p>The <b>Tax Dashboard</b> aggregates the entire taxation footprint
+    of the active company for a chosen fiscal year. It is the top-down
+    view that answers: <em>Where do we stand on compliance? What is
+    overdue? What is coming up?</em></p>
+
+    <h3>Layout</h3>
+    <ul>
+      <li><b>Year picker</b> (top-right) — switch the snapshot year.</li>
+      <li><b>KPI tiles</b> — eight obligation counters (<em>Open,
+          In progress, Filed, Paid, Overdue, Cancelled, Total
+          obligations, Returns filed</em>) and four money totals
+          (<em>VAT due, VAT paid, WHT certificates inbound YTD,
+          payments YTD</em>).</li>
+      <li><b>Per-tax-type table</b> — one row per tax type
+          (VAT, CIT_INSTALLMENT, WITHHOLDING, PATENTE, TSR, CUSTOMS)
+          with counts and amounts.</li>
+      <li><b>Top 10 upcoming obligations</b> — sorted by due date,
+          showing tax type, period, due date, amount, status.</li>
+    </ul>
+
+    <h3>How values are computed</h3>
+    <p>Source: <code>TaxDashboardService.get_dashboard(company_id,
+    fiscal_year)</code>. <em>OPEN</em> obligations whose due date is
+    before today are counted as <b>Overdue</b>. Returns and payments
+    are joined to their parent obligation, so each obligation contributes
+    once to either filed-amount or paid-amount totals.</p>
+
+    <h3>Worked example</h3>
+    <p>For FY-2026 mid-year (as of 2026-07-15):</p>
+    <ul>
+      <li>VAT: 12 obligations · 6 PAID · 1 FILED (June, settled but
+          unpaid) · 5 OPEN (July–Dec future)</li>
+      <li>CIT installments: 4 quarterly · 2 PAID · 1 OVERDUE (Q2 due
+          2026-07-15)</li>
+      <li>WHT: 6 of 12 months PAID · 1 overdue</li>
+      <li>VAT paid YTD: 7,420,000 XAF · WHT inbound YTD: 1,250,000 XAF</li>
+      <li>Top of upcoming list: <em>VAT July 2026 · due 2026-08-15</em></li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.dashboard.view</code>.</p>
+
+    <p><b>Tip:</b> Use the Top-10 list as a weekly close-out checklist.
+    Click any tax type's row in the per-type table to jump to the
+    Tax Compliance workspace pre-filtered.</p>
+    """,
+)
+
+# ── Tax Audit Trail ───────────────────────────────────────────────────────
+
+_register(
+    "tax_audit_trail",
+    "Tax Audit Trail",
+    "Chronological event log of every taxation action — creates, updates, files, settlements, payments.",
+    """
+    <p>The <b>Tax Audit Trail</b> is a tamper-evident, append-only event
+    log filtered to <em>module = taxation</em>. Every state-changing
+    action — creating an obligation, drafting a return, filing,
+    settling, recording a payment, voiding a withholding certificate,
+    generating a DSF export — writes one row here, with the actor,
+    timestamp, and a JSON payload of what changed.</p>
+
+    <h3>What you can filter by</h3>
+    <ul>
+      <li><b>Event type</b> — e.g. <code>TAX_OBLIGATION_GENERATED</code>,
+          <code>TAX_RETURN_DRAFTED</code>, <code>TAX_RETURN_FILED</code>,
+          <code>TAX_RETURN_SETTLED</code>, <code>TAX_PAYMENT_POSTED</code>,
+          <code>DSF_EXPORT_GENERATED</code>,
+          <code>WITHHOLDING_CERTIFICATE_VOIDED</code>.</li>
+      <li><b>Date range</b> — inclusive on both ends.</li>
+      <li><b>Pagination</b> — 200 rows per page, navigate with Next /
+          Previous.</li>
+    </ul>
+
+    <h3>Why it matters</h3>
+    <p>External auditors and the DGI may request proof of <em>when</em>
+    a return was filed and <em>by whom</em>. The taxation audit trail
+    is the canonical answer. The events are also referenced by the
+    DSF readiness check.</p>
+
+    <h3>Worked example</h3>
+    <p>Investigating why January 2026 VAT shows OVERDUE on the
+    dashboard:</p>
+    <ol>
+      <li>Filter event type = <code>TAX_RETURN_DRAFTED</code>, date range
+          2026-02-01 → 2026-02-28.</li>
+      <li>Find: drafted by <em>marie.ndongo</em> on 2026-02-10 14:23.</li>
+      <li>Filter <code>TAX_RETURN_FILED</code> for the same return
+          ID — no row.</li>
+      <li>Conclusion: drafted but never filed. Action: open Tax
+          Compliance, finish filing.</li>
+    </ol>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.audit.view</code>.</p>
+
+    <p><b>Tip:</b> Audit-trail rows are written even when the parent
+    transaction fails downstream (e.g. a JE post that ConflictErrors
+    on idempotency). Use this as your forensic trail.</p>
+    """,
+)
+
+# ── Withholding Certificates ──────────────────────────────────────────────
+
+_register(
+    "withholding_certificates",
+    "Withholding Certificates",
+    "Register of WHT certificates issued (outbound) and received (inbound) — reconciles to DGI.",
+    """
+    <p>The <b>Withholding Certificates</b> register tracks both:</p>
+    <ul>
+      <li><b>Inbound</b> certificates — given to your company by
+          state / parastatal / large-taxpayer customers when they
+          withhold tax on payments to you. These offset your CIT due
+          in the DSF.</li>
+      <li><b>Outbound</b> certificates — issued by your company when
+          you withhold tax on supplier payments (typically services,
+          rent, professional fees). These accompany your monthly WHT
+          return.</li>
+    </ul>
+
+    <h3>What this page shows</h3>
+    <p>A filterable table with: certificate number, direction, date,
+    counterparty, NIU, tax code, taxable base, tax amount, status
+    (<em>ACTIVE / VOIDED</em>), and link status (linked to a posted
+    invoice / bill or standalone).</p>
+
+    <h3>Workflow</h3>
+    <ol>
+      <li><b>Record</b> — open the dialog, choose direction, fill in
+          counterparty, base, rate, certificate reference, date.</li>
+      <li><b>Link</b> (optional) — attach the certificate to a posted
+          sales invoice (inbound) or purchase bill (outbound) to
+          improve DSF traceability.</li>
+      <li><b>Edit</b> — correct typos in references / dates while the
+          certificate is still ACTIVE.</li>
+      <li><b>Void</b> — mark a certificate as cancelled (e.g. the
+          DGI rejected it). Voiding is a soft state change; the
+          row remains visible in the register for audit.</li>
+    </ol>
+
+    <h3>Worked example — inbound</h3>
+    <p>You invoice <em>SONARA</em> 10,000,000 XAF for services. SONARA
+    pays 9,450,000 XAF and issues you a 5.5% WHT certificate for
+    550,000 XAF.</p>
+    <ul>
+      <li>Direction: INBOUND</li>
+      <li>Counterparty: SONARA · NIU <code>M020100099001Z</code></li>
+      <li>Tax code: WHT-5.5 · base 10,000,000 · tax 550,000</li>
+      <li>Certificate ref: <em>SONARA-WHT-2026-0042</em></li>
+      <li>Linked to: SI-2026-0188 (sales invoice)</li>
+    </ul>
+    <p>At year-end DSF this certificate offsets your CIT liability
+    by 550,000 XAF.</p>
+
+    <h3>Worked example — outbound</h3>
+    <p>You pay your accounting firm 2,000,000 XAF for the audit and
+    withhold 5.5% (110,000 XAF). You pay them 1,890,000 XAF and
+    remit 110,000 to DGI.</p>
+    <ul>
+      <li>Direction: OUTBOUND · Counterparty: Cabinet KPMG Cameroon</li>
+      <li>Tax code: WHT-5.5 · base 2,000,000 · tax 110,000</li>
+      <li>Certificate ref: <em>VOTRE-WHT-2026-0007</em></li>
+      <li>Linked to: PB-2026-0061 (purchase bill)</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <ul>
+      <li><code>taxation.withholding.view</code> — see the register.</li>
+      <li><code>taxation.withholding.manage</code> — record / edit /
+          void / link.</li>
+    </ul>
+
+    <p><b>Tip:</b> Inbound certificates are critical for cash flow —
+    chase missing certificates from public-sector customers monthly.
+    The DSF readiness check warns if active inbound balances appear
+    suspiciously low against revenue from withholding-segment
+    customers.</p>
+    """,
+)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  TAXATION — DIALOGS
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ── Company Tax Profile dialog ────────────────────────────────────────────
+
+_register(
+    "dialog.company_tax_profile",
+    "Edit Tax Profile",
+    "Configure the company's tax-compliance identity in one place.",
+    """
+    <p>Use this dialog to create or update the company's tax profile.
+    The profile is a single record per company; saving overwrites the
+    previous version (the audit trail captures the change).</p>
+
+    <h3>Section: Tax Identity</h3>
+    <ul>
+      <li><b>NIU (Numéro d'Identifiant Unique)</b> — the 14-character
+          DGI taxpayer ID, e.g. <code>M020100012345A</code>. Required
+          for every return and DSF export. Use the exact form printed
+          on your DGI registration certificate (<em>Attestation
+          d'Immatriculation</em>).</li>
+      <li><b>Taxpayer segment</b> — pick the segment from your DGI
+          registration: <em>Large (CIME)</em>,
+          <em>Medium (CDIME)</em>, <em>SME</em>,
+          <em>Small Taxpayer (CDI)</em>. Drives DSF form family
+          eligibility.</li>
+      <li><b>Regime</b> — <em>Régime du Réel</em> (full VAT + CIT),
+          <em>Régime Simplifié</em> (VAT-light), or <em>Régime de
+          l'Impôt Libératoire</em> (lump sum, no VAT, simplified
+          DSF).</li>
+    </ul>
+
+    <h3>Section: VAT</h3>
+    <ul>
+      <li><b>VAT liable</b> — tick if your company collects and
+          remits VAT. Auto-required for Régime du Réel.</li>
+      <li><b>VAT effective date</b> — the date your VAT registration
+          took effect (DGI letter date). Only enabled when VAT liable
+          is ticked. Sales and purchases dated <em>before</em> this
+          date should not carry VAT.</li>
+    </ul>
+
+    <h3>Section: CIT (Corporate Income Tax)</h3>
+    <ul>
+      <li><b>CIT rate profile</b> — <em>STANDARD_33</em> (30% base +
+          10% CAC = 33% effective), <em>MINIMUM_CIT</em> (used in
+          loss years; computed on turnover), or sector-specific
+          reduced rates.</li>
+      <li><b>Installment cadence</b> — <em>QUARTERLY</em> (default
+          for Réel) or <em>NONE</em> for taxpayers paying CIT only
+          at year-end.</li>
+    </ul>
+
+    <h3>Section: DSF</h3>
+    <ul>
+      <li><b>DSF form</b> — <em>NORMAL</em> (full P&L + balance
+          sheet schedules), <em>SIMPLIFIE</em> (reduced schedules),
+          <em>LIBERATOIRE</em> (single-page lump-sum). Must match
+          regime.</li>
+      <li><b>DSF submission</b> — <em>ELECTRONIC</em> (DGI portal),
+          <em>PAPER</em>, or <em>HYBRID</em>.</li>
+    </ul>
+
+    <h3>Section: Other Settings</h3>
+    <ul>
+      <li><b>Default tax-inclusive</b> — when ticked, new sales and
+          purchase documents default to tax-inclusive line totals
+          (gross). This is overridable per document.</li>
+    </ul>
+
+    <h3>Worked example — Régime du Réel SME</h3>
+    <p>A medium-sized construction company:</p>
+    <ul>
+      <li>NIU <code>M020100012345A</code> · Segment SME · Regime
+          REGIME_REEL</li>
+      <li>VAT liable · effective 2024-01-01</li>
+      <li>CIT STANDARD_33 · QUARTERLY installments</li>
+      <li>DSF NORMAL · ELECTRONIC submission</li>
+      <li>Default tax-inclusive: <em>Off</em></li>
+    </ul>
+
+    <h3>Validation</h3>
+    <ul>
+      <li>NIU must be 14 chars, format <code>M0[0-9]{11}[A-Z]</code>.</li>
+      <li>VAT effective date is required when VAT liable.</li>
+      <li>DSF form must be compatible with the regime —
+          <em>NORMAL</em> with <em>LIBERATOIRE</em> regime is
+          rejected.</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.profile.manage</code>.</p>
+
+    <p><b>Tip:</b> The profile is also seeded with sensible defaults
+    when a new company is created via the Onboarding wizard. Review
+    here once you receive your DGI registration letter and update
+    NIU + VAT effective date precisely.</p>
+    """,
+)
+
+# ── VAT Calendar Generator ────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.generate_vat_obligations",
+    "Generate Monthly VAT Obligations",
+    "Create the 12 monthly VAT obligations for a fiscal year in one click.",
+    """
+    <p>Use this dialog to generate your <b>VAT compliance calendar</b>
+    — 12 OPEN obligations, one per calendar month — for a chosen
+    fiscal year. Each obligation has a period (1st–end of month) and
+    a due date computed as <em>day-of-next-month</em>.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Year</b> — the fiscal year (2000–2100). Most users
+          generate the upcoming calendar year right after closing
+          the previous year.</li>
+      <li><b>Due day of next month</b> — DGI standard is
+          <b>15</b>. Use 14 only if the 15th falls on a weekend
+          and your remittance bank requires earlier value-dating.</li>
+    </ul>
+
+    <h3>What gets created</h3>
+    <p>For Year=2026, Due day=15:</p>
+    <ul>
+      <li>January 2026 obligation: period <code>2026-01-01 →
+          2026-01-31</code>, due <code>2026-02-15</code></li>
+      <li>February 2026: period 2026-02-01 → 2026-02-28, due 2026-03-15</li>
+      <li>... (10 more rows) ...</li>
+      <li>December 2026: period 2026-12-01 → 2026-12-31, due
+          <b>2027-01-15</b> (next year's first due date)</li>
+    </ul>
+
+    <h3>Idempotency</h3>
+    <p>Re-running for the same year is safe — already-existing
+    obligations (matched on
+    <code>company_id + tax_type + period_start + period_end</code>)
+    are not duplicated. The result reports <em>"X created, Y already
+    existed"</em>.</p>
+
+    <h3>Validation</h3>
+    <ul>
+      <li>Year must be 2000–2100.</li>
+      <li>Due day must be 1–28 (avoids month-end edge cases).</li>
+      <li>The company must be VAT-liable in its tax profile.</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.obligations.manage</code>.</p>
+
+    <p><b>Tip:</b> Generate the year's calendar in early January
+    so that the OPEN row for January is visible from day one — your
+    accountant can start drafting as soon as the closing journals
+    for the month are posted.</p>
+    """,
+)
+
+# ── CIT Installments Generator ────────────────────────────────────────────
+
+_register(
+    "dialog.tax.generate_cit_installments",
+    "Generate Quarterly CIT Installments",
+    "Create the four quarterly CIT installment obligations for a fiscal year.",
+    """
+    <p>This dialog generates the <b>four quarterly CIT installments</b>
+    for the chosen year. CIT (<em>Impôt sur les Sociétés</em>) under
+    Régime du Réel is paid in four advance installments based on the
+    prior year's tax, then trued-up on the annual return.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Year</b> — the fiscal year.</li>
+      <li><b>Due day of next month</b> — DGI standard is <b>15</b>
+          (i.e. Q1 due Apr 15, Q2 due Jul 15, etc.).</li>
+    </ul>
+
+    <h3>What gets created</h3>
+    <p>For Year=2026, Due day=15:</p>
+    <ul>
+      <li>Q1: period <code>2026-01-01 → 2026-03-31</code>, due
+          <code>2026-04-15</code></li>
+      <li>Q2: period 2026-04-01 → 2026-06-30, due 2026-07-15</li>
+      <li>Q3: period 2026-07-01 → 2026-09-30, due 2026-10-15</li>
+      <li>Q4: period 2026-10-01 → 2026-12-31, due <b>2027-01-15</b></li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>Prior-year CIT (FY2025) was 4,000,000 XAF. Each quarterly
+    installment for FY2026 is therefore 1,000,000 XAF (1/4 of prior
+    CIT). When filing each quarter, enter 1,000,000 as the assessed
+    amount on the one-shot file dialog — that books the obligation
+    as filed and ready for payment.</p>
+
+    <h3>Idempotency</h3>
+    <p>Re-running for the same year does not duplicate; existing
+    quarter rows are reused.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.obligations.manage</code>.</p>
+
+    <p><b>Tip:</b> CIT installments are <em>assessed-amount</em>
+    returns — there is no aggregation step. Use <b>Draft Return</b>
+    on a CIT obligation to open the one-shot file dialog directly.</p>
+    """,
+)
+
+# ── WHT Calendar Generator ────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.generate_withholding_obligations",
+    "Generate Monthly Withholding Obligations",
+    "Create the 12 monthly withholding-tax obligations for a fiscal year.",
+    """
+    <p>This dialog generates 12 monthly <b>withholding tax (WHT)</b>
+    obligations for a year. Withholding applies when your company
+    pays for services from suppliers in scope — typically professional
+    fees, rent, sub-contractor work, and royalties.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Year</b> — fiscal year (2000–2100).</li>
+      <li><b>Due day of next month</b> — DGI standard is <b>15</b>.</li>
+    </ul>
+
+    <h3>What gets created</h3>
+    <p>One OPEN obligation per month. Unlike VAT, the obligation amount
+    is built up from the WHT certificates you issued during the
+    period — not from posted-tax-line aggregation.</p>
+
+    <h3>Workflow at month-end</h3>
+    <ol>
+      <li>List all OUTBOUND WHT certificates dated in the month.</li>
+      <li>Sum the tax amounts.</li>
+      <li>On the WHT obligation, click <b>Draft Return</b> → the
+          assessed-amount dialog opens; enter the total.</li>
+      <li>File and pay through the standard flow.</li>
+    </ol>
+
+    <h3>Worked example</h3>
+    <p>March 2026 outbound WHT certificates: 4 certificates totalling
+    285,000 XAF. Obligation period 2026-03-01..31, due 2026-04-15.
+    File 285,000 XAF on April 10. Pay 285,000 XAF from BICEC
+    operating on April 14.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.obligations.manage</code>.</p>
+
+    <p><b>Tip:</b> Use the Withholding Certificates page filtered to
+    OUTBOUND + the period to reconcile against the assessed amount.</p>
+    """,
+)
+
+# ── Patente Generator ─────────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.generate_patente_obligation",
+    "Generate Annual Patente Obligation",
+    "Create the single annual Patente (business licence) obligation.",
+    """
+    <p>The <b>Patente</b> is an annual business-licence tax owed by
+    every company operating in Cameroon. Unlike VAT or CIT, it is a
+    single yearly obligation — this dialog creates that one row.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Year</b> — fiscal year.</li>
+      <li><b>Due month</b> — typically 2 (February).</li>
+      <li><b>Due day</b> — typically 28. The dialog validates the
+          day is within the chosen month.</li>
+    </ul>
+
+    <h3>What gets created</h3>
+    <p>For Year=2026, Due month=2, Due day=28:</p>
+    <ul>
+      <li>Patente · period <code>2026-01-01 → 2026-12-31</code> ·
+          due <code>2026-02-28</code></li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>A construction company in Yaoundé under Régime du Réel pays
+    Patente of approximately 0.159% of the prior-year turnover, with
+    a minimum determined by activity class. Prior-year turnover
+    250,000,000 XAF → Patente ≈ 397,500 XAF. On the obligation,
+    click <b>Draft Return</b>, enter 397,500 as the assessed amount,
+    file, and pay through the standard flow. The payment posts
+    Dr 6412 (Patente expense) / Cr treasury.</p>
+
+    <h3>Idempotency</h3>
+    <p>Re-running for the same year is a no-op if an obligation
+    already exists.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.obligations.manage</code>.</p>
+
+    <p><b>Tip:</b> Generate the Patente obligation in early January
+    so that the OPEN row prompts your accountant to file before the
+    statutory Feb 28 deadline (penalties apply for late Patente).</p>
+    """,
+)
+
+# ── TSR Calendar Generator ────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.generate_tsr_obligations",
+    "Generate Monthly TSR Obligations",
+    "Create the 12 monthly TSR (Specific Service Tax) obligations for a fiscal year.",
+    """
+    <p>The <b>TSR</b> (<em>Taxe Spéciale sur les Revenus</em>, also
+    known as Special Service Tax) is a withholding-style levy on
+    payments made to non-resident providers for services rendered in
+    Cameroon — typically intra-group management fees, royalties,
+    technical assistance.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Year</b> — fiscal year.</li>
+      <li><b>Due day of next month</b> — DGI standard is <b>15</b>.</li>
+    </ul>
+
+    <h3>What gets created</h3>
+    <p>12 monthly OPEN obligations in line with the VAT calendar.</p>
+
+    <h3>Worked example</h3>
+    <p>Your company pays a French parent 50,000 EUR (~32,800,000 XAF)
+    in Q1 2026 for technical assistance. Standard TSR rate is 15%
+    (treaty may reduce). TSR due Q1 2026 ≈ 4,920,000 XAF, payable
+    in three monthly tranches. The payment posts Dr 4478 (TSR
+    payable) on settlement and Cr treasury at payment.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.obligations.manage</code>.</p>
+
+    <p><b>Tip:</b> Many companies have zero TSR most months. Generate
+    the calendar anyway — the OPEN row stays empty / cancelled and
+    documents the nil position.</p>
+    """,
+)
+
+# ── Customs Duty Obligation ───────────────────────────────────────────────
+
+_register(
+    "dialog.tax.record_customs_duty",
+    "Record Customs Duty Obligation",
+    "Create a single per-declaration customs duty obligation.",
+    """
+    <p>Customs duty is paid <b>per import declaration</b> — there is
+    no monthly or annual cadence. Use this dialog to register one
+    obligation per <em>Bordereau de Liquidation</em> (BL) issued by
+    customs.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Declaration date</b> — the date stamped by customs on
+          the BL. Becomes both the period start and period end.</li>
+      <li><b>Due date</b> — the payment due date on the BL (typically
+          declaration date + 5 days).</li>
+      <li><b>Reference</b> — the BL number, e.g.
+          <em>BL-DOUALA-2026-001234</em>. Stored in the obligation
+          notes for traceability.</li>
+      <li><b>Notes</b> — free text (HS code summary, agent name,
+          etc.).</li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>Importing 200 bags of cement from Nigeria. BL issued
+    2026-04-12, due 2026-04-17, reference
+    <em>BL-DOUALA-2026-001234</em>. Customs assessed: 1,250,000 XAF.</p>
+    <ol>
+      <li>Record obligation: declaration 2026-04-12, due 2026-04-17,
+          reference as above.</li>
+      <li>Click <b>Draft Return</b> → enter 1,250,000 → file.</li>
+      <li>Click <b>Record Payment</b> → 1,250,000 from treasury.
+          Posting: Dr 6468 Customs expense / Cr treasury.</li>
+    </ol>
+
+    <h3>Validation</h3>
+    <ul>
+      <li>Cannot register two customs obligations with the same
+          declaration date — vary the date or cancel the existing
+          row first (raises ConflictError).</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.obligations.manage</code>.</p>
+
+    <p><b>Tip:</b> Customs duty hits expense (6468) directly because
+    it is non-recoverable. The customs <em>VAT</em> portion of the
+    same BL — if invoiced separately — should go through a normal
+    purchase bill with a recoverable VAT tax code.</p>
+    """,
+)
+
+# ── File VAT Return ───────────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.file_return",
+    "File Tax Return",
+    "Lock the selected DRAFT VAT return as FILED with date, OTP, and external reference.",
+    """
+    <p>This dialog files a <b>DRAFT VAT return</b> with the DGI. Filing
+    is the irreversible commit step — the return cannot be edited
+    after this point. Use it once you have submitted via the DGI
+    e-filing portal and have an OTP / acknowledgment number.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Filing date</b> — the date the return was submitted to
+          DGI. Defaults to today. Must be on or after the period end
+          date.</li>
+      <li><b>OTP / external reference</b> — the DGI portal
+          acknowledgment number, paper-receipt stamp number, or
+          treasury order number. Highly recommended for audit.</li>
+      <li><b>Notes</b> — internal notes (e.g. who submitted, any
+          DGI-flagged anomalies).</li>
+    </ul>
+
+    <h3>What happens on submit</h3>
+    <ol>
+      <li>Return status moves <em>DRAFT → FILED</em>.</li>
+      <li><code>filed_at</code> is stamped (server timestamp).</li>
+      <li>Audit event <code>TAX_RETURN_FILED</code> is recorded.</li>
+      <li>Parent obligation status moves to FILED.</li>
+      <li>The <b>Settle Return</b> button enables (for VAT only).</li>
+    </ol>
+
+    <h3>Worked example</h3>
+    <p>January 2026 VAT return drafted on 2026-02-10 with output
+    1,925,000 / input recoverable 580,000 / net due 1,345,000:</p>
+    <ul>
+      <li>Filing date: 2026-02-12</li>
+      <li>OTP: <em>OTP-DGI-2026-014278</em></li>
+      <li>Notes: <em>Filed via DGI portal · accountant Marie Ndongo</em></li>
+    </ul>
+    <p>After submit, the return is locked. Any correction requires
+    an <em>amended return</em> (creating a follow-up DRAFT in AMENDED
+    state).</p>
+
+    <h3>Validation</h3>
+    <ul>
+      <li>Filing date must not precede the period end.</li>
+      <li>Filing date cannot be in a locked fiscal period.</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.returns.file</code>.</p>
+
+    <p><b>Tip:</b> Always paste the DGI OTP into the reference field —
+    it is the single fact most often requested in an audit.</p>
+    """,
+)
+
+# ── File Assessed Tax Return (one-shot) ───────────────────────────────────
+
+_register(
+    "dialog.tax.file_assessed_return",
+    "File Assessed Tax Return",
+    "One-shot file for assessed-amount tax types (Patente, TSR, CIT, Customs).",
+    """
+    <p>This dialog combines <b>Draft + File</b> for tax types where
+    there is no aggregation — Patente, TSR, CIT installment, and
+    Customs duty. You enter the DGI-assessed amount directly; the
+    system creates the return already in FILED state.</p>
+
+    <h3>When to use this</h3>
+    <p>The Tax Compliance page automatically opens this dialog when
+    you click <b>Draft Return</b> on an obligation whose tax type is
+    in the assessed family. For VAT, the standard inline-aggregation
+    draft path is used instead.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Assessed amount</b> — the total tax due as determined
+          by DGI assessment, by your prior-year multiplier (CIT), or
+          by the customs BL.</li>
+      <li><b>Filing date</b> — defaults to today. Must be on or after
+          the obligation period end.</li>
+      <li><b>OTP / external reference</b> — DGI ack number, BL
+          reference, treasury order.</li>
+      <li><b>Notes</b> — internal notes.</li>
+    </ul>
+
+    <h3>What happens on submit</h3>
+    <ol>
+      <li>A new return is created with <code>status = FILED</code>
+          (no DRAFT intermediate).</li>
+      <li>Parent obligation moves to FILED.</li>
+      <li>Audit event <code>TAX_RETURN_ASSESSED_AND_FILED</code>
+          recorded.</li>
+      <li><b>Record Payment</b> button enables.</li>
+    </ol>
+
+    <h3>Worked example — Patente FY2026</h3>
+    <ul>
+      <li>Obligation: Patente 2026 · period 2026-01-01 → 2026-12-31
+          · due 2026-02-28</li>
+      <li>Assessed amount: 397,500 XAF (0.159% of 2025 turnover
+          250M)</li>
+      <li>Filing date: 2026-02-25 · OTP <em>PAT-2026-Y-04421</em></li>
+    </ul>
+    <p>On payment: Dr 6412 (Patente expense) 397,500 / Cr 5121
+    BICEC operating 397,500.</p>
+
+    <h3>Validation</h3>
+    <ul>
+      <li>Amount must be > 0.</li>
+      <li>Obligation must be OPEN (not already filed / cancelled /
+          paid).</li>
+      <li>Tax type must be in the assessed family — VAT is
+          rejected here.</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.returns.manage</code> + <code>taxation.returns.file</code>.</p>
+
+    <p><b>Tip:</b> Keep DGI assessment letters / customs BLs scanned
+    and named after the OTP — pasting the OTP into the reference field
+    becomes the bridge between your books and the source document.</p>
+    """,
+)
+
+# ── Settle VAT Return ─────────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.settle_return",
+    "Settle VAT Return",
+    "Preview and post the settlement journal entry that clears VAT control accounts.",
+    """
+    <p>The <b>VAT Settlement</b> step posts the journal entry that
+    moves the period's net VAT position out of the input/output VAT
+    control accounts and into the <em>VAT payable</em> (or <em>VAT
+    credit carry-forward</em>) account. It is the bridge between
+    "VAT activity is recorded" and "VAT is owed and ready to pay".</p>
+
+    <h3>When to settle</h3>
+    <p>Only available for a <em>FILED VAT return</em> that has no
+    journal entry yet. CIT installments, Patente, TSR, WHT, Customs
+    do not need a settlement step (their payment flow posts directly
+    to the relevant payable / expense account).</p>
+
+    <h3>What this dialog shows</h3>
+    <ul>
+      <li><b>Settlement date</b> — defaults to the return filing date.
+          Must fall in an open fiscal period. Changing the date
+          re-runs the preview.</li>
+      <li><b>Totals row</b> — Output VAT, Input VAT recoverable,
+          Net payable, Net credit c/f.</li>
+      <li><b>Projected JE table</b> — line-by-line preview (account,
+          description, debit, credit) of what will be posted.</li>
+      <li><b>Blocking issues list</b> (red) — if non-empty, the
+          <em>Post Settlement</em> button is hidden. Common issues:
+          missing chart account 4441 or 4449, missing tax-code
+          mappings, fiscal period locked.</li>
+    </ul>
+
+    <h3>The settlement formula</h3>
+    <p><code>net = output_vat − recoverable_input_vat</code></p>
+    <ul>
+      <li>If net > 0 → Dr 4432 / Cr 4452 / Cr 4441 (VAT payable)</li>
+      <li>If net &lt; 0 → Dr 4432 / Dr 4449 (credit c/f) / Cr 4452</li>
+      <li>If net = 0 → Dr 4432 / Cr 4452 (no plug line)</li>
+    </ul>
+    <p>Non-recoverable input VAT (purchases where the tax code has
+    <code>is_recoverable=False</code>) is never aggregated here — it
+    was already expensed at bill posting.</p>
+
+    <h3>Worked example — net payable</h3>
+    <p>January 2026 VAT return:</p>
+    <ul>
+      <li>Output VAT (Box L17): 1,925,000 XAF</li>
+      <li>Input VAT recoverable (Box L21): 580,000 XAF</li>
+      <li>Net VAT due: 1,345,000 XAF (payable)</li>
+    </ul>
+    <p>Settlement JE on 2026-02-15:</p>
+    <pre>
+  Dr 4432  Output VAT                         1,925,000
+    Cr 4452  Input VAT recoverable                       580,000
+    Cr 4441  VAT payable                               1,345,000
+    </pre>
+
+    <h3>Worked example — credit carry-forward</h3>
+    <p>If input recoverable were 2,400,000 against output 1,925,000:</p>
+    <pre>
+  Dr 4432  Output VAT                         1,925,000
+  Dr 4449  VAT credit carry-forward             475,000
+    Cr 4452  Input VAT recoverable                     2,400,000
+    </pre>
+    <p>The 475,000 credit is then available to offset next month's
+    output VAT.</p>
+
+    <h3>Validation / blocking issues</h3>
+    <ul>
+      <li><em>NO_VAT_PAYABLE_ACCOUNT</em> — chart of accounts is
+          missing the 4441 anchor.</li>
+      <li><em>NO_VAT_CREDIT_CF_ACCOUNT</em> — chart is missing 4449
+          (only blocks if net is negative).</li>
+      <li><em>UNMAPPED_TAX_CODE</em> — a tax code used in the period
+          has no account mapping.</li>
+      <li><em>PERIOD_LOCKED</em> — the fiscal period covering the
+          settlement date is locked. Choose a date in an open period
+          or unlock the period.</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.returns.settle</code>.</p>
+
+    <p><b>Tip:</b> Settlement is idempotent — a return that already
+    has a journal entry rejects a second settlement attempt with
+    ConflictError. To re-settle, void the existing JE first (rare).</p>
+    """,
+)
+
+# ── Record Tax Payment ────────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.record_payment",
+    "Record Tax Payment",
+    "Record cash paid against a filed return and post the bank-side journal entry.",
+    """
+    <p>This dialog records a payment against a <em>FILED</em> tax
+    return and (when applicable) posts the <b>bank-side journal
+    entry</b> that debits the relevant tax-payable account and
+    credits your treasury account.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Payment date</b> — when the money left the bank.
+          Must fall in an open fiscal period.</li>
+      <li><b>Amount</b> — XAF amount paid. Must be > 0 and ≤ the
+          amount still due.</li>
+      <li><b>Treasury account</b> — required for VAT and assessed
+          tax types (Patente, TSR, Customs); the bank or cash
+          account funding the payment. Must allow manual posting and
+          not be a control account.</li>
+      <li><b>Payment method</b> — Bank transfer, Cheque, Mobile
+          money, Treasury order, Cash.</li>
+      <li><b>Reference</b> — bank transfer ref, cheque number, MoMo
+          transaction ID, treasury order number. Strongly recommended
+          for reconciliation.</li>
+    </ul>
+
+    <h3>Posting behaviour by tax type</h3>
+    <ul>
+      <li><b>VAT</b> — return must be <em>settled</em> first
+          (have a JE). Posts: <code>Dr 4441 (VAT payable) / Cr
+          treasury</code>.</li>
+      <li><b>Patente</b> — Posts: <code>Dr 6412 / Cr treasury</code>
+          (expense direct).</li>
+      <li><b>TSR</b> — Posts: <code>Dr 4478 (TSR payable) / Cr
+          treasury</code>.</li>
+      <li><b>Customs</b> — Posts: <code>Dr 6468 / Cr treasury</code>
+          (expense direct).</li>
+      <li><b>WHT, CIT installment</b> — record-only (no JE) unless
+          treasury account supplied; if supplied, posts to the
+          relevant payable account.</li>
+    </ul>
+
+    <h3>Worked example — VAT</h3>
+    <p>January 2026 VAT settled with 1,345,000 XAF payable. Pay
+    from BICEC operating (5121) on 2026-02-14 by bank transfer:</p>
+    <ul>
+      <li>Treasury: 5121 BICEC Operating</li>
+      <li>Method: Bank transfer · Ref <em>BCEAO-VAT-2026-01-12872</em></li>
+      <li>Amount: 1,345,000 XAF</li>
+    </ul>
+    <p>Posting:</p>
+    <pre>
+  Dr 4441  VAT payable                  1,345,000
+    Cr 5121  BICEC Operating                       1,345,000
+    </pre>
+    <p>Obligation status moves to PAID. The dashboard updates.</p>
+
+    <h3>Worked example — Patente</h3>
+    <p>FY2026 Patente filed at 397,500 XAF. Pay 397,500 from BICEC
+    on 2026-02-25:</p>
+    <pre>
+  Dr 6412  Patente expense                397,500
+    Cr 5121  BICEC Operating                         397,500
+    </pre>
+
+    <h3>Validation</h3>
+    <ul>
+      <li>Treasury required for VAT + assessed types.</li>
+      <li>Treasury account must be active and allow manual posting.</li>
+      <li>VAT return must already be settled (journal_entry_id NOT
+          NULL on the return).</li>
+      <li>Fiscal period covering payment date must be OPEN.</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.payments.manage</code>.</p>
+
+    <p><b>Tip:</b> Partial payments are allowed. Record one payment
+    per actual bank transaction, with the bank reference, so that
+    your bank reconciliation finds an exact match.</p>
+    """,
+)
+
+# ── DSF Export ────────────────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.dsf_export",
+    "Export DSF",
+    "Generate the annual DSF (Déclaration Statistique et Fiscale) Excel workbook.",
+    """
+    <p>The <b>DSF</b> (<em>Déclaration Statistique et Fiscale</em>)
+    is the annual tax & statistical return that every formal-sector
+    Cameroon company must file. This dialog runs a readiness check
+    and generates the multi-sheet Excel workbook that maps to the
+    DGI form family configured in the company tax profile.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Fiscal year</b> — the year being declared (typically
+          the prior year). Range 2000–2100.</li>
+      <li><b>Output path</b> — the .xlsx destination. Parent
+          directories are created as needed.</li>
+    </ul>
+
+    <h3>Readiness check (first stage)</h3>
+    <p>Before writing the workbook, the service runs a readiness
+    check that surfaces issues you should fix:</p>
+    <ul>
+      <li><em>NO_TAX_PROFILE</em> — no profile configured.</li>
+      <li><em>MISSING_NIU</em> — profile NIU is empty.</li>
+      <li><em>MISSING_DSF_FORM</em> — profile DSF form is empty.</li>
+      <li><em>MISSING_REGIME</em> — regime missing.</li>
+      <li><em>INCOMPLETE_VAT_OBLIGATIONS</em> — fewer than 12 monthly
+          VAT rows.</li>
+      <li><em>UNFILED_RETURNS</em> — at least one VAT obligation
+          isn't FILED yet.</li>
+    </ul>
+    <p>The workbook is still written if issues exist (with warnings
+    in the readiness sheet) — you decide whether to ship or fix
+    first.</p>
+
+    <h3>Sheets in the workbook</h3>
+    <ul>
+      <li><b>Company Profile</b> — header card with NIU, regime,
+          period.</li>
+      <li><b>VAT Summary</b> — 12 monthly totals.</li>
+      <li><b>VAT Detail</b> — per-document line tax rows.</li>
+      <li><b>Payments</b> — all tax payments YTD.</li>
+      <li><b>Income Statement</b> — full P&L (T25 expansion).</li>
+      <li><b>Balance Sheet</b> — full BS with asset / liab+equity
+          sides (T25 expansion).</li>
+      <li><b>Form Family Fiches</b> — the DGI-required form-specific
+          sheets (Normal / Simplifié / Libératoire).</li>
+      <li><b>Readiness</b> — issues list (last sheet).</li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>For FY2025:</p>
+    <ul>
+      <li>Year: 2025</li>
+      <li>Output:
+          <code>~/Documents/DSF-2025-MyCompany.xlsx</code></li>
+    </ul>
+    <p>Result: 8 sheets written; readiness reports
+    <em>UNFILED_RETURNS</em> for December 2025 (still in DRAFT).
+    Recommendation: file Dec 2025 VAT before submitting DSF.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.dsf.export</code>.</p>
+
+    <p><b>Tip:</b> DSF is due by <em>March 15</em> of the following
+    year (Régime du Réel). Run the readiness check in early February
+    to give yourself time to close any unfiled returns.</p>
+    """,
+)
+
+# ── Export Tax Return PDF ─────────────────────────────────────────────────
+
+_register(
+    "dialog.tax.export_return_pdf",
+    "Export Tax Return PDF",
+    "Render the selected tax return as a printable PDF document.",
+    """
+    <p>This dialog exports the selected tax return — VAT box-level
+    breakdown, totals, filing references — to a printable PDF.
+    Useful for sharing with the tax adviser, archiving alongside the
+    DGI submission proof, or attaching to board reporting.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Output path</b> — the .pdf destination. The dialog
+          auto-suggests
+          <code>~/Documents/tax_return_&lt;TYPE&gt;_&lt;START&gt;_&lt;END&gt;.pdf</code>
+          and appends the .pdf extension if missing.</li>
+    </ul>
+
+    <h3>What's in the PDF</h3>
+    <ul>
+      <li>Company header — name, NIU, address.</li>
+      <li>Return identity — tax type, period, return number, status.</li>
+      <li>Box-level breakdown — one row per
+          <code>tax_return_lines</code> entry (e.g. L17, L21, L22,
+          NET_DUE).</li>
+      <li>Totals — output, input, net.</li>
+      <li>Filing references — filed_at, OTP, settlement JE
+          number.</li>
+      <li>Notes (if any).</li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>VAT return for January 2026, output 1,925,000 / input 580,000
+    / net 1,345,000, filed 2026-02-12 with OTP
+    <em>OTP-DGI-2026-014278</em>, settled by JE-2026-0298. Save to
+    <code>~/Documents/tax_return_VAT_2026-01-01_2026-01-31.pdf</code>.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.returns.export_pdf</code>.</p>
+
+    <p><b>Tip:</b> Name the file with the OTP in the filename
+    (rename after export) — searching for the OTP later instantly
+    locates the PDF.</p>
+    """,
+)
+
+# ── Tax Return Detail (DGI VAT-form layout) ───────────────────────────────
+
+_register(
+    "taxation.return_detail",
+    "Tax Return Detail",
+    "Read-only view of the selected tax return in DGI VAT-form layout.",
+    """
+    <p>The <b>Tax Return Detail</b> dialog shows the selected return
+    rendered to look like the DGI VAT form — header band with company
+    NIU and period, then box-by-box amounts grouped under their
+    statutory headings, then totals and signature/OTP line.</p>
+
+    <h3>Sections</h3>
+    <ul>
+      <li><b>Identification</b> — company NIU, period, regime, return
+          number, status.</li>
+      <li><b>Operations imposables</b> — taxable sales boxes (L17 =
+          taxable sales, L18 = taxable base × 19.25%, etc.).</li>
+      <li><b>TVA déductible</b> — input VAT boxes (L21 = recoverable,
+          L22 = exempt / out-of-scope).</li>
+      <li><b>Net VAT due / credit carry-forward</b> — bottom totals.</li>
+      <li><b>Filing block</b> — filed_at, OTP, settlement reference,
+          payments to date.</li>
+    </ul>
+
+    <h3>How to use this view</h3>
+    <ol>
+      <li>Open from the Returns table double-click, or via
+          <b>View Return</b> in the ribbon.</li>
+      <li>Cross-check each box against the DGI portal copy before
+          filing.</li>
+      <li>If a discrepancy is found and the return is still DRAFT,
+          go back to the Tax Compliance workspace and edit the
+          line. If FILED, you must amend.</li>
+    </ol>
+
+    <h3>Worked example</h3>
+    <p>January 2026 VAT return:</p>
+    <ul>
+      <li>L17 — Taxable sales: 10,000,000 XAF</li>
+      <li>L18 — Output VAT (19.25%): 1,925,000 XAF</li>
+      <li>L21 — Input VAT recoverable: 580,000 XAF</li>
+      <li>L22 — Exempt / out-of-scope: 0</li>
+      <li>NET_DUE: 1,345,000 XAF (payable)</li>
+    </ul>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.returns.view</code>.</p>
+
+    <p><b>Tip:</b> The DGI portal layout changes occasionally. If a
+    box code is missing here that you see on the portal, re-open the
+    underlying tax codes and check the <em>return_box_code</em>
+    field — that is what drives the box assignment.</p>
+    """,
+)
+
+# ── Withholding Certificate — Record ──────────────────────────────────────
+
+_register(
+    "dialog.tax.record_withholding_certificate",
+    "Record Withholding Certificate",
+    "Register a new WHT certificate (inbound from a customer or outbound to a supplier).",
+    """
+    <p>Use this dialog to register a new <b>WHT certificate</b>. Each
+    certificate records: who withheld, who was withheld from, the
+    base amount, the rate, the calculated tax amount, and the
+    certificate reference.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Direction</b> — <em>INBOUND</em> (a customer withheld
+          tax on a payment to you) or <em>OUTBOUND</em> (you withheld
+          tax on a payment to a supplier).</li>
+      <li><b>Counterparty</b> — name of the other party (the customer
+          for inbound, the supplier for outbound).</li>
+      <li><b>Counterparty NIU</b> — DGI taxpayer ID of the other
+          party. Required for the DGI to accept the certificate.</li>
+      <li><b>Tax code</b> — choose the WHT rate that applies (e.g.
+          <em>WHT-5.5</em>, <em>WHT-11</em>, <em>WHT-15.4</em>).</li>
+      <li><b>Taxable base</b> — the amount the rate is applied to.
+          For most contracts this is the invoice net (excl. VAT).</li>
+      <li><b>Tax amount</b> — auto-calculated from base × rate;
+          override only if the actual certificate shows a rounded
+          amount.</li>
+      <li><b>Certificate reference</b> — the unique number on the
+          certificate document.</li>
+      <li><b>Date</b> — the certificate issue date.</li>
+      <li><b>Linked document</b> — optional, but strongly
+          recommended: pick the sales invoice (inbound) or purchase
+          bill (outbound) the certificate relates to.</li>
+    </ul>
+
+    <h3>Worked example — INBOUND</h3>
+    <p>You invoice SONARA 10,000,000 XAF for transport services.
+    SONARA, as a state customer, withholds 5.5%:</p>
+    <ul>
+      <li>Direction: INBOUND</li>
+      <li>Counterparty: SONARA · NIU <code>M020100099001Z</code></li>
+      <li>Tax code: WHT-5.5</li>
+      <li>Base: 10,000,000 · Tax: 550,000</li>
+      <li>Reference: <em>SONARA-WHT-2026-0042</em>, date 2026-04-15</li>
+      <li>Linked to: SI-2026-0188</li>
+    </ul>
+
+    <h3>Worked example — OUTBOUND</h3>
+    <p>You pay your audit firm 2,000,000 XAF and withhold 5.5%:</p>
+    <ul>
+      <li>Direction: OUTBOUND</li>
+      <li>Counterparty: KPMG Cameroon · NIU
+          <code>M020100050125B</code></li>
+      <li>Tax code: WHT-5.5</li>
+      <li>Base: 2,000,000 · Tax: 110,000</li>
+      <li>Reference: <em>VOTRE-WHT-2026-0007</em>, date 2026-04-30</li>
+      <li>Linked to: PB-2026-0061</li>
+    </ul>
+    <p>The 110,000 XAF is then included in the April 2026 WHT
+    obligation amount.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.withholding.manage</code>.</p>
+
+    <p><b>Tip:</b> Inbound certificates are easy to forget — set up
+    a monthly process to chase missing ones from your major
+    state-sector customers (SONARA, ENEO, CAMTEL, CAMWATER).</p>
+    """,
+)
+
+# ── Withholding Certificate — Edit ────────────────────────────────────────
+
+_register(
+    "dialog.tax.edit_withholding_certificate",
+    "Edit Withholding Certificate",
+    "Correct typos and references on an active WHT certificate.",
+    """
+    <p>Use this dialog to amend an <em>ACTIVE</em> WHT certificate.
+    Voided certificates cannot be edited — re-record instead.</p>
+
+    <h3>What you can edit</h3>
+    <ul>
+      <li>Counterparty name</li>
+      <li>Counterparty NIU (if you discover a typo)</li>
+      <li>Tax code (if you initially picked the wrong rate)</li>
+      <li>Taxable base / tax amount</li>
+      <li>Certificate reference</li>
+      <li>Date</li>
+      <li>Linked document</li>
+    </ul>
+
+    <h3>What you cannot edit</h3>
+    <ul>
+      <li>Direction — a certificate is permanently INBOUND or
+          OUTBOUND. To "flip" direction, void this row and record a
+          new one.</li>
+      <li>Status — use the Void dialog to deactivate.</li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>You discover that the SONARA NIU was typed
+    <code>M020100099011Z</code> instead of
+    <code>M020100099001Z</code>. Open the row → Edit → fix NIU →
+    Save. The audit trail records
+    <code>WITHHOLDING_CERTIFICATE_UPDATED</code> with the diff.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.withholding.manage</code>.</p>
+
+    <p><b>Tip:</b> Always edit before linking to a posted document.
+    After link, the document drives reconciliation — a wrong
+    counterparty NIU on the certificate will fail DSF cross-check
+    even if the linked invoice is correct.</p>
+    """,
+)
+
+# ── Withholding Certificate — Void ────────────────────────────────────────
+
+_register(
+    "dialog.tax.void_withholding_certificate",
+    "Void Withholding Certificate",
+    "Soft-cancel a WHT certificate that should no longer count.",
+    """
+    <p>Use this dialog to <b>void</b> a WHT certificate. Voiding is a
+    soft state change — the row remains in the register for audit,
+    but it no longer counts toward DSF totals or dashboard money
+    figures.</p>
+
+    <h3>When to void</h3>
+    <ul>
+      <li>The DGI rejected the certificate (typically: counterparty
+          NIU not in DGI database, or amount mismatch with the
+          related invoice).</li>
+      <li>The customer issued a corrected certificate — void the
+          original, record the correction.</li>
+      <li>The certificate was registered against the wrong company
+          (multi-company environment) — void here, re-record under
+          the correct company.</li>
+    </ul>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Reason</b> — short text explaining why (free-form).
+          Captured in the audit trail.</li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>SONARA-WHT-2026-0042 is rejected by DGI for amount mismatch
+    (550,000 vs 549,999 due to rounding). Void with reason
+    <em>"DGI rejected — amount rounding mismatch, replaced by
+    SONARA-WHT-2026-0042-bis"</em>. Then record the new corrected
+    certificate.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.withholding.manage</code>.</p>
+
+    <p><b>Tip:</b> Voiding does not delete — the row stays
+    visible in the register filtered to <em>VOIDED</em>. This is
+    intentional for audit and reconciliation.</p>
+    """,
+)
+
+# ── Withholding Certificate — Link ────────────────────────────────────────
+
+_register(
+    "dialog.tax.link_withholding_certificate",
+    "Link Withholding Certificate",
+    "Attach a WHT certificate to its related sales invoice or purchase bill.",
+    """
+    <p>Use this dialog to <b>link</b> a previously-recorded WHT
+    certificate to the underlying source document — a sales invoice
+    (for INBOUND certificates) or a purchase bill (for OUTBOUND
+    certificates). The link improves DSF traceability and unlocks
+    cross-check reports.</p>
+
+    <h3>Fields</h3>
+    <ul>
+      <li><b>Document type</b> — Sales invoice / Purchase bill
+          (auto-set based on certificate direction).</li>
+      <li><b>Document</b> — searchable picker filtered to documents
+          for the same counterparty as the certificate.</li>
+    </ul>
+
+    <h3>Validation</h3>
+    <ul>
+      <li>Counterparty on the document must match the counterparty
+          on the certificate.</li>
+      <li>Document must be POSTED (drafts and voided documents
+          rejected).</li>
+      <li>A document can have multiple certificates linked (e.g.
+          partial withholding across two payment tranches).</li>
+    </ul>
+
+    <h3>Worked example</h3>
+    <p>SONARA-WHT-2026-0042 (recorded standalone) → Link → pick
+    SI-2026-0188 (the originating sales invoice). After link, the
+    sales invoice's <em>Linked WHT</em> tab shows the certificate;
+    DSF inbound reconciliation now finds the match.</p>
+
+    <h3>Permissions</h3>
+    <p><code>taxation.withholding.manage</code>.</p>
+
+    <p><b>Tip:</b> If you record certificates as soon as they
+    arrive, you can usually link immediately. For batch import
+    workflows, run a periodic <em>Link unlinked certificates</em>
+    pass at month-end before drafting the WHT return.</p>
+    """,
+)
+
+

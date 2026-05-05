@@ -66,3 +66,18 @@ class UpdateInventoryLocationCommand:
     name: str
     description: str | None = None
     is_active: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class CreateInventoryReasonCodeCommand:
+    code: str
+    name: str
+    description: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateInventoryReasonCodeCommand:
+    code: str
+    name: str
+    description: str | None = None
+    is_active: bool = True

@@ -10,13 +10,12 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -30,7 +29,7 @@ from seeker_accounting.platform.exceptions import NotFoundError
 from seeker_accounting.shared.ui.entity_detail.entity_detail_page import EntityDetailPage
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBarItem
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 _log = logging.getLogger(__name__)
 
@@ -98,17 +97,30 @@ class SupplierDetailPage(EntityDetailPage):
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(0)
 
-        self._bills_table = QTableWidget(container)
-        configure_compact_table(self._bills_table)
-        self._bills_table.setColumnCount(7)
-        self._bills_table.setHorizontalHeaderLabels([
+        self._bills_model = QStandardItemModel(0, 7, container)
+        self._bills_model.setHorizontalHeaderLabels([
             "Bill #", "Date", "Due Date", "Status", "Payment Status",
             "Total", "Open Balance",
         ])
-        self._bills_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._bills_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._bills_table.setSortingEnabled(True)
-        self._bills_table.horizontalHeader().setStretchLastSection(True)
+        self._bills_table = DataTable(
+            columns=(
+                DataTableColumn(key="bill_number", title="Bill #"),
+                DataTableColumn(key="bill_date", title="Date"),
+                DataTableColumn(key="due_date", title="Due Date"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="payment_status", title="Payment Status"),
+                DataTableColumn(key="total", title="Total"),
+                DataTableColumn(key="open_balance", title="Open Balance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=container,
+        )
+        self._bills_table.set_model(self._bills_model)
+        apply_status_chip_to_column(self._bills_table.view(), 3)
+        apply_status_chip_to_column(self._bills_table.view(), 4)
         layout.addWidget(self._bills_table)
 
         return container
@@ -119,16 +131,26 @@ class SupplierDetailPage(EntityDetailPage):
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(0)
 
-        self._payments_table = QTableWidget(container)
-        configure_compact_table(self._payments_table)
-        self._payments_table.setColumnCount(5)
-        self._payments_table.setHorizontalHeaderLabels([
+        self._payments_model = QStandardItemModel(0, 5, container)
+        self._payments_model.setHorizontalHeaderLabels([
             "Payment #", "Date", "Account", "Status", "Amount Paid",
         ])
-        self._payments_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._payments_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._payments_table.setSortingEnabled(True)
-        self._payments_table.horizontalHeader().setStretchLastSection(True)
+        self._payments_table = DataTable(
+            columns=(
+                DataTableColumn(key="payment_number", title="Payment #"),
+                DataTableColumn(key="payment_date", title="Date"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="amount_paid", title="Amount Paid"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=container,
+        )
+        self._payments_table.set_model(self._payments_model)
+        apply_status_chip_to_column(self._payments_table.view(), 3)
         layout.addWidget(self._payments_table)
 
         return container
@@ -200,8 +222,12 @@ class SupplierDetailPage(EntityDetailPage):
             show_error(self, "Supplier Detail", "Supplier not found.")
             self._navigate_back()
             return
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Supplier Detail", f"Failed to load supplier: {exc}")
+            return
+        except Exception:
+            _log.exception("Supplier Detail")
+            show_error(self, "Supplier Detail", "An unexpected error occurred. See application log for details.")
             return
 
         try:
@@ -279,53 +305,45 @@ class SupplierDetailPage(EntityDetailPage):
             ),
         ])
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_bills_table(self) -> None:
-        self._bills_table.setSortingEnabled(False)
-        self._bills_table.setRowCount(0)
-        self._bills_table.setRowCount(len(self._bills))
+        self._bills_model.removeRows(0, self._bills_model.rowCount())
 
-        for row, bill in enumerate(sorted(self._bills, key=lambda x: x.bill_date, reverse=True)):
-            def _cell(text: str, align: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignLeft) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                item.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
-            right = Qt.AlignmentFlag.AlignRight
-
-            self._bills_table.setItem(row, 0, _cell(bill.bill_number))
-            self._bills_table.setItem(row, 1, _cell(bill.bill_date.strftime("%d %b %Y")))
-            self._bills_table.setItem(row, 2, _cell(bill.due_date.strftime("%d %b %Y")))
-            self._bills_table.setItem(row, 3, _cell(bill.status_code.title()))
-            self._bills_table.setItem(row, 4, _cell(bill.payment_status_code.replace("_", " ").title()))
-            self._bills_table.setItem(row, 5, _cell(_fmt_amount(bill.total_amount), right))
-            self._bills_table.setItem(row, 6, _cell(_fmt_amount(bill.open_balance_amount), right))
-
-        self._bills_table.setSortingEnabled(True)
-        self._bills_table.resizeColumnsToContents()
+        for bill in sorted(self._bills, key=lambda x: x.bill_date, reverse=True):
+            total_item = self._make_item(_fmt_amount(bill.total_amount))
+            total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            balance_item = self._make_item(_fmt_amount(bill.open_balance_amount))
+            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._bills_model.appendRow([
+                self._make_item(bill.bill_number),
+                self._make_item(bill.bill_date.strftime("%d %b %Y")),
+                self._make_item(bill.due_date.strftime("%d %b %Y")),
+                self._make_item(bill.status_code.lower()),
+                self._make_item(bill.payment_status_code.lower()),
+                total_item,
+                balance_item,
+            ])
 
     def _populate_payments_table(self) -> None:
-        self._payments_table.setSortingEnabled(False)
-        self._payments_table.setRowCount(0)
-        self._payments_table.setRowCount(len(self._payments))
+        self._payments_model.removeRows(0, self._payments_model.rowCount())
 
-        for row, payment in enumerate(sorted(self._payments, key=lambda x: x.payment_date, reverse=True)):
-            def _cell(text: str, align: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignLeft) -> QTableWidgetItem:
-                item = QTableWidgetItem(text)
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                item.setTextAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-                return item
-
-            right = Qt.AlignmentFlag.AlignRight
-
-            self._payments_table.setItem(row, 0, _cell(payment.payment_number))
-            self._payments_table.setItem(row, 1, _cell(payment.payment_date.strftime("%d %b %Y")))
-            self._payments_table.setItem(row, 2, _cell(payment.financial_account_name))
-            self._payments_table.setItem(row, 3, _cell(payment.status_code.title()))
-            self._payments_table.setItem(row, 4, _cell(_fmt_amount(payment.amount_paid), right))
-
-        self._payments_table.setSortingEnabled(True)
-        self._payments_table.resizeColumnsToContents()
+        for payment in sorted(self._payments, key=lambda x: x.payment_date, reverse=True):
+            amount_item = self._make_item(_fmt_amount(payment.amount_paid))
+            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._payments_model.appendRow([
+                self._make_item(payment.payment_number),
+                self._make_item(payment.payment_date.strftime("%d %b %Y")),
+                self._make_item(payment.financial_account_name),
+                self._make_item(payment.status_code.lower()),
+                amount_item,
+            ])
 
     def _populate_info_tab(self) -> None:
         s = self._supplier

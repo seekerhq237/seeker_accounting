@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -44,11 +45,14 @@ from seeker_accounting.modules.reporting.ui.widgets.reporting_filter_bar import 
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO_QTY = Decimal("0.0000")
 _ZERO_AMOUNT = Decimal("0.00")
 _WINDOWS: list["StockValuationWindow"] = []
+
+
+_log = logging.getLogger(__name__)
 
 
 class StockValuationWindow(QFrame):
@@ -248,22 +252,29 @@ class StockValuationWindow(QFrame):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 0, 20, 20)
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Item Code",
-                "Item Name",
-                "UOM",
-                "Basis",
-                "Qty On Hand",
-                "Unit Value",
-                "Total Value",
-            ]
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="item_code", title="Item Code"),
+                DataTableColumn(key="item_name", title="Item Name"),
+                DataTableColumn(key="uom", title="UOM"),
+                DataTableColumn(key="basis", title="Basis"),
+                DataTableColumn(key="qty_on_hand", title="Qty On Hand"),
+                DataTableColumn(key="unit_value", title="Unit Value"),
+                DataTableColumn(key="total_value", title="Total Value"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
         )
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_table_double_clicked)
+        self._model = QStandardItemModel(0, 7, panel)
+        self._model.setHorizontalHeaderLabels(
+            ["Item Code", "Item Name", "UOM", "Basis", "Qty On Hand", "Unit Value", "Total Value"]
+        )
+        self._table.set_model(self._model)
+        self._table.view().setSortingEnabled(False)
+        self._table.view().doubleClicked.connect(self._on_table_double_clicked)
         layout.addWidget(self._table, 1)
         return panel
 
@@ -314,8 +325,12 @@ class StockValuationWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "Stock Valuation Report", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Stock Valuation Report", str(exc))
+            return
+        except Exception:
+            _log.exception("Stock Valuation Report")
+            show_error(self, "Stock Valuation Report", "An unexpected error occurred. See application log for details.")
             return
 
         self._current_report = report
@@ -328,25 +343,37 @@ class StockValuationWindow(QFrame):
         self._stack.setCurrentIndex(0)
 
     def _bind_report(self, report: StockValuationReportDTO) -> None:
-        self._table.setRowCount(len(report.rows))
-        for row_index, row in enumerate(report.rows):
-            code_item = QTableWidgetItem(row.item_code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.item_id)
-            self._table.setItem(row_index, 0, code_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(row.item_name))
-            self._table.setItem(row_index, 2, QTableWidgetItem(row.unit_of_measure_code))
+        self._model.removeRows(0, self._model.rowCount())
+        for row in report.rows:
+            code_item = self._make_item(row.item_code)
+            code_item.setData(row.item_id, Qt.ItemDataRole.UserRole)
             basis_text = row.valuation_basis_label
             if row.has_metadata_warning:
                 basis_text = f"{basis_text} *"
-            self._table.setItem(row_index, 3, QTableWidgetItem(basis_text))
-            self._set_amount_item(row_index, 4, self._fmt_qty(row.quantity_on_hand))
-            self._set_amount_item(row_index, 5, self._fmt_unit(row.unit_value))
-            self._set_amount_item(row_index, 6, self._fmt_amount(row.total_value))
+            self._model.appendRow([
+                code_item,
+                self._make_item(row.item_name),
+                self._make_item(row.unit_of_measure_code),
+                self._make_item(basis_text),
+                self._make_amount_item(self._fmt_qty(row.quantity_on_hand)),
+                self._make_amount_item(self._fmt_unit(row.unit_value)),
+                self._make_amount_item(self._fmt_amount(row.total_value)),
+            ])
 
-    def _set_amount_item(self, row: int, column: int, text: str) -> None:
-        item = QTableWidgetItem(text)
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_amount_item(text: str) -> QStandardItem:
+        item = QStandardItem(text)
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, column, item)
+        return item
 
     def _update_warning_band(self, warnings) -> None:
         messages = [warning.message for warning in warnings]
@@ -414,11 +441,16 @@ class StockValuationWindow(QFrame):
         preview_meta = self._report_service.build_print_preview_meta(self._current_report, company_name)
         ReportPrintPreviewDialog.show_preview(preview_meta, parent=self)
 
-    def _on_table_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 0)
-        if item is None:
+    def _on_table_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        item_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        code_item = self._model.item(row, 0)
+        if code_item is None:
+            return
+        item_id = code_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(item_id, int):
             return
         try:

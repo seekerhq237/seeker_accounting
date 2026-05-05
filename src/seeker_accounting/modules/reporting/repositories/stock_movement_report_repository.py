@@ -11,6 +11,7 @@ from seeker_accounting.modules.inventory.models.inventory_document import Invent
 from seeker_accounting.modules.inventory.models.inventory_document_line import InventoryDocumentLine
 from seeker_accounting.modules.inventory.models.inventory_location import InventoryLocation
 from seeker_accounting.modules.inventory.models.item import Item
+from seeker_accounting.modules.inventory.models.unit_of_measure import UnitOfMeasure
 from seeker_accounting.modules.reporting.dto.stock_movement_report_dto import (
     StockMovementReportFilterDTO,
 )
@@ -66,8 +67,9 @@ class StockMovementReportRepository:
                 Item.id,
                 Item.item_code,
                 Item.item_name,
-                Item.unit_of_measure_code,
+                UnitOfMeasure.code.label("unit_of_measure_code"),
             )
+            .join(UnitOfMeasure, UnitOfMeasure.id == Item.unit_of_measure_id)
             .where(Item.company_id == company_id, Item.id == item_id)
         )
         row = self._session.execute(stmt).one_or_none()
@@ -106,7 +108,7 @@ class StockMovementReportRepository:
                 Item.id.label("item_id"),
                 Item.item_code,
                 Item.item_name,
-                Item.unit_of_measure_code,
+                UnitOfMeasure.code.label("unit_of_measure_code"),
                 func.coalesce(
                     func.sum(case((opening_condition, signed_quantity), else_=0)),
                     0,
@@ -129,8 +131,9 @@ class StockMovementReportRepository:
                 InventoryDocument,
                 InventoryDocument.id == InventoryDocumentLine.inventory_document_id,
             )
+            .join(UnitOfMeasure, UnitOfMeasure.id == Item.unit_of_measure_id)
             .where(*self._base_conditions(filter_dto))
-            .group_by(Item.id, Item.item_code, Item.item_name, Item.unit_of_measure_code)
+            .group_by(Item.id, Item.item_code, Item.item_name, UnitOfMeasure.code)
             .order_by(Item.item_code.asc())
         )
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QFrame,
@@ -11,8 +13,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -23,15 +23,12 @@ from seeker_accounting.modules.fixed_assets.ui.asset_dialog import AssetDialog
 from seeker_accounting.modules.fixed_assets.ui.depreciation_schedule_preview_dialog import (
     DepreciationSchedulePreviewDialog,
 )
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
-
-_STATUS_LABELS = {
-    "draft": "Draft",
-    "active": "Active",
-    "fully_depreciated": "Fully Depreciated",
-    "disposed": "Disposed",
-}
 
 _METHOD_LABELS = {
     "straight_line": "Straight Line",
@@ -46,6 +43,19 @@ _STATUS_FILTER_OPTIONS = [
     ("fully_depreciated", "Fully Depreciated"),
     ("disposed", "Disposed"),
 ]
+
+
+ASSET_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="asset_number", title="Number"),
+    DataTableColumn(key="asset_name", title="Name"),
+    DataTableColumn(key="category", title="Category"),
+    DataTableColumn(key="capitalization_date", title="Cap. Date"),
+    DataTableColumn(key="acquisition_cost", title="Cost"),
+    DataTableColumn(key="salvage_value", title="Salvage"),
+    DataTableColumn(key="useful_life_months", title="Life"),
+    DataTableColumn(key="depreciation_method", title="Method"),
+    DataTableColumn(key="status", title="Status"),
+)
 
 
 class AssetsPage(QWidget):
@@ -70,9 +80,10 @@ class AssetsPage(QWidget):
         active_company = self._active_company()
         if active_company is None:
             self._rows = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("")
             self._stack.setCurrentWidget(self._no_company_state)
+            self._update_action_state()
             return
         status_filter = self._status_filter_combo.currentData()
         try:
@@ -82,12 +93,35 @@ class AssetsPage(QWidget):
             )
         except Exception as exc:
             self._rows = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentWidget(self._empty_state)
+            self._update_action_state()
             show_error(self, "Asset Register", f"Could not load data.\n\n{exc}")
             return
-        self._apply_search_filter()
+        self._populate()
         self._sync_stack(active_company, self._rows)
+        self._update_count_label()
+        self._update_action_state()
+
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Asset Register",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
+    def _update_action_state(self) -> None:
+        company = self._active_company()
+        has_company = company is not None
+        has_selection = self._selected_row() is not None
+        perm = self._service_registry.permission_service
+        self._new_btn.setEnabled(has_company and perm.has_permission("assets.master.create"))
+        self._edit_btn.setEnabled(
+            has_company and has_selection and perm.has_permission("assets.master.edit")
+        )
+        self._schedule_btn.setEnabled(
+            has_company and has_selection and perm.has_permission("assets.master.view")
+        )
 
     # ------------------------------------------------------------------
     # Build
@@ -106,7 +140,7 @@ class AssetsPage(QWidget):
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search assets…")
         self._search_input.setFixedWidth(200)
-        self._search_input.textChanged.connect(self._apply_search_filter)
+        self._search_input.textChanged.connect(self._on_search_text_changed)
         layout.addWidget(self._search_input)
 
         self._status_filter_combo = QComboBox(card)
@@ -166,16 +200,23 @@ class AssetsPage(QWidget):
         tl.addWidget(self._count_label)
         layout.addWidget(top)
 
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(9)
-        self._table.setHorizontalHeaderLabels((
-            "Number", "Name", "Category", "Cap. Date",
-            "Cost", "Salvage", "Life", "Method", "Status",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_edit())
+        self._model = QStandardItemModel(0, len(ASSET_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in ASSET_COLUMNS])
+
+        self._table = DataTable(
+            columns=ASSET_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No assets to display.",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 8)
+        self._table.selection_changed.connect(lambda _r: self._update_action_state())
+        self._table.row_activated.connect(lambda _r: self._on_edit())
         layout.addWidget(self._table)
         return card
 
@@ -223,57 +264,68 @@ class AssetsPage(QWidget):
     # Populate
     # ------------------------------------------------------------------
 
-    def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        visible_rows = [
-            row for row in self._rows
-            if not query
-            or query in row.asset_number.lower()
-            or query in row.asset_name.lower()
-            or query in row.asset_category_code.lower()
-            or query in row.asset_category_name.lower()
-        ]
-        self._populate(visible_rows)
-        company = self._active_company()
-        self._sync_stack(company, self._rows)
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
-    def _populate(self, rows: list) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-        for row in rows:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            num_item = QTableWidgetItem(row.asset_number)
-            num_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._table.setItem(ri, 0, num_item)
-            self._table.setItem(ri, 1, QTableWidgetItem(row.asset_name))
-            self._table.setItem(ri, 2, QTableWidgetItem(
-                f"{row.asset_category_code} — {row.asset_category_name}"
-            ))
-            self._table.setItem(ri, 3, QTableWidgetItem(str(row.capitalization_date)))
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
 
-            cost_item = QTableWidgetItem(f"{row.acquisition_cost:,.2f}")
-            cost_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(ri, 4, cost_item)
+    def _on_search_text_changed(self, text: str) -> None:
+        self._table.set_search_text(text)
+        self._update_count_label()
 
-            salvage_text = f"{row.salvage_value:,.2f}" if row.salvage_value is not None else "—"
-            salvage_item = QTableWidgetItem(salvage_text)
-            salvage_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(ri, 5, salvage_item)
+    def _populate(self) -> None:
+        self._model.removeRows(0, self._model.rowCount())
+        for row in self._rows:
+            category = f"{row.asset_category_code} — {row.asset_category_name}"
+            life_item = QStandardItem(f"{row.useful_life_months} mo")
+            life_item.setEditable(False)
+            life_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            items = [
+                self._make_item(row.asset_number, user_data=row.id),
+                self._make_item(row.asset_name),
+                self._make_item(category),
+                self._make_item(row.capitalization_date),
+                self._make_numeric(row.acquisition_cost),
+                self._make_numeric(row.salvage_value),
+                life_item,
+                self._make_item(
+                    _METHOD_LABELS.get(row.depreciation_method_code, row.depreciation_method_code)
+                ),
+                self._make_item(row.status_code),
+            ]
+            self._model.appendRow(items)
 
-            self._table.setItem(ri, 6, QTableWidgetItem(f"{row.useful_life_months} mo"))
-            self._table.setItem(ri, 7, QTableWidgetItem(
-                _METHOD_LABELS.get(row.depreciation_method_code, row.depreciation_method_code)
-            ))
-            self._table.setItem(ri, 8, QTableWidgetItem(
-                _STATUS_LABELS.get(row.status_code, row.status_code)
-            ))
-        self._table.resizeColumnsToContents()
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(1, hdr.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
-        count = len(rows)
-        self._count_label.setText(f"{count} record" if count == 1 else f"{count} records")
+    def _update_count_label(self) -> None:
+        total = len(self._rows)
+        query = self._search_input.text().strip()
+        if query:
+            proxy = self._table.view().model()
+            visible = proxy.rowCount() if proxy is not None else total
+            self._count_label.setText(f"{visible} shown of {total} records")
+        else:
+            self._count_label.setText(
+                f"{total} record" if total == 1 else f"{total} records"
+            )
+
+    def _selected_row(self):
+        rows = self._table.selected_rows()
+        if not rows:
+            return None
+        idx = rows[0]
+        if 0 <= idx < len(self._rows):
+            return self._rows[idx]
+        return None
 
     # ------------------------------------------------------------------
     # Actions
@@ -283,6 +335,9 @@ class AssetsPage(QWidget):
         company = self._active_company()
         if company is None:
             show_error(self, "Asset Register", "Select an active company first.")
+            return
+        if not self._service_registry.permission_service.has_permission("assets.master.create"):
+            self._show_permission_denied("assets.master.create")
             return
         dialog = AssetDialog(
             self._service_registry, company.company_id, company.company_name, parent=self
@@ -294,16 +349,15 @@ class AssetsPage(QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        row = self._selected_row()
+        if row is None:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        if not self._service_registry.permission_service.has_permission("assets.master.edit"):
+            self._show_permission_denied("assets.master.edit")
             return
-        asset_id = item.data(Qt.ItemDataRole.UserRole)
         dialog = AssetDialog(
             self._service_registry, company.company_id, company.company_name,
-            asset_id=asset_id, parent=self,
+            asset_id=row.id, parent=self,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload()
@@ -312,16 +366,12 @@ class AssetsPage(QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        row = self._selected_row()
+        if row is None:
             show_error(self, "Asset Register", "Select an asset to preview its depreciation schedule.")
             return
-        item = self._table.item(row, 0)
-        if item is None:
-            return
-        asset_id = item.data(Qt.ItemDataRole.UserRole)
         dialog = DepreciationSchedulePreviewDialog(
-            self._service_registry, company.company_id, asset_id, parent=self
+            self._service_registry, company.company_id, row.id, parent=self
         )
         dialog.exec()
 

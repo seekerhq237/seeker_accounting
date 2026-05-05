@@ -21,6 +21,12 @@ class CustomerGroup(TimestampMixin, ActiveFlagMixin, Base):
     )
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    # P6 / Slice 7.1 – default price list for this group
+    price_list_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("price_lists.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
 
     company: Mapped["Company"] = relationship("Company")
     customers: Mapped[list["Customer"]] = relationship("Customer", back_populates="customer_group")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from seeker_accounting.modules.payroll.models.payroll_run import PayrollRun
@@ -26,6 +26,20 @@ class PayrollRunRepository:
             stmt = stmt.where(PayrollRun.status_code == status_code)
         return list(self._session.scalars(stmt).all())
 
+    def list_by_period(
+        self, company_id: int, period_year: int, period_month: int
+    ) -> list[PayrollRun]:
+        stmt = (
+            select(PayrollRun)
+            .where(
+                PayrollRun.company_id == company_id,
+                PayrollRun.period_year == period_year,
+                PayrollRun.period_month == period_month,
+            )
+            .order_by(PayrollRun.run_type_code, PayrollRun.run_sequence)
+        )
+        return list(self._session.scalars(stmt).all())
+
     def get_by_id(self, company_id: int, run_id: int) -> PayrollRun | None:
         stmt = (
             select(PayrollRun)
@@ -39,12 +53,41 @@ class PayrollRunRepository:
     def get_by_period(
         self, company_id: int, period_year: int, period_month: int
     ) -> PayrollRun | None:
+        return self.get_regular_by_period(company_id, period_year, period_month)
+
+    def get_regular_by_period(
+        self, company_id: int, period_year: int, period_month: int
+    ) -> PayrollRun | None:
         stmt = select(PayrollRun).where(
             PayrollRun.company_id == company_id,
             PayrollRun.period_year == period_year,
             PayrollRun.period_month == period_month,
+            PayrollRun.run_type_code == "regular",
         )
-        return self._session.scalar(stmt)
+        return self._session.scalars(stmt.order_by(PayrollRun.run_sequence.desc())).first()
+
+    def get_active_regular_by_period(
+        self, company_id: int, period_year: int, period_month: int
+    ) -> PayrollRun | None:
+        stmt = select(PayrollRun).where(
+            PayrollRun.company_id == company_id,
+            PayrollRun.period_year == period_year,
+            PayrollRun.period_month == period_month,
+            PayrollRun.run_type_code == "regular",
+            PayrollRun.status_code != "voided",
+        )
+        return self._session.scalars(stmt.order_by(PayrollRun.run_sequence.desc())).first()
+
+    def next_run_sequence(
+        self, company_id: int, period_year: int, period_month: int, run_type_code: str
+    ) -> int:
+        stmt = select(func.max(PayrollRun.run_sequence)).where(
+            PayrollRun.company_id == company_id,
+            PayrollRun.period_year == period_year,
+            PayrollRun.period_month == period_month,
+            PayrollRun.run_type_code == run_type_code,
+        )
+        return int(self._session.scalar(stmt) or 0) + 1
 
     def check_reference_exists(
         self, company_id: int, run_reference: str, exclude_id: int | None = None
@@ -113,6 +156,25 @@ class PayrollRunEmployeeRepository:
         stmt = select(PayrollRunEmployee).where(PayrollRunEmployee.run_id == run_id)
         for row in self._session.scalars(stmt).all():
             self._session.delete(row)
+
+    def list_with_lines_by_run(
+        self,
+        company_id: int,
+        run_id: int,
+    ) -> list[PayrollRunEmployee]:
+        stmt = (
+            select(PayrollRunEmployee)
+            .where(
+                PayrollRunEmployee.company_id == company_id,
+                PayrollRunEmployee.run_id == run_id,
+            )
+            .options(
+                selectinload(PayrollRunEmployee.employee),
+                selectinload(PayrollRunEmployee.lines).selectinload(PayrollRunLine.component),
+            )
+            .order_by(PayrollRunEmployee.employee_id)
+        )
+        return list(self._session.scalars(stmt).all())
 
     def save(self, run_employee: PayrollRunEmployee) -> PayrollRunEmployee:
         self._session.add(run_employee)

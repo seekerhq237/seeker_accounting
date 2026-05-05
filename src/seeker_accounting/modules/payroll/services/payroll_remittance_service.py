@@ -27,6 +27,8 @@ from seeker_accounting.modules.payroll.dto.payroll_remittance_dto import (
     PayrollRemittanceBatchListItemDTO,
     PayrollRemittanceLineDTO,
     RecordRemittancePaymentCommand,
+    RemittanceBatchReconciliationDTO,
+    RemittanceLineReconciliationDTO,
     UpdatePayrollRemittanceBatchCommand,
     UpdatePayrollRemittanceLineCommand,
     _ALLOWED_AUTHORITIES,
@@ -42,6 +44,9 @@ from seeker_accounting.modules.payroll.models.payroll_remittance_line import (
 from seeker_accounting.modules.payroll.repositories.payroll_remittance_repository import (
     PayrollRemittanceBatchRepository,
     PayrollRemittanceLineRepository,
+)
+from seeker_accounting.modules.payroll.repositories.payroll_authority_repository import (
+    PayrollAuthorityRepository,
 )
 from seeker_accounting.modules.payroll.repositories.payroll_run_repository import (
     PayrollRunRepository,
@@ -69,6 +74,7 @@ class PayrollRemittanceService:
         numbering_service: NumberingService,
         permission_service: PermissionService,
         audit_service: AuditService,
+        authority_repository_factory: Callable[[Session], PayrollAuthorityRepository] | None = None,
     ) -> None:
         self._uow_factory = unit_of_work_factory
         self._batch_repo_factory = batch_repository_factory
@@ -77,6 +83,9 @@ class PayrollRemittanceService:
         self._numbering_service = numbering_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._authority_repo_factory = (
+            authority_repository_factory or PayrollAuthorityRepository
+        )
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
@@ -114,15 +123,32 @@ class PayrollRemittanceService:
         actor_user_id: int | None = None,
     ) -> PayrollRemittanceBatchDetailDTO:
         self._permission_service.require_permission(PAYROLL_REMITTANCE_MANAGE)
-        auth = (cmd.remittance_authority_code or "").lower()
-        if auth not in _ALLOWED_AUTHORITIES:
-            raise ValidationError(
-                f"Invalid authority code '{auth}'. Allowed: {', '.join(sorted(_ALLOWED_AUTHORITIES))}"
-            )
+        raw_auth = (cmd.remittance_authority_code or "").strip()
+        if not raw_auth:
+            raise ValidationError("Authority code is required.")
         if cmd.period_start_date > cmd.period_end_date:
             raise ValidationError("Period start date must not be after period end date.")
 
         with self._uow_factory() as uow:
+            # Resolve authority code:
+            #   1. Try registry (case-insensitive) → store canonical code.
+            #   2. Else fall back to legacy lowercase set.
+            authority_repo = self._authority_repo_factory(uow.session)
+            registered = [
+                a
+                for a in authority_repo.list_by_company(company_id, active_only=True)
+                if a.code.lower() == raw_auth.lower()
+            ]
+            if registered:
+                auth = registered[0].code
+            else:
+                auth = raw_auth.lower()
+                if auth not in _ALLOWED_AUTHORITIES:
+                    raise ValidationError(
+                        f"Invalid authority code '{raw_auth}'. "
+                        "Authority must be registered (Payroll → Authorities) "
+                        f"or one of legacy: {', '.join(sorted(_ALLOWED_AUTHORITIES))}"
+                    )
             # Validate linked run if provided
             if cmd.payroll_run_id is not None:
                 run = self._run_repo_factory(uow.session).get_by_id(
@@ -362,6 +388,7 @@ class PayrollRemittanceService:
             line_num = line_repo.next_line_number(batch_id)
             line = PayrollRemittanceLine(
                 payroll_remittance_batch_id=batch_id,
+                company_id=company_id,
                 line_number=line_num,
                 payroll_component_id=cmd.payroll_component_id,
                 liability_account_id=cmd.liability_account_id,
@@ -489,6 +516,136 @@ class PayrollRemittanceService:
             uow.commit()
             uow.session.refresh(batch)
             return self._to_detail_dto(batch)
+
+            uow.commit()
+            uow.session.refresh(batch)
+            return self._to_detail_dto(batch)
+
+    # ── Reconciliation ────────────────────────────────────────────────────────
+
+    def reconcile_batch_to_gl(
+        self,
+        company_id: int,
+        batch_id: int,
+    ) -> RemittanceBatchReconciliationDTO:
+        """Compare remittance batch lines against posted GL liability balances.
+
+        For each line that carries a ``liability_account_id``, sum the credits
+        minus debits posted to that account in journal entries dated within the
+        batch's period. Compare against ``amount_due`` and surface variance.
+
+        This is a read-only diagnostic — it does not mutate any data.
+        """
+        from sqlalchemy import select, func, and_
+        from seeker_accounting.modules.accounting.journals.models.journal_entry import (
+            JournalEntry,
+        )
+        from seeker_accounting.modules.accounting.journals.models.journal_entry_line import (
+            JournalEntryLine,
+        )
+
+        self._permission_service.require_permission(PAYROLL_REMITTANCE_MANAGE)
+        with self._uow_factory() as uow:
+            batch_repo = self._batch_repo_factory(uow.session)
+            batch = batch_repo.get_by_id(company_id, batch_id)
+            if batch is None:
+                raise NotFoundError("Remittance batch not found.")
+
+            session = uow.session
+            line_results: list[RemittanceLineReconciliationDTO] = []
+            lines_without_account: list[int] = []
+            total_due = Decimal("0")
+            total_balance = Decimal("0")
+
+            for ln in sorted(batch.lines, key=lambda l: l.line_number):
+                due = Decimal(str(ln.amount_due))
+                paid = Decimal(str(ln.amount_paid))
+                acct_code = ln.liability_account.account_code if ln.liability_account else None
+
+                if ln.liability_account_id is None:
+                    lines_without_account.append(ln.id)
+                    line_results.append(
+                        RemittanceLineReconciliationDTO(
+                            line_id=ln.id,
+                            line_number=ln.line_number,
+                            description=ln.description,
+                            payroll_component_id=ln.payroll_component_id,
+                            liability_account_id=None,
+                            liability_account_code=None,
+                            amount_due=due,
+                            amount_paid=paid,
+                            gl_liability_balance=Decimal("0"),
+                            variance=due,
+                            is_reconciled=False,
+                        )
+                    )
+                    total_due += due
+                    continue
+
+                # Sum posted credits − debits for this liability account in the
+                # batch's period window.
+                stmt = (
+                    select(
+                        func.coalesce(func.sum(JournalEntryLine.credit_amount), 0),
+                        func.coalesce(func.sum(JournalEntryLine.debit_amount), 0),
+                    )
+                    .select_from(JournalEntryLine)
+                    .join(
+                        JournalEntry,
+                        JournalEntryLine.journal_entry_id == JournalEntry.id,
+                    )
+                    .where(
+                        and_(
+                            JournalEntry.company_id == company_id,
+                            JournalEntry.status_code == "POSTED",
+                            JournalEntry.entry_date >= batch.period_start_date,
+                            JournalEntry.entry_date <= batch.period_end_date,
+                            JournalEntryLine.account_id == ln.liability_account_id,
+                        )
+                    )
+                )
+                credit_sum, debit_sum = session.execute(stmt).one()
+                gl_balance = Decimal(str(credit_sum)) - Decimal(str(debit_sum))
+                variance = due - gl_balance
+                is_reconciled = abs(variance) <= _TOLERANCE
+
+                line_results.append(
+                    RemittanceLineReconciliationDTO(
+                        line_id=ln.id,
+                        line_number=ln.line_number,
+                        description=ln.description,
+                        payroll_component_id=ln.payroll_component_id,
+                        liability_account_id=ln.liability_account_id,
+                        liability_account_code=acct_code,
+                        amount_due=due,
+                        amount_paid=paid,
+                        gl_liability_balance=gl_balance,
+                        variance=variance,
+                        is_reconciled=is_reconciled,
+                    )
+                )
+                total_due += due
+                total_balance += gl_balance
+
+            total_variance = total_due - total_balance
+            is_fully_reconciled = (
+                not lines_without_account
+                and abs(total_variance) <= _TOLERANCE
+                and all(r.is_reconciled for r in line_results)
+            )
+            return RemittanceBatchReconciliationDTO(
+                batch_id=batch.id,
+                batch_number=batch.batch_number,
+                period_start_date=batch.period_start_date,
+                period_end_date=batch.period_end_date,
+                remittance_authority_code=batch.remittance_authority_code,
+                total_amount_due=total_due,
+                total_gl_liability_balance=total_balance,
+                total_variance=total_variance,
+                is_fully_reconciled=is_fully_reconciled,
+                lines_without_account=tuple(lines_without_account),
+                lines=tuple(line_results),
+            )
 
     @staticmethod
     def _ensure_not_overpaid(amount_due: Decimal | object, amount_paid: Decimal | object) -> None:

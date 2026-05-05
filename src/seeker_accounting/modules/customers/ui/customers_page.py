@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -12,8 +14,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -32,11 +32,37 @@ from seeker_accounting.modules.parties.dto.control_account_foundation_dto import
     ControlAccountFoundationStatusDTO,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
+from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.pager import Pager
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
 from seeker_accounting.shared.ui.register import RegisterPage
+
+
+_log = logging.getLogger(__name__)
+
+
+CUSTOMER_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="customer_code", title="Customer Code"),
+    DataTableColumn(key="display_name", title="Display Name"),
+    DataTableColumn(key="customer_group_name", title="Group"),
+    DataTableColumn(key="payment_term_name", title="Payment Term"),
+    DataTableColumn(key="credit_limit_amount", title="Credit Limit"),
+    DataTableColumn(key="status", title="Status"),
+)
+
+
+# Ribbon command ids surfaced from this page.
+_CMD_NEW = "customers.new"
+_CMD_EDIT = "customers.edit"
+_CMD_DEACTIVATE = "customers.deactivate"
+_CMD_REFRESH = "customers.refresh"
+_CMD_EXPORT_LIST = "customers.export_list"
 
 
 class CustomersPage(RibbonHostMixin, QWidget):
@@ -51,6 +77,15 @@ class CustomersPage(RibbonHostMixin, QWidget):
         self._search_debounce.setInterval(250)
         self._search_debounce.timeout.connect(lambda: self.reload_customers(reset_page=True))
 
+        # Per-command ribbon enablement. Mirrors the shell ribbon state.
+        self._command_enabled: dict[str, bool] = {
+            _CMD_NEW: False,
+            _CMD_EDIT: False,
+            _CMD_DEACTIVATE: False,
+            _CMD_REFRESH: True,
+            _CMD_EXPORT_LIST: False,
+        }
+
         self.setObjectName("CustomersPage")
 
         root_layout = QVBoxLayout(self)
@@ -61,8 +96,7 @@ class CustomersPage(RibbonHostMixin, QWidget):
 
         self._register = RegisterPage(self)
         self._populate_toolbar_strip(self._register)
-        self._populate_action_band(self._register)
-        # Ribbon hosts the primary commands; hide the ActionBand band.
+        # Ribbon hosts the primary commands; the ActionBand stays empty and hidden.
         self._register.action_band.hide()
         self._register.set_table_widget(self._build_content_stack())
         root_layout.addWidget(self._register, 1)
@@ -71,6 +105,8 @@ class CustomersPage(RibbonHostMixin, QWidget):
             self._handle_active_company_changed
         )
         self._search_edit.textChanged.connect(self._handle_search_text_changed)
+        self._search_edit.textChanged.connect(self._table.set_search_text)
+        self._search_edit.textChanged.connect(self._update_record_count_label)
 
         self.reload_customers()
 
@@ -89,7 +125,7 @@ class CustomersPage(RibbonHostMixin, QWidget):
         if active_company is None:
             self._customers = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._customers_model.removeRows(0, self._customers_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._pager.reset()
             self._stack.setCurrentWidget(self._no_active_company_state)
@@ -111,7 +147,7 @@ class CustomersPage(RibbonHostMixin, QWidget):
         except Exception as exc:
             self._customers = []
             self._total_count = 0
-            self._table.setRowCount(0)
+            self._customers_model.removeRows(0, self._customers_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
@@ -124,7 +160,7 @@ class CustomersPage(RibbonHostMixin, QWidget):
         self._pager.apply_result(page_result)
         self._populate_table()
         self._sync_surface_state(active_company)
-        self._update_record_count_label(search_text)
+        self._update_record_count_label()
         self._restore_selection(selected_customer_id)
         self._update_action_state()
 
@@ -147,36 +183,6 @@ class CustomersPage(RibbonHostMixin, QWidget):
         self._refresh_button.setProperty("variant", "ghost")
         self._refresh_button.clicked.connect(lambda: self.reload_customers())
         strip_layout.addWidget(self._refresh_button)
-
-    def _populate_action_band(self, register: RegisterPage) -> None:
-        band_layout = register.action_band_layout
-
-        self._new_button = QPushButton("New Customer", register.action_band)
-        self._new_button.setProperty("variant", "primary")
-        self._new_button.clicked.connect(self._open_create_dialog)
-        band_layout.addWidget(self._new_button)
-
-        self._edit_button = QPushButton("Edit Customer", register.action_band)
-        self._edit_button.setProperty("variant", "secondary")
-        self._edit_button.clicked.connect(self._open_edit_dialog)
-        band_layout.addWidget(self._edit_button)
-
-        self._deactivate_button = QPushButton("Deactivate", register.action_band)
-        self._deactivate_button.setProperty("variant", "secondary")
-        self._deactivate_button.clicked.connect(self._deactivate_selected_customer)
-        band_layout.addWidget(self._deactivate_button)
-
-        self._groups_button = QPushButton("Manage Groups", register.action_band)
-        self._groups_button.setProperty("variant", "secondary")
-        self._groups_button.clicked.connect(self._open_group_dialog)
-        band_layout.addWidget(self._groups_button)
-
-        band_layout.addStretch(1)
-
-        self._export_list_button = QPushButton("Export List", register.action_band)
-        self._export_list_button.setProperty("variant", "ghost")
-        self._export_list_button.clicked.connect(self._print_customer_list)
-        band_layout.addWidget(self._export_list_button)
 
     def _build_readiness_card(self) -> QWidget:
         self._readiness_card = QFrame(self)
@@ -228,16 +234,25 @@ class CustomersPage(RibbonHostMixin, QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        self._table = QTableWidget(container)
-        self._table.setObjectName("CustomersTable")
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(
-            ("Customer Code", "Display Name", "Group", "Payment Term", "Credit Limit", "Status")
+        self._customers_model = QStandardItemModel(0, len(CUSTOMER_COLUMNS), self)
+        self._customers_model.setHorizontalHeaderLabels([c.title for c in CUSTOMER_COLUMNS])
+
+        self._table = DataTable(
+            columns=CUSTOMER_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text=(
+                "No customers yet. Use the ribbon's New Customer to add one."
+            ),
+            parent=container,
         )
-        configure_dense_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+        self._table.set_model(self._customers_model)
+        self._customers_status_delegate = apply_status_chip_to_column(self._table.view(), 5)
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
         layout.addWidget(self._table, 1)
 
         self._pager = Pager(container, default_page_size=100)
@@ -247,79 +262,15 @@ class CustomersPage(RibbonHostMixin, QWidget):
         return container
 
     def _build_empty_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("No customers yet", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Create the first customer for the active company once its master-data and AR control-account foundation are in place.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        create_button = QPushButton("Create Customer", actions)
-        create_button.setProperty("variant", "primary")
-        create_button.clicked.connect(self._open_create_dialog)
-        actions_layout.addWidget(create_button, 0, Qt.AlignmentFlag.AlignLeft)
-
-        groups_button = QPushButton("Manage Groups", actions)
-        groups_button.setProperty("variant", "secondary")
-        groups_button.clicked.connect(self._open_group_dialog)
-        actions_layout.addWidget(groups_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("customers.empty", parent=self)
+        state.primary_clicked.connect(self._open_create_dialog)
+        state.secondary_clicked.connect(self._open_group_dialog)
+        return state
 
     def _build_no_active_company_state(self) -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        title = QLabel("Select an active company first", card)
-        title.setObjectName("EmptyStateTitle")
-        layout.addWidget(title)
-
-        summary = QLabel(
-            "Customers are company-scoped. Choose the active company from the shell, or return to Companies if setup still needs to happen first.",
-            card,
-        )
-        summary.setObjectName("PageSummary")
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-
-        actions = QWidget(card)
-        actions_layout = QHBoxLayout(actions)
-        actions_layout.setContentsMargins(0, 4, 0, 0)
-        actions_layout.setSpacing(10)
-
-        companies_button = QPushButton("Open Companies", actions)
-        companies_button.setProperty("variant", "secondary")
-        companies_button.clicked.connect(self._open_companies_workspace)
-        actions_layout.addWidget(companies_button, 0, Qt.AlignmentFlag.AlignLeft)
-        actions_layout.addStretch(1)
-
-        layout.addWidget(actions)
-        layout.addStretch(1)
-        return card
+        state = build_empty_state("customers.no_company", parent=self)
+        state.primary_clicked.connect(self._open_companies_workspace)
+        return state
 
     def _active_company(self) -> ActiveCompanyDTO | None:
         return self._service_registry.company_context_service.get_active_company()
@@ -370,84 +321,90 @@ class CustomersPage(RibbonHostMixin, QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    @staticmethod
+    def _make_item(text: str, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        # Bulk populate with paint updates and sorting suspended for speed.
-        self._table.setUpdatesEnabled(False)
-        self._table.setSortingEnabled(False)
-        try:
-            self._table.setRowCount(len(self._customers))
-            for row_index, customer in enumerate(self._customers):
-                values = (
-                    customer.customer_code,
-                    customer.display_name,
-                    customer.customer_group_name or "",
-                    customer.payment_term_name or "",
-                    self._format_amount(customer.credit_limit_amount),
-                    "Active" if customer.is_active else "Inactive",
-                )
-                for column_index, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if column_index == 0:
-                        item.setData(Qt.ItemDataRole.UserRole, customer.id)
-                    if column_index in {4, 5}:
-                        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self._table.setItem(row_index, column_index, item)
+        self._customers_model.removeRows(0, self._customers_model.rowCount())
+        for customer in self._customers:
+            items = [
+                self._make_item(customer.customer_code, user_data=customer.id),
+                self._make_item(customer.display_name),
+                self._make_item(customer.customer_group_name or ""),
+                self._make_item(customer.payment_term_name or ""),
+                self._make_item(self._format_amount(customer.credit_limit_amount)),
+                self._make_item("active" if customer.is_active else "inactive"),
+            ]
+            self._customers_model.appendRow(items)
 
-            self._table.resizeColumnsToContents()
-            header = self._table.horizontalHeader()
-            header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-            header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        finally:
-            self._table.setSortingEnabled(True)
-            self._table.setUpdatesEnabled(True)
-
-    def _update_record_count_label(self, search_text: str | None) -> None:
-        total = self._total_count
-        shown = len(self._customers)
-        if search_text:
-            self._record_count_label.setText(f"{shown} shown of {total} matches")
+    def _update_record_count_label(self, *_args: object) -> None:
+        total = len(self._customers)
+        query = self._search_edit.text().strip()
+        if query:
+            proxy = self._table.view().model()
+            visible = proxy.rowCount() if proxy is not None else total
+            self._record_count_label.setText(
+                f"{visible} shown of {total} customers"
+            )
         else:
             self._record_count_label.setText(
                 f"{total} customer" if total == 1 else f"{total} customers"
             )
 
     def _restore_selection(self, selected_customer_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._customers:
             return
         if selected_customer_id is None:
-            self._select_first_visible_row()
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, c in enumerate(self._customers) if c.id == selected_customer_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_customer_id:
-                if not self._table.isRowHidden(row_index):
-                    self._table.selectRow(row_index)
-                    return
-        self._select_first_visible_row()
-
-    def _select_first_visible_row(self) -> None:
-        for row_index in range(self._table.rowCount()):
-            if not self._table.isRowHidden(row_index):
-                self._table.selectRow(row_index)
-                return
-        self._table.clearSelection()
+        src_index = self._customers_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_customer(self) -> CustomerListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0 or self._table.isRowHidden(current_row):
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        customer_id = item.data(Qt.ItemDataRole.UserRole)
-        for customer in self._customers:
-            if customer.id == customer_id:
-                return customer
+        idx = rows[0]
+        if 0 <= idx < len(self._customers):
+            return self._customers[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        customer = self._selected_customer()
+        if customer is None:
+            return
+        self._service_registry.navigation_service.navigate(
+            nav_ids.CUSTOMER_DETAIL,
+            context={"customer_id": customer.id},
+        )
+
+    def _set_command_enabled(self, command_id: str, enabled: bool) -> None:
+        self._command_enabled[command_id] = bool(enabled)
 
     def _show_permission_denied(self, permission_code: str) -> None:
         show_error(
@@ -462,53 +419,43 @@ class CustomersPage(RibbonHostMixin, QWidget):
         has_active_company = active_company is not None
         permission_service = self._service_registry.permission_service
 
-        self._new_button.setEnabled(
-            has_active_company and permission_service.has_permission("customers.create")
+        self._set_command_enabled(
+            _CMD_NEW,
+            has_active_company and permission_service.has_permission("customers.create"),
         )
-        self._edit_button.setEnabled(
+        self._set_command_enabled(
+            _CMD_EDIT,
             selected_customer is not None
             and has_active_company
-            and permission_service.has_permission("customers.edit")
+            and permission_service.has_permission("customers.edit"),
         )
-        self._deactivate_button.setEnabled(
+        self._set_command_enabled(
+            _CMD_DEACTIVATE,
             selected_customer is not None
             and has_active_company
             and selected_customer.is_active
-            and permission_service.has_permission("customers.deactivate")
+            and permission_service.has_permission("customers.deactivate"),
         )
-        self._groups_button.setEnabled(
-            has_active_company
-            and permission_service.has_any_permission(
-                (
-                    "customers.groups.view",
-                    "customers.groups.create",
-                    "customers.groups.edit",
-                    "customers.groups.deactivate",
-                )
-            )
+        self._set_command_enabled(
+            _CMD_EXPORT_LIST,
+            has_active_company and bool(self._customers),
         )
-        self._export_list_button.setEnabled(has_active_company and bool(self._customers))
+        self._set_command_enabled(_CMD_REFRESH, True)
         self._notify_ribbon_state_changed()
 
     # ── IRibbonHost ───────────────────────────────────────────────────
 
     def _ribbon_commands(self):
         return {
-            "customers.new": self._open_create_dialog,
-            "customers.edit": self._open_edit_dialog,
-            "customers.deactivate": self._deactivate_selected_customer,
-            "customers.refresh": self.reload_customers,
-            "customers.export_list": self._print_customer_list,
+            _CMD_NEW: self._open_create_dialog,
+            _CMD_EDIT: self._open_edit_dialog,
+            _CMD_DEACTIVATE: self._deactivate_selected_customer,
+            _CMD_REFRESH: self.reload_customers,
+            _CMD_EXPORT_LIST: self._print_customer_list,
         }
 
     def ribbon_state(self):
-        return {
-            "customers.new": self._new_button.isEnabled(),
-            "customers.edit": self._edit_button.isEnabled(),
-            "customers.deactivate": self._deactivate_button.isEnabled(),
-            "customers.refresh": True,
-            "customers.export_list": self._export_list_button.isEnabled(),
-        }
+        return dict(self._command_enabled)
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("customers.create"):
@@ -626,15 +573,6 @@ class CustomersPage(RibbonHostMixin, QWidget):
     def _format_amount(self, value: Decimal | None) -> str:
         return "" if value is None else f"{value:,.2f}"
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
-        customer = self._selected_customer()
-        if customer is None:
-            return
-        self._service_registry.navigation_service.navigate(
-            nav_ids.CUSTOMER_DETAIL,
-            context={"customer_id": customer.id},
-        )
-
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:
         _ = company_id, company_name
         self.reload_customers()
@@ -658,5 +596,9 @@ class CustomersPage(RibbonHostMixin, QWidget):
                 active_company.company_id, self._customers, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Customers", f"Export failed.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Customers")
+            show_error(self, "Customers", "An unexpected error occurred. See application log for details.")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 
 
 # ── Read DTOs ────────────────────────────────────────────────────────────────
@@ -19,6 +20,8 @@ class CompanyPayrollSettingsDTO:
     benefit_in_kind_policy_mode_code: str | None
     payroll_number_prefix: str | None
     payroll_number_padding_width: int | None
+    variance_threshold_percent: Decimal
+    variance_per_component_thresholds: str | None
     updated_at: datetime
     updated_by_user_id: int | None
 
@@ -59,6 +62,8 @@ class UpsertCompanyPayrollSettingsCommand:
     benefit_in_kind_policy_mode_code: str | None = field(default=None)
     payroll_number_prefix: str | None = field(default=None)
     payroll_number_padding_width: int | None = field(default=None)
+    variance_threshold_percent: Decimal = field(default=Decimal("10.00"))
+    variance_per_component_thresholds: str | None = field(default=None)
     updated_by_user_id: int | None = field(default=None)
 
 

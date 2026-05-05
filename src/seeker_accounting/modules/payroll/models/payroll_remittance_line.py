@@ -28,9 +28,18 @@ class PayrollRemittanceLine(TimestampMixin, Base):
             "ix_payroll_remittance_lines_batch_id",
             "payroll_remittance_batch_id",
         ),
+        Index(
+            "ix_payroll_remittance_lines_company_status",
+            "company_id",
+            "status_code",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     payroll_remittance_batch_id: Mapped[int] = mapped_column(
         ForeignKey("payroll_remittance_batches.id", ondelete="CASCADE"),
         nullable=False,

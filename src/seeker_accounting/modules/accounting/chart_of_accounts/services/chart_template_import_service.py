@@ -40,6 +40,7 @@ from seeker_accounting.modules.accounting.reference_data.repositories.account_cl
 from seeker_accounting.modules.accounting.reference_data.repositories.account_type_repository import (
     AccountTypeRepository,
 )
+from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 
@@ -78,6 +79,7 @@ class ChartTemplateImportService:
         account_repository_factory: AccountRepositoryFactory,
         account_class_repository_factory: AccountClassRepositoryFactory,
         account_type_repository_factory: AccountTypeRepositoryFactory,
+        permission_service: PermissionService,
         template_loader: ChartTemplateLoader | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -85,6 +87,7 @@ class ChartTemplateImportService:
         self._account_repository_factory = account_repository_factory
         self._account_class_repository_factory = account_class_repository_factory
         self._account_type_repository_factory = account_type_repository_factory
+        self._permission_service = permission_service
         self._template_loader = template_loader or ChartTemplateLoader()
 
     def list_built_in_templates(self) -> list[ChartTemplateProfileDTO]:
@@ -129,6 +132,7 @@ class ChartTemplateImportService:
         )
 
     def import_add_missing(self, company_id: int, command: ImportChartTemplateCommand) -> ChartImportResultDTO:
+        self._permission_service.require_permission("chart.import")
         self._require_add_missing_only(command)
         resolved_source = self._resolve_chart_source(command)
 

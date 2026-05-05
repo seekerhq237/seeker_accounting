@@ -1,6 +1,7 @@
 """Role create/edit dialog."""
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from PySide6.QtCore import Qt
@@ -36,7 +37,7 @@ class RoleEditDialog(BaseDialog):
         title = "Edit Role" if role_dto else "New Role"
         super().__init__(title, parent, help_key="dialog.role_edit")
         self.setObjectName("RoleEditDialog")
-        self.resize(460, 340)
+        apply_window_size(self, "modules.administration.ui.role.edit.dialog.0")
 
         self._role_service = role_service
         self._role_dto = role_dto

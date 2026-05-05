@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -60,7 +61,7 @@ class AccountFormDialog(BaseDialog):
         title = "New Account" if account_id is None else "Edit Account"
         super().__init__(title, parent, help_key="dialog.account_form")
         self.setObjectName("AccountFormDialog")
-        self.resize(680, 490)
+        apply_window_size(self, "modules.accounting.chart.of.accounts.ui.account.form.dialog.0")
 
         # Remove intro label and company row, add compact company label
         company_label = QLabel(company_name, self)

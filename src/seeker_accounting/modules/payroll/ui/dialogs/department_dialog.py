@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -13,8 +15,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,12 +26,16 @@ from seeker_accounting.modules.payroll.dto.payroll_setup_commands import (
     UpdateDepartmentCommand,
 )
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 
 _COL_CODE = 0
 _COL_NAME = 1
 _COL_STATUS = 2
+
+
+_log = logging.getLogger(__name__)
 
 
 class _DepartmentFormDialog(QDialog):
@@ -46,7 +50,8 @@ class _DepartmentFormDialog(QDialog):
         is_edit = dept is not None
         self.setWindowTitle("Edit Department" if is_edit else "New Department")
         self.setModal(True)
-        self.resize(380, 220)
+        _sz = DEFAULT_TOKENS.sizes
+        self.setMinimumSize(_sz.dialog_min_w_small, _sz.dialog_min_h_small)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -138,7 +143,8 @@ class DepartmentManagementDialog(QDialog):
 
         self.setWindowTitle(f"Manage Departments — {company_name}")
         self.setModal(True)
-        self.resize(580, 440)
+        _sz = DEFAULT_TOKENS.sizes
+        self.setMinimumSize(_sz.dialog_min_w_large, _sz.dialog_min_h_large)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -167,14 +173,19 @@ class DepartmentManagementDialog(QDialog):
         layout.addLayout(toolbar)
 
         # ── Table ─────────────────────────────────────────────────────────────
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(3)
-        self._table.setHorizontalHeaderLabels(("Code", "Name", "Status"))
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_edit())
-        configure_compact_table(self._table)
+        self._model = QStandardItemModel(0, 3, self)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="name", title="Name"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(lambda _: self._on_edit())
+        apply_status_chip_to_column(self._table.view(), _COL_STATUS)
         layout.addWidget(self._table, 1)
 
         self._error_label = QLabel(self)
@@ -201,31 +212,31 @@ class DepartmentManagementDialog(QDialog):
             rows = self._sr.payroll_setup_service.list_departments(
                 self._company_id, active_only=active_only
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Departments", str(exc))
+            return
+        except Exception:
+            _log.exception("Departments")
+            show_error(self, "Departments", "An unexpected error occurred. See application log for details.")
             return
         self._populate(rows)
 
     def _populate(self, rows: list[DepartmentDTO]) -> None:
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         for row in rows:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            code_item = QTableWidgetItem(row.code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._table.setItem(ri, _COL_CODE, code_item)
-            self._table.setItem(ri, _COL_NAME, QTableWidgetItem(row.name))
-            self._table.setItem(ri, _COL_STATUS, QTableWidgetItem(
-                "Active" if row.is_active else "Inactive"
-            ))
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(1, hdr.ResizeMode.Stretch)
+            code_item = QStandardItem(row.code)
+            code_item.setData(row.id, Qt.ItemDataRole.UserRole)
+            self._model.appendRow([
+                code_item,
+                QStandardItem(row.name),
+                QStandardItem("active" if row.is_active else "inactive"),
+            ])
 
     def _selected_id(self) -> int | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, _COL_CODE)
+        item = self._model.item(rows[0], _COL_CODE)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _selected_dto(self) -> DepartmentDTO | None:

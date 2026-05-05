@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from decimal import Decimal, InvalidOperation
@@ -45,7 +46,7 @@ class ItemDialog(QDialog):
         is_edit = item_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Item — {company_name}")
         self.setModal(True)
-        self.resize(580, 620)
+        apply_window_size(self, "modules.inventory.ui.item.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -143,7 +144,16 @@ class ItemDialog(QDialog):
 
         self._cost_method_combo = QComboBox(card)
         self._cost_method_combo.addItem("Weighted Average", "weighted_average")
+        self._cost_method_combo.addItem("FIFO", "fifo")
+        self._cost_method_combo.addItem("FEFO", "fefo")
+        self._cost_method_combo.addItem("Standard Cost", "standard_cost")
         form.addRow("Cost Method", self._cost_method_combo)
+
+        self._tracking_mode_combo = QComboBox(card)
+        self._tracking_mode_combo.addItem("None", "none")
+        self._tracking_mode_combo.addItem("Batch", "batch")
+        self._tracking_mode_combo.addItem("Serial", "serial")
+        form.addRow("Tracking", self._tracking_mode_combo)
 
         self._inventory_account_combo = SearchableComboBox(card)
         form.addRow("Inventory Account", self._inventory_account_combo)
@@ -244,6 +254,7 @@ class ItemDialog(QDialog):
         self._category_combo.set_current_value(item.item_category_id)
         if item.inventory_cost_method_code:
             self._set_combo_by_data(self._cost_method_combo, item.inventory_cost_method_code)
+        self._set_combo_by_data(self._tracking_mode_combo, item.tracking_mode_code or "none")
         self._inventory_account_combo.set_current_value(item.inventory_account_id)
         self._cogs_account_combo.set_current_value(item.cogs_account_id)
         self._expense_account_combo.set_current_value(item.expense_account_id)
@@ -258,6 +269,9 @@ class ItemDialog(QDialog):
     def _on_type_changed(self) -> None:
         is_stock = self._type_combo.currentData() == "stock"
         self._cost_method_combo.setEnabled(is_stock)
+        self._tracking_mode_combo.setEnabled(is_stock)
+        if not is_stock:
+            self._set_combo_by_data(self._tracking_mode_combo, "none")
         self._inventory_account_combo.setEnabled(is_stock)
         self._cogs_account_combo.setEnabled(is_stock)
 
@@ -274,6 +288,7 @@ class ItemDialog(QDialog):
         uom_id = self._uom_combo.current_value()
         category_id = self._category_combo.current_value()
         cost_method = self._cost_method_combo.currentData() if item_type_code == "stock" else None
+        tracking_mode = self._tracking_mode_combo.currentData() if item_type_code == "stock" else "none"
         inv_acct = self._inventory_account_combo.current_value() if item_type_code == "stock" else None
         cogs_acct = self._cogs_account_combo.current_value() if item_type_code == "stock" else None
         expense_acct = self._expense_account_combo.current_value()
@@ -305,6 +320,7 @@ class ItemDialog(QDialog):
                         unit_of_measure_id=uom_id,
                         item_category_id=category_id,
                         inventory_cost_method_code=cost_method,
+                        tracking_mode_code=tracking_mode,
                         inventory_account_id=inv_acct,
                         cogs_account_id=cogs_acct,
                         expense_account_id=expense_acct,
@@ -326,6 +342,7 @@ class ItemDialog(QDialog):
                         unit_of_measure_id=uom_id,
                         item_category_id=category_id,
                         inventory_cost_method_code=cost_method,
+                        tracking_mode_code=tracking_mode,
                         inventory_account_id=inv_acct,
                         cogs_account_id=cogs_acct,
                         expense_account_id=expense_acct,

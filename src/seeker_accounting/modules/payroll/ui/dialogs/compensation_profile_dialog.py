@@ -45,9 +45,7 @@ class CompensationProfileDialog(QDialog):
         self._employee_id = employee_id
         self._existing = existing
 
-        self.setWindowTitle(
-            "Edit Compensation Profile" if existing else "New Compensation Profile"
-        )
+        self.setWindowTitle("Edit compensation" if existing else "New compensation")
         self.setMinimumWidth(420)
         self.setModal(True)
 
@@ -61,7 +59,7 @@ class CompensationProfileDialog(QDialog):
 
         self._profile_name = QLineEdit()
         self._profile_name.setPlaceholderText("e.g. Standard 2024")
-        form.addRow("Profile Name:", self._profile_name)
+        form.addRow("Compensation name:", self._profile_name)
 
         self._basic_salary = QLineEdit()
         self._basic_salary.setPlaceholderText("0.00")
@@ -126,7 +124,7 @@ class CompensationProfileDialog(QDialog):
         try:
             salary = Decimal(self._basic_salary.text().strip())
         except InvalidOperation:
-            show_error(self, "Compensation Profile", "Basic salary must be a valid number.")
+            show_error(self, "Compensation", "Basic salary must be a valid number.")
             return
 
         effective_from = self._effective_from.date().toPython()
@@ -139,7 +137,7 @@ class CompensationProfileDialog(QDialog):
         currency = self._currency.text().strip().upper() or "XAF"
         profile_name = self._profile_name.text().strip()
         if not profile_name:
-            show_error(self, "Compensation Profile", "Profile name is required.")
+            show_error(self, "Compensation", "Compensation name is required.")
             return
 
         try:
@@ -173,7 +171,7 @@ class CompensationProfileDialog(QDialog):
                 )
             self.accept()
         except (ValidationError, ConflictError, NotFoundError) as exc:
-            show_error(self, "Compensation Profile", str(exc))
+            show_error(self, "Compensation", str(exc))
 
 
 def _today() -> "QDate":

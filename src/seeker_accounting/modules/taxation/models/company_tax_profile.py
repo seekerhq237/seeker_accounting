@@ -12,8 +12,9 @@ preferences). Tax-compliance facts deserve their own bounded entity.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from seeker_accounting.db.base import Base, TimestampMixin
@@ -40,6 +41,19 @@ class CompanyTaxProfile(TimestampMixin, Base):
 
     is_vat_liable: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False)
     vat_effective_from: Mapped[date | None] = mapped_column(Date(), nullable=True)
+    vat_uses_tax_point: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, default=False
+    )
+    # T32: ACCRUAL (default) or CASH — controls how the aggregator filters
+    # posted_tax_lines when drafting a VAT return.
+    vat_accounting_basis: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ACCRUAL"
+    )
+    # T34: pro-rata percentage (0.00–100.00) for mixed-supply companies;
+    # None means 100% recovery (no apportionment).
+    vat_pro_rata_percent: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
 
     # --- Corporate income tax -------------------------------------------
 

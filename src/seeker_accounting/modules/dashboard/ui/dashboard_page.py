@@ -5,22 +5,18 @@ from decimal import Decimal
 from typing import Any
 
 from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QPainter, QBrush, QCursor
+from PySide6.QtGui import QColor, QPainter, QBrush, QCursor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QTabBar,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
     QPushButton,
-    QAbstractItemView,
     QGridLayout,
 )
 
@@ -35,9 +31,15 @@ from seeker_accounting.modules.dashboard.dto.dashboard_dto import (
     DashboardKpiDeltaDTO,
     DashboardKpiDTO,
     DashboardRecentActivityItemDTO,
+    DashboardSetupChecklistDTO,
 )
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBar, MoneyBarItem
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+from seeker_accounting.shared.services.telemetry_service import get_default_telemetry_service
+from seeker_accounting.shared.ui.accessibility import describe_button, set_accessible_metadata
+from seeker_accounting.shared.ui.coach_marks import install_coach_mark
+from seeker_accounting.shared.ui.empty_states import build_empty_state
+from seeker_accounting.shared.ui.keyboard_shortcuts import install_shortcut, shortcut_map
 
 _log = logging.getLogger(__name__)
 
@@ -64,6 +66,7 @@ class DashboardPage(QWidget):
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._service_registry = service_registry
+        self._telemetry = get_default_telemetry_service()
         self._data: DashboardDataDTO | None = None
         self.setObjectName("DashboardPage")
 
@@ -81,7 +84,17 @@ class DashboardPage(QWidget):
         self._service_registry.active_company_context.active_company_changed.connect(
             self._on_company_changed
         )
+        self._install_shortcuts()
         self._reload_dashboard()
+
+    def _install_shortcuts(self) -> None:
+        specs = shortcut_map("dashboard")
+        if refresh := specs.get("refresh"):
+            install_shortcut(self, refresh, self._reload_dashboard)
+        if overview := specs.get("open_overview"):
+            install_shortcut(self, overview, lambda: self._tab_bar.setCurrentIndex(0))
+        if cash := specs.get("open_cash"):
+            install_shortcut(self, cash, lambda: self._tab_bar.setCurrentIndex(1))
 
     def _build_main_surface(self) -> QWidget:
         scroll = QScrollArea(self)
@@ -135,20 +148,9 @@ class DashboardPage(QWidget):
         outer_layout.setContentsMargins(20, 20, 20, 20)
         outer_layout.addStretch(1)
 
-        card = QFrame(outer)
+        card = build_empty_state("dashboard.no_company", parent=outer)
         card.setObjectName("DashboardNoCompanyCard")
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(32, 28, 32, 28)
-        card_layout.setSpacing(8)
-
-        title = QLabel("No company selected", card)
-        title.setObjectName("DashboardNoCompanyTitle")
-        card_layout.addWidget(title)
-
-        msg = QLabel("Select or create a company to view the dashboard overview.", card)
-        msg.setObjectName("DashboardNoCompanyBody")
-        msg.setWordWrap(True)
-        card_layout.addWidget(msg)
+        card.primary_clicked.connect(lambda: self._navigate_to(nav_ids.COMPANIES))
 
         outer_layout.addWidget(card)
         outer_layout.addStretch(2)
@@ -169,6 +171,7 @@ class DashboardPage(QWidget):
         refresh_btn = QPushButton("Refresh", row)
         refresh_btn.setObjectName("DashboardRefreshButton")
         refresh_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        describe_button(refresh_btn, "Refresh dashboard", "Reload dashboard data for the active company.")
         refresh_btn.clicked.connect(self._reload_dashboard)
         layout.addWidget(refresh_btn)
 
@@ -178,6 +181,7 @@ class DashboardPage(QWidget):
         self,
         parent: QWidget,
         title_text: str,
+        coach_mark_key: str | None = None,
     ) -> tuple[QFrame, QVBoxLayout, QHBoxLayout]:
         panel = QFrame(parent)
         panel.setObjectName("Panel")
@@ -194,6 +198,8 @@ class DashboardPage(QWidget):
 
         title = QLabel(title_text, header)
         title.setObjectName("PanelHeaderTitle")
+        if coach_mark_key:
+            install_coach_mark(title, coach_mark_key)
         header_layout.addWidget(title)
         header_layout.addStretch(1)
         outer.addWidget(header)
@@ -216,6 +222,8 @@ class DashboardPage(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(14)
+        self._setup_checklist_panel = self._build_setup_checklist_panel(left)
+        left_layout.addWidget(self._setup_checklist_panel)
         self._activity_panel = self._build_activity_panel(left)
         left_layout.addWidget(self._activity_panel)
         self._attention_panel = self._build_attention_panel(left)
@@ -241,26 +249,30 @@ class DashboardPage(QWidget):
     def _build_activity_panel(self, parent: QWidget) -> QWidget:
         panel, layout, _header_layout = self._create_panel(parent, "Recent Activity")
 
-        self._activity_table = QTableWidget(panel)
-        self._activity_table.setObjectName("DashboardActivityTable")
-        self._activity_table.setColumnCount(5)
-        self._activity_table.setHorizontalHeaderLabels(("Date", "Document", "Description", "Amount", "Status"))
-        configure_dense_table(self._activity_table)
+        self._activity_model = QStandardItemModel(0, 5, panel)
+        self._activity_model.setHorizontalHeaderLabels(["Date", "Document", "Description", "Amount", "Status"])
+        self._activity_table = DataTable(
+            columns=(
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="document", title="Document"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="amount", title="Amount"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._activity_table.set_model(self._activity_model)
         self._activity_table.setMinimumHeight(180)
         self._activity_table.setMaximumHeight(360)
+        self._activity_table.view().doubleClicked.connect(self._on_activity_double_clicked)
 
-        hdr = self._activity_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self._activity_table.itemDoubleClicked.connect(self._on_activity_double_clicked)
-
-        self._activity_empty = QLabel("No recent activity", panel)
-        self._activity_empty.setObjectName("DashboardEmptyLabel")
-        self._activity_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._activity_empty.setMinimumHeight(60)
+        self._activity_empty = build_empty_state("dashboard.recent_activity", parent=panel)
+        self._activity_empty.setMinimumHeight(92)
+        self._activity_empty.setMaximumHeight(140)
 
         layout.addWidget(self._activity_table)
         layout.addWidget(self._activity_empty)
@@ -268,7 +280,11 @@ class DashboardPage(QWidget):
         return panel
 
     def _build_attention_panel(self, parent: QWidget) -> QWidget:
-        panel, layout, _header_layout = self._create_panel(parent, "Requires Attention")
+        panel, layout, _header_layout = self._create_panel(
+            parent,
+            "Requires Attention",
+            coach_mark_key="term.pending_postings",
+        )
 
         self._attention_container = QWidget(panel)
         self._attention_layout = QVBoxLayout(self._attention_container)
@@ -276,16 +292,41 @@ class DashboardPage(QWidget):
         self._attention_layout.setSpacing(2)
         layout.addWidget(self._attention_container)
 
-        self._attention_empty = QLabel("Nothing requires attention", panel)
-        self._attention_empty.setObjectName("DashboardEmptyLabel")
-        self._attention_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._attention_empty.setMinimumHeight(40)
+        self._attention_empty = build_empty_state("dashboard.attention", parent=panel)
+        self._attention_empty.setMinimumHeight(90)
+        self._attention_empty.setMaximumHeight(130)
         layout.addWidget(self._attention_empty)
         self._attention_empty.setVisible(False)
         return panel
 
+    def _build_setup_checklist_panel(self, parent: QWidget) -> QWidget:
+        panel, layout, _header_layout = self._create_panel(
+            parent,
+            "Setup Checklist",
+            coach_mark_key="term.setup_checklist",
+        )
+        self._setup_summary_label = QLabel("", panel)
+        self._setup_summary_label.setObjectName("DashboardSetupSummary")
+        set_accessible_metadata(
+            self._setup_summary_label,
+            "Setup checklist progress",
+            "Shows how many setup tasks are complete for the active company.",
+        )
+        layout.addWidget(self._setup_summary_label)
+
+        self._setup_items_container = QWidget(panel)
+        self._setup_items_layout = QVBoxLayout(self._setup_items_container)
+        self._setup_items_layout.setContentsMargins(0, 0, 0, 0)
+        self._setup_items_layout.setSpacing(4)
+        layout.addWidget(self._setup_items_container)
+        return panel
+
     def _build_aging_panel(self, parent: QWidget, title_text: str) -> QFrame:
-        panel, layout, _header_layout = self._create_panel(parent, title_text)
+        panel, layout, _header_layout = self._create_panel(
+            parent,
+            title_text,
+            coach_mark_key="term.aging",
+        )
 
         bar = AgingBar(panel)
         bar.setFixedHeight(14)
@@ -351,6 +392,7 @@ class DashboardPage(QWidget):
             btn = QPushButton(label, panel)
             btn.setObjectName("DashboardQuickAction")
             btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            describe_button(btn, label, f"Open {label.lower()} workflow.")
             btn.clicked.connect(lambda checked=False, nid=target_nav_id: self._navigate_to(nid))
             grid.addWidget(btn, idx // 3, idx % 3)
 
@@ -367,7 +409,11 @@ class DashboardPage(QWidget):
         layout.addWidget(self._balance_strip)
 
         # Cash trend chart panel
-        trend_panel, tp_layout, th_layout = self._create_panel(widget, "Daily Inflow vs Outflow")
+        trend_panel, tp_layout, th_layout = self._create_panel(
+            widget,
+            "Daily Inflow vs Outflow",
+            coach_mark_key="term.cash_liquidity",
+        )
 
         # Legend
         inflow_swatch = QLabel(trend_panel)
@@ -390,10 +436,9 @@ class DashboardPage(QWidget):
         self._trend_chart.setMinimumHeight(140)
         tp_layout.addWidget(self._trend_chart)
 
-        self._trend_empty = QLabel("No movements recorded in this period.", trend_panel)
-        self._trend_empty.setObjectName("DashboardEmptyLabel")
-        self._trend_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._trend_empty.setMinimumHeight(60)
+        self._trend_empty = build_empty_state("dashboard.cash_movements", parent=trend_panel)
+        self._trend_empty.setMinimumHeight(92)
+        self._trend_empty.setMaximumHeight(140)
         self._trend_empty.setVisible(False)
         tp_layout.addWidget(self._trend_empty)
 
@@ -404,21 +449,25 @@ class DashboardPage(QWidget):
             "Financial Account Balances",
         )
 
-        self._accounts_table = QTableWidget(accounts_panel)
-        self._accounts_table.setObjectName("DashboardAccountTable")
-        self._accounts_table.setColumnCount(3)
-        self._accounts_table.setHorizontalHeaderLabels(("Account", "Type", "Balance"))
-        configure_dense_table(self._accounts_table)
+        self._accounts_model = QStandardItemModel(0, 3, accounts_panel)
+        self._accounts_model.setHorizontalHeaderLabels(["Account", "Type", "Balance"])
+        self._accounts_table = DataTable(
+            columns=(
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="balance", title="Balance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=accounts_panel,
+        )
+        self._accounts_table.set_model(self._accounts_model)
 
-        acct_hdr = self._accounts_table.horizontalHeader()
-        acct_hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        acct_hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        acct_hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-
-        self._accounts_empty = QLabel("No financial accounts found", accounts_panel)
-        self._accounts_empty.setObjectName("DashboardEmptyLabel")
-        self._accounts_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._accounts_empty.setMinimumHeight(60)
+        self._accounts_empty = build_empty_state("dashboard.financial_accounts", parent=accounts_panel)
+        self._accounts_empty.setMinimumHeight(92)
+        self._accounts_empty.setMaximumHeight(140)
 
         ap_layout.addWidget(self._accounts_table)
         ap_layout.addWidget(self._accounts_empty)
@@ -483,11 +532,19 @@ class DashboardPage(QWidget):
 
         self._populate_context(self._data)
         self._populate_kpis(self._data.kpis, self._data.kpi_deltas)
+        self._populate_setup_checklist(self._data.setup_checklist)
         self._populate_activity(self._data.recent_activity)
         self._populate_attention(self._data.attention_items)
         self._populate_aging(self._ar_aging_panel, self._data.ar_aging)
         self._populate_aging(self._ap_aging_panel, self._data.ap_aging)
         self._populate_cash_liquidity(self._data.cash_liquidity, self._data.kpis)
+        self._record_telemetry(
+            "dashboard",
+            "loaded",
+            setup_total=self._data.setup_checklist.total_count,
+            setup_complete=self._data.setup_checklist.complete_count,
+            attention_count=len(self._data.attention_items),
+        )
 
     def _populate_context(self, data: DashboardDataDTO) -> None:
         as_of = data.as_of_date
@@ -570,42 +627,92 @@ class DashboardPage(QWidget):
             pass
         self._money_bar.item_clicked.connect(self._navigate_to)
 
+    def _populate_setup_checklist(self, checklist: DashboardSetupChecklistDTO) -> None:
+        while self._setup_items_layout.count():
+            child = self._setup_items_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        if not checklist.items:
+            self._setup_checklist_panel.setVisible(False)
+            return
+
+        self._setup_checklist_panel.setVisible(True)
+        self._setup_summary_label.setText(
+            f"{checklist.complete_count} of {checklist.total_count} ready"
+        )
+
+        if checklist.is_complete:
+            complete_state = build_empty_state("dashboard.setup_complete", parent=self._setup_items_container)
+            complete_state.setMinimumHeight(90)
+            complete_state.setMaximumHeight(130)
+            self._setup_items_layout.addWidget(complete_state)
+            return
+
+        for item in checklist.items:
+            row = QFrame(self._setup_items_container)
+            row.setObjectName("DashboardSetupChecklistRow")
+            row.setProperty("complete", item.is_complete)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(8, 6, 8, 6)
+            row_layout.setSpacing(8)
+
+            status = QLabel("Done" if item.is_complete else "Open", row)
+            status.setObjectName("DashboardSetupStatus")
+            status.setProperty("complete", item.is_complete)
+            row_layout.addWidget(status)
+
+            text_box = QWidget(row)
+            text_layout = QVBoxLayout(text_box)
+            text_layout.setContentsMargins(0, 0, 0, 0)
+            text_layout.setSpacing(1)
+            label = QLabel(item.label, text_box)
+            label.setObjectName("DashboardSetupLabel")
+            detail = QLabel(item.detail, text_box)
+            detail.setObjectName("DashboardSetupDetail")
+            detail.setWordWrap(True)
+            text_layout.addWidget(label)
+            text_layout.addWidget(detail)
+            row_layout.addWidget(text_box, 1)
+
+            if not item.is_complete:
+                button = QPushButton("Open", row)
+                button.setObjectName("DashboardSetupOpenButton")
+                describe_button(button, f"Open {item.label}", item.detail)
+                button.clicked.connect(
+                    lambda checked=False, nid=item.nav_id, key=item.key: self._open_setup_item(nid, key)
+                )
+                row_layout.addWidget(button)
+
+            self._setup_items_layout.addWidget(row)
+
+        self._record_telemetry(
+            "setup_checklist",
+            "displayed",
+            complete_count=checklist.complete_count,
+            total_count=checklist.total_count,
+        )
+
     def _populate_activity(self, items: tuple[DashboardRecentActivityItemDTO, ...]) -> None:
-        table = self._activity_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._activity_model.removeRows(0, self._activity_model.rowCount())
 
         if not items:
-            table.setVisible(False)
+            self._activity_table.setVisible(False)
             self._activity_empty.setVisible(True)
             return
 
-        table.setVisible(True)
+        self._activity_table.setVisible(True)
         self._activity_empty.setVisible(False)
 
-        for row_idx, item in enumerate(items):
-            table.insertRow(row_idx)
-
-            date_cell = QTableWidgetItem(item.entry_date.strftime("%d %b %Y"))
-            date_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row_idx, 0, date_cell)
-
+        for item in items:
             doc_type = _DOC_TYPE_LABELS.get(item.document_type, item.document_type.title())
-            doc_cell = QTableWidgetItem(f"{doc_type} {item.document_number}")
-            doc_cell.setData(Qt.ItemDataRole.UserRole, (item.nav_id, item.record_id))
-            table.setItem(row_idx, 1, doc_cell)
-
-            table.setItem(row_idx, 2, QTableWidgetItem(item.description))
-
-            amount_cell = QTableWidgetItem(f"{item.amount:,.2f}")
-            amount_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 3, amount_cell)
-
-            status_cell = QTableWidgetItem(item.status_code.replace("_", " ").title())
-            status_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row_idx, 4, status_cell)
-
-        table.setSortingEnabled(True)
+            self._activity_model.appendRow([
+                self._make_item(item.entry_date.strftime("%d %b %Y")),
+                self._make_item(f"{doc_type} {item.document_number}", user_data=(item.nav_id, item.record_id)),
+                self._make_item(item.description),
+                self._make_item(f"{item.amount:,.2f}"),
+                self._make_item(item.status_code.replace("_", " ").title()),
+            ])
 
     def _populate_attention(self, items: tuple[DashboardAttentionItemDTO, ...]) -> None:
         while self._attention_layout.count():
@@ -688,41 +795,32 @@ class DashboardPage(QWidget):
             self._trend_chart.setVisible(False)
             self._trend_empty.setVisible(True)
 
-        table = self._accounts_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._accounts_model.removeRows(0, self._accounts_model.rowCount())
 
         if not liquidity.accounts:
-            table.setVisible(False)
+            self._accounts_table.setVisible(False)
             self._accounts_empty.setVisible(True)
             return
 
-        table.setVisible(True)
+        self._accounts_table.setVisible(True)
         self._accounts_empty.setVisible(False)
 
-        for row_idx, acct in enumerate(liquidity.accounts):
-            table.insertRow(row_idx)
-
-            name_cell = QTableWidgetItem(f"{acct.account_code}  {acct.account_name}")
-            table.setItem(row_idx, 0, name_cell)
-
+        for acct in liquidity.accounts:
             type_label = _ACCT_TYPE_LABELS.get(
                 acct.account_type_code,
                 acct.account_type_code.replace("_", " ").title(),
             )
-            type_cell = QTableWidgetItem(type_label)
-            type_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row_idx, 1, type_cell)
+            self._accounts_model.appendRow([
+                self._make_item(f"{acct.account_code}  {acct.account_name}"),
+                self._make_item(type_label),
+                self._make_item(f"{acct.closing_balance:,.2f}"),
+            ])
 
-            balance_cell = QTableWidgetItem(f"{acct.closing_balance:,.2f}")
-            balance_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 2, balance_cell)
-
-        table.setSortingEnabled(True)
-
-    def _on_activity_double_clicked(self, item: QTableWidgetItem) -> None:
-        row = item.row()
-        doc_item = self._activity_table.item(row, 1)
+    def _on_activity_double_clicked(self, index) -> None:
+        proxy = self._activity_table.view().model()
+        src = proxy.mapToSource(index)
+        row = src.row()
+        doc_item = self._activity_model.item(row, 1)
         if doc_item is None:
             return
         data = doc_item.data(Qt.ItemDataRole.UserRole)
@@ -730,8 +828,23 @@ class DashboardPage(QWidget):
             nav_id, _record_id = data
             self._navigate_to(nav_id)
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _navigate_to(self, nav_id: str) -> None:
         self._service_registry.navigation_service.navigate(nav_id)
+
+    def _open_setup_item(self, nav_id: str, item_key: str) -> None:
+        self._record_telemetry("setup_checklist", "open_item", item_key=item_key)
+        self._navigate_to(nav_id)
+
+    def _record_telemetry(self, funnel: str, step: str, **context: str | int | bool) -> None:
+        self._telemetry.record_funnel_step(funnel=funnel, step=step, context=context)
 
     def _on_company_changed(self, *_args: Any) -> None:
         self._reload_dashboard()

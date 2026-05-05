@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
+from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.budgeting.dto.project_budget_commands import (
     AddProjectBudgetLineCommand,
     BudgetLineDraftDTO,
@@ -62,6 +63,7 @@ class ProjectBudgetService:
         project_repository_factory: ProjectRepositoryFactory,
         project_job_repository_factory: ProjectJobRepositoryFactory,
         project_cost_code_repository_factory: ProjectCostCodeRepositoryFactory,
+        permission_service: PermissionService,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -70,11 +72,13 @@ class ProjectBudgetService:
         self._project_repository_factory = project_repository_factory
         self._project_job_repository_factory = project_job_repository_factory
         self._project_cost_code_repository_factory = project_cost_code_repository_factory
+        self._permission_service = permission_service
         self._audit_service = audit_service
 
     # ── Version CRUD ─────────────────────────────────────────────────
 
     def create_version(self, command: CreateProjectBudgetVersionCommand) -> ProjectBudgetVersionDetailDTO:
+        self._permission_service.require_permission("budgets.create")
         if not command.version_name or not command.version_name.strip():
             raise ValidationError("Version name is required.")
         if command.version_type_code not in _VALID_VERSION_TYPE_CODES:
@@ -135,6 +139,7 @@ class ProjectBudgetService:
     def update_version(
         self, version_id: int, command: UpdateProjectBudgetVersionCommand
     ) -> ProjectBudgetVersionDetailDTO:
+        self._permission_service.require_permission("budgets.edit")
         if not command.version_name or not command.version_name.strip():
             raise ValidationError("Version name is required.")
         if command.version_type_code not in _VALID_VERSION_TYPE_CODES:
@@ -200,6 +205,7 @@ class ProjectBudgetService:
         Lines may be empty (a draft with no lines is allowed). Submit remains
         gated separately by ``BudgetApprovalService.submit_version``.
         """
+        self._permission_service.require_permission("budgets.create")
         if not command.version_name or not command.version_name.strip():
             raise ValidationError("Version name is required.")
         if command.version_type_code not in _VALID_VERSION_TYPE_CODES:
@@ -379,6 +385,7 @@ class ProjectBudgetService:
     # ── Line CRUD ────────────────────────────────────────────────────
 
     def add_line(self, command: AddProjectBudgetLineCommand) -> ProjectBudgetLineDTO:
+        self._permission_service.require_permission("budgets.edit")
         if command.line_number < 1:
             raise ValidationError("Line number must be at least 1.")
         if command.line_amount < 0:
@@ -436,6 +443,7 @@ class ProjectBudgetService:
     def update_line(
         self, line_id: int, command: UpdateProjectBudgetLineCommand
     ) -> ProjectBudgetLineDTO:
+        self._permission_service.require_permission("budgets.edit")
         if command.line_number < 1:
             raise ValidationError("Line number must be at least 1.")
         if command.line_amount < 0:
@@ -495,6 +503,7 @@ class ProjectBudgetService:
             return self._to_line_dto(line, uow.session)
 
     def delete_line(self, line_id: int) -> None:
+        self._permission_service.require_permission("budgets.edit")
         with self._unit_of_work_factory() as uow:
             line_repo = self._line_repository_factory(uow.session)
             line = line_repo.get_by_id(line_id)

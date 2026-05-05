@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from pathlib import Path
 from typing import Callable
 
@@ -66,10 +67,10 @@ class CompanyFormDialog(BaseDialog):
 
         if self._is_create:
             self._build_create_mode()
-            self.resize(580, 600)
+            apply_window_size(self, "modules.companies.ui.company.form.dialog.0")
         else:
             self._build_edit_mode()
-            self.resize(580, 600)
+            apply_window_size(self, "modules.companies.ui.company.form.dialog.1")
 
         self._load_reference_options()
         if not self._is_create:

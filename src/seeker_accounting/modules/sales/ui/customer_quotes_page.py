@@ -4,8 +4,8 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -14,8 +14,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -30,8 +28,25 @@ from seeker_accounting.modules.sales.ui.customer_quote_dialog import (
 )
 from seeker_accounting.app.navigation.workflow_resume_service import ResumeTokenPayload
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+_QUOTE_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="quote_number", title="Quote #"),
+    DataTableColumn(key="quote_date", title="Date"),
+    DataTableColumn(key="expiry_date", title="Expiry"),
+    DataTableColumn(key="customer_name", title="Customer"),
+    DataTableColumn(key="currency_code", title="Currency"),
+    DataTableColumn(key="subtotal_amount", title="Subtotal", is_numeric=True),
+    DataTableColumn(key="tax_amount", title="Tax", is_numeric=True),
+    DataTableColumn(key="total_amount", title="Total", is_numeric=True),
+    DataTableColumn(key="status", title="Status"),
+)
 
 
 # Status display labels
@@ -76,7 +91,7 @@ class CustomerQuotesPage(QWidget):
 
         if active_company is None:
             self._quotes = []
-            self._table.setRowCount(0)
+            self._quotes_model.removeRows(0, self._quotes_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -89,7 +104,7 @@ class CustomerQuotesPage(QWidget):
             )
         except Exception as exc:
             self._quotes = []
-            self._table.setRowCount(0)
+            self._quotes_model.removeRows(0, self._quotes_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -97,7 +112,7 @@ class CustomerQuotesPage(QWidget):
             return
 
         self._populate_table()
-        self._apply_search_filter()
+        self._update_record_count_label()
         self._sync_surface_state(active_company)
         self._restore_selection(selected_quote_id)
         self._update_action_state()
@@ -118,7 +133,6 @@ class CustomerQuotesPage(QWidget):
         self._search_input = QLineEdit(card)
         self._search_input.setPlaceholderText("Search quotes...")
         self._search_input.setFixedWidth(180)
-        self._search_input.textChanged.connect(lambda _text: self._apply_search_filter())
         layout.addWidget(self._search_input)
 
         self._status_filter_combo = QComboBox(card)
@@ -209,24 +223,25 @@ class CustomerQuotesPage(QWidget):
 
         layout.addWidget(top_row)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("CustomerQuotesTable")
-        self._table.setColumnCount(9)
-        self._table.setHorizontalHeaderLabels((
-            "Quote #",
-            "Date",
-            "Expiry",
-            "Customer",
-            "Currency",
-            "Subtotal",
-            "Tax",
-            "Total",
-            "Status",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+        self._quotes_model = QStandardItemModel(0, len(_QUOTE_COLUMNS), card)
+        self._quotes_model.setHorizontalHeaderLabels([c.title for c in _QUOTE_COLUMNS])
+
+        self._table = DataTable(
+            columns=_QUOTE_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No customer quotes match the current filters.",
+            parent=card,
+        )
+        self._table.set_model(self._quotes_model)
+        self._quotes_status_delegate = apply_status_chip_to_column(self._table.view(), 8)
+        self._table.selection_changed.connect(self._on_selection_changed)
+        self._table.row_activated.connect(self._on_row_activated)
+        self._search_input.textChanged.connect(self._table.set_search_text)
+        self._search_input.textChanged.connect(self._update_record_count_label)
         layout.addWidget(self._table)
         return card
 
@@ -321,87 +336,98 @@ class CustomerQuotesPage(QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    @staticmethod
+    def _make_item(text: str, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem(text or "")
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value: Decimal | None) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-
+        self._quotes_model.removeRows(0, self._quotes_model.rowCount())
         for quote in self._quotes:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-            values = (
-                quote.quote_number,
-                self._format_date(quote.quote_date),
-                self._format_date(quote.expiry_date) if quote.expiry_date else "—",
-                quote.customer_name,
-                quote.currency_code,
-                self._format_amount(quote.subtotal_amount),
-                self._format_amount(quote.tax_amount),
-                self._format_amount(quote.total_amount),
-                _STATUS_LABELS.get(quote.status_code, quote.status_code.title()),
+            items = [
+                self._make_item(quote.quote_number, user_data=quote.id),
+                self._make_item(self._format_date(quote.quote_date)),
+                self._make_item(
+                    self._format_date(quote.expiry_date) if quote.expiry_date else "\u2014"
+                ),
+                self._make_item(quote.customer_name),
+                self._make_item(quote.currency_code),
+                self._make_numeric(quote.subtotal_amount),
+                self._make_numeric(quote.tax_amount),
+                self._make_numeric(quote.total_amount),
+                self._make_item(quote.status_code),
+            ]
+            self._quotes_model.appendRow(items)
+
+    def _update_record_count_label(self, *_args: object) -> None:
+        total = len(self._quotes)
+        query = self._search_input.text().strip()
+        if query:
+            proxy = self._table.view().model()
+            visible = proxy.rowCount() if proxy is not None else total
+            self._record_count_label.setText(f"{visible} shown of {total} quotes")
+        else:
+            self._record_count_label.setText(
+                f"{total} quote" if total == 1 else f"{total} quotes"
             )
-            for col, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if col == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, quote.id)
-                if col in {1, 2, 4, 5, 6, 7, 8}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, col, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(7, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(8, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
-
-        count = len(self._quotes)
-        self._record_count_label.setText(f"{count} quote" if count == 1 else f"{count} quotes")
-
-    def _apply_search_filter(self) -> None:
-        query = self._search_input.text().strip().lower()
-        for row in range(self._table.rowCount()):
-            if not query:
-                self._table.setRowHidden(row, False)
-                continue
-            match = False
-            for col in range(self._table.columnCount()):
-                item = self._table.item(row, col)
-                if item is not None and query in item.text().lower():
-                    match = True
-                    break
-            self._table.setRowHidden(row, not match)
 
     def _restore_selection(self, selected_quote_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._quotes:
             return
         if selected_quote_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, q in enumerate(self._quotes) if q.id == selected_quote_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_quote_id:
-                self._table.selectRow(row)
-                return
-        self._table.selectRow(0)
+        src_index = self._quotes_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_quote(self) -> CustomerQuoteListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(current_row, 0)
-        if item is None:
-            return None
-        quote_id = item.data(Qt.ItemDataRole.UserRole)
-        for quote in self._quotes:
-            if quote.id == quote_id:
-                return quote
+        idx = rows[0]
+        if 0 <= idx < len(self._quotes):
+            return self._quotes[idx]
         return None
+
+    def _on_selection_changed(self, _rows: list[int]) -> None:
+        self._update_action_state()
+
+    def _on_row_activated(self, _row: int) -> None:
+        selected = self._selected_quote()
+        if selected is None:
+            return
+        if selected.status_code == "draft":
+            self._open_edit_dialog()
 
     def _update_action_state(self) -> None:
         active_company = self._active_company()
@@ -451,13 +477,6 @@ class CustomerQuotesPage(QWidget):
 
     def _handle_active_company_changed(self) -> None:
         self.reload_quotes()
-
-    def _handle_item_double_clicked(self) -> None:
-        selected = self._selected_quote()
-        if selected is None:
-            return
-        if selected.status_code == "draft":
-            self._open_edit_dialog()
 
     # ------------------------------------------------------------------
     # Actions

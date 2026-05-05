@@ -228,8 +228,8 @@ class PayrollValidationDashboardService:
                     check_code="NO_STATUTORY_PACK",
                     category="setup",
                     severity="warning",
-                    title="No Statutory Pack Applied",
-                    message="No statutory pack has been applied. Apply a pack in Payroll Operations > Statutory Packs.",
+                    title="No statutory pack applied",
+                    message="No statutory pack has been applied. Apply a pack in Payroll Operations > Statutory packs.",
                 )
             )
 
@@ -261,7 +261,7 @@ class PayrollValidationDashboardService:
                     check_code="PACK_UNVERIFIED_ITEMS",
                     category="setup",
                     severity="error",
-                    title="Statutory Pack Contains Unverified Items",
+                    title="Statutory pack contains unverified items",
                     message=(
                         f"Pack '{descriptor.pack_code}' has {unverified} unverified item(s). "
                         "These items use placeholder values and must be confirmed against official "
@@ -276,7 +276,7 @@ class PayrollValidationDashboardService:
                     check_code="PACK_PROVISIONAL_ITEMS",
                     category="setup",
                     severity="info",
-                    title="Statutory Pack Has Provisional Items",
+                    title="Statutory pack has provisional items",
                     message=(
                         f"Pack '{descriptor.pack_code}' has {provisional} provisional item(s) "
                         "(e.g. CRTV brackets, TDL amounts). These are consistent with known "
@@ -416,8 +416,8 @@ class PayrollValidationDashboardService:
                         check_code="NO_COMPENSATION_PROFILE",
                         category="employees",
                         severity="error",
-                        title="Missing Compensation Profile",
-                        message=f"{employee.display_name} has no compensation profile configured.",
+                        title="Missing compensation",
+                        message=f"{employee.display_name} has no compensation configured.",
                         entity_type="employee",
                         entity_id=employee.id,
                         entity_label=employee.display_name,
@@ -430,9 +430,9 @@ class PayrollValidationDashboardService:
                         check_code="EFFECTIVE_DATE_GAP",
                         category="employees",
                         severity="error",
-                        title="Compensation Profile Gap",
+                        title="Compensation gap",
                         message=(
-                            f"{employee.display_name} has compensation profiles, but none cover "
+                            f"{employee.display_name} has compensation records, but none cover "
                             f"{period_year}-{period_month:02d}."
                         ),
                         entity_type="employee",
@@ -447,9 +447,9 @@ class PayrollValidationDashboardService:
                         check_code="EFFECTIVE_DATE_AMBIGUITY",
                         category="employees",
                         severity="error",
-                        title="Compensation Profile Ambiguity",
+                        title="Compensation ambiguity",
                         message=(
-                            f"{employee.display_name} has multiple active compensation profiles for "
+                            f"{employee.display_name} has multiple active compensation records for "
                             f"{period_year}-{period_month:02d}."
                         ),
                         entity_type="employee",
@@ -467,7 +467,7 @@ class PayrollValidationDashboardService:
                         check_code="NO_COMPONENT_ASSIGNMENTS",
                         category="employees",
                         severity="warning",
-                        title="No Component Assignments",
+                        title="No component assignments",
                         message=(
                             f"{employee.display_name} has no active component assignments for "
                             f"{period_year}-{period_month:02d}."
@@ -548,10 +548,10 @@ class PayrollValidationDashboardService:
                                 check_code="OVERLAPPING_COMPENSATION_PROFILES",
                                 category="employees",
                                 severity="error",
-                                title="Overlapping Compensation Profiles",
+                                title="Overlapping compensation",
                                 message=(
                                     f"Employee {current.employee.display_name if current.employee else employee_id} "
-                                    "has overlapping active compensation profiles."
+                                    "has overlapping active compensation records."
                                 ),
                                 entity_type="employee",
                                 entity_id=employee_id,
@@ -585,7 +585,7 @@ class PayrollValidationDashboardService:
                                 check_code="OVERLAPPING_COMPONENT_ASSIGNMENTS",
                                 category="employees",
                                 severity="error",
-                                title="Overlapping Recurring Component Assignments",
+                                title="Overlapping recurring component assignments",
                                 message=(
                                     f"{label or f'Employee {employee_id}'} has overlapping recurring assignments "
                                     f"for component '{component_code}'."
@@ -1034,8 +1034,8 @@ class PayrollValidationDashboardService:
                         check_code="REMITTANCE_INCONSISTENCY",
                         category="remittances",
                         severity="error",
-                        title="Remittance Batch Overpaid",
-                        message=f"Remittance batch '{batch.batch_number}' is paid above its due amount.",
+                        title="Remittance overpaid",
+                        message=f"Remittance '{batch.batch_number}' is paid above its due amount.",
                         entity_type="payroll_remittance_batch",
                         entity_id=batch.id,
                         entity_label=batch.batch_number,
@@ -1047,8 +1047,8 @@ class PayrollValidationDashboardService:
                         check_code="REMITTANCE_INCONSISTENCY",
                         category="remittances",
                         severity="warning",
-                        title="Remittance Batch Status Mismatch",
-                        message=f"Remittance batch '{batch.batch_number}' is marked paid but still has outstanding balance.",
+                        title="Remittance status mismatch",
+                        message=f"Remittance '{batch.batch_number}' is marked paid but still has outstanding balance.",
                         entity_type="payroll_remittance_batch",
                         entity_id=batch.id,
                         entity_label=batch.batch_number,

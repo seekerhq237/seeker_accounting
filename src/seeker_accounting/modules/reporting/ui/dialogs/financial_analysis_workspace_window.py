@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDateEdit,
     QDialog,
@@ -16,8 +19,6 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QStackedWidget,
     QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -67,11 +68,14 @@ from seeker_accounting.modules.reporting.ui.widgets.reporting_filter_bar import 
     ReportingFilterBar,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _WINDOWS: list["FinancialAnalysisWindow"] = []
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class FinancialAnalysisWindow(QFrame):
@@ -221,8 +225,12 @@ class FinancialAnalysisWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "Financial Analysis & Insights", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Financial Analysis & Insights", str(exc))
+            return
+        except Exception:
+            _log.exception("Financial Analysis & Insights")
+            show_error(self, "Financial Analysis & Insights", "An unexpected error occurred. See application log for details.")
             return
 
         self._workspace = workspace
@@ -623,23 +631,33 @@ class FinancialAnalysisWindow(QFrame):
         title_label = QLabel(title, card)
         title_label.setObjectName("InfoCardTitle")
         layout.addWidget(title_label)
-        table = QTableWidget(card)
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(list(headers))
-        configure_compact_table(table)
-        table.setSortingEnabled(False)
-        table.cellDoubleClicked.connect(lambda row, column, widget=table: self._on_table_double_clicked(widget, row))
-        table.setRowCount(len(rows))
-        for row_index, row in enumerate(rows):
+        table = DataTable(
+            columns=tuple(DataTableColumn(key=h, title=h) for h in headers),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
+        )
+        model = QStandardItemModel(0, len(headers), card)
+        model.setHorizontalHeaderLabels(list(headers))
+        table.set_model(model)
+        table.view().doubleClicked.connect(
+            lambda index, t=table, m=model: self._on_table_double_clicked(t, m, index)
+        )
+        for row in rows:
             detail_key = row[-1] if len(row) > len(headers) else None
             values = row[:-1] if len(row) > len(headers) else row
+            items = []
             for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
+                item = QStandardItem(value)
+                item.setEditable(False)
                 if column_index == 0 and isinstance(detail_key, str) and detail_key:
-                    item.setData(Qt.ItemDataRole.UserRole, detail_key)
+                    item.setData(detail_key, Qt.ItemDataRole.UserRole)
                 if column_index > 0:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                table.setItem(row_index, column_index, item)
+                items.append(item)
+            model.appendRow(items)
         layout.addWidget(table)
         return card
 
@@ -659,11 +677,16 @@ class FinancialAnalysisWindow(QFrame):
             layout.addWidget(label)
         return card
 
-    def _on_table_double_clicked(self, table: QTableWidget, row: int) -> None:
-        item = table.item(row, 0)
-        if item is None:
+    def _on_table_double_clicked(self, table: DataTable, model: QStandardItemModel, index) -> None:
+        proxy = table.view().model()
+        if proxy is None:
             return
-        detail_key = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = model.item(row, 0)
+        if id_item is None:
+            return
+        detail_key = id_item.data(Qt.ItemDataRole.UserRole)
         if isinstance(detail_key, str) and detail_key:
             self._open_detail(detail_key)
 

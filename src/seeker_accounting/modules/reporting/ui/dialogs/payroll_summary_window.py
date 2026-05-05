@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -12,8 +15,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -46,10 +47,13 @@ from seeker_accounting.modules.payroll.ui.dialogs.payroll_run_posting_detail_dia
     PayrollRunPostingDetailDialog,
 )
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.platform.exceptions import ValidationError
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class PayrollSummaryWindow(QFrame):
@@ -226,13 +230,31 @@ class PayrollSummaryWindow(QFrame):
         panel = QWidget(parent)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._runs_table = QTableWidget(panel)
-        self._runs_table.setColumnCount(10)
-        self._runs_table.setHorizontalHeaderLabels(
+        self._runs_table = DataTable(
+            columns=(
+                DataTableColumn(key="period", title="Period"),
+                DataTableColumn(key="run", title="Run"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="employees", title="Employees"),
+                DataTableColumn(key="gross", title="Gross"),
+                DataTableColumn(key="deductions", title="Deductions"),
+                DataTableColumn(key="employer_cost", title="Employer Cost"),
+                DataTableColumn(key="net", title="Net"),
+                DataTableColumn(key="paid", title="Paid"),
+                DataTableColumn(key="outstanding", title="Outstanding"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._runs_model = QStandardItemModel(0, 10, panel)
+        self._runs_model.setHorizontalHeaderLabels(
             ["Period", "Run", "Status", "Employees", "Gross", "Deductions", "Employer Cost", "Net", "Paid", "Outstanding"]
         )
-        configure_compact_table(self._runs_table)
-        self._runs_table.cellDoubleClicked.connect(self._on_run_double_clicked)
+        self._runs_table.set_model(self._runs_model)
+        self._runs_table.view().doubleClicked.connect(self._on_run_double_clicked)
         layout.addWidget(self._runs_table, 1)
         return panel
 
@@ -240,11 +262,26 @@ class PayrollSummaryWindow(QFrame):
         panel = QWidget(parent)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._employees_table = QTableWidget(panel)
-        self._employees_table.setColumnCount(5)
-        self._employees_table.setHorizontalHeaderLabels(["Employee", "Gross", "Deductions", "Employer Cost", "Net"])
-        configure_compact_table(self._employees_table)
-        self._employees_table.cellDoubleClicked.connect(self._on_employee_double_clicked)
+        self._employees_table = DataTable(
+            columns=(
+                DataTableColumn(key="employee", title="Employee"),
+                DataTableColumn(key="gross", title="Gross"),
+                DataTableColumn(key="deductions", title="Deductions"),
+                DataTableColumn(key="employer_cost", title="Employer Cost"),
+                DataTableColumn(key="net", title="Net"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._employees_model = QStandardItemModel(0, 5, panel)
+        self._employees_model.setHorizontalHeaderLabels(
+            ["Employee", "Gross", "Deductions", "Employer Cost", "Net"]
+        )
+        self._employees_table.set_model(self._employees_model)
+        self._employees_table.view().doubleClicked.connect(self._on_employee_double_clicked)
         layout.addWidget(self._employees_table, 1)
         return panel
 
@@ -252,10 +289,25 @@ class PayrollSummaryWindow(QFrame):
         panel = QWidget(parent)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._statutory_table = QTableWidget(panel)
-        self._statutory_table.setColumnCount(5)
-        self._statutory_table.setHorizontalHeaderLabels(["Authority", "Due", "Remitted", "Outstanding", "Batches"])
-        configure_compact_table(self._statutory_table)
+        self._statutory_table = DataTable(
+            columns=(
+                DataTableColumn(key="authority", title="Authority"),
+                DataTableColumn(key="due", title="Due"),
+                DataTableColumn(key="remitted", title="Remitted"),
+                DataTableColumn(key="outstanding", title="Outstanding"),
+                DataTableColumn(key="batches", title="Batches"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._statutory_model = QStandardItemModel(0, 5, panel)
+        self._statutory_model.setHorizontalHeaderLabels(
+            ["Authority", "Due", "Remitted", "Outstanding", "Batches"]
+        )
+        self._statutory_table.set_model(self._statutory_model)
         layout.addWidget(self._statutory_table, 1)
         return panel
 
@@ -284,9 +336,9 @@ class PayrollSummaryWindow(QFrame):
         company_id = self._current_filter.company_id
         if not isinstance(company_id, int) or company_id <= 0:
             self._current_report = None
-            self._runs_table.setRowCount(0)
-            self._employees_table.setRowCount(0)
-            self._statutory_table.setRowCount(0)
+            self._runs_model.removeRows(0, self._runs_model.rowCount())
+            self._employees_model.removeRows(0, self._employees_model.rowCount())
+            self._statutory_model.removeRows(0, self._statutory_model.rowCount())
             self._update_summary(
                 PayrollSummaryReportDTO(
                     company_id=0,
@@ -302,16 +354,20 @@ class PayrollSummaryWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "Payroll Summary", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Payroll Summary", str(exc))
+            return
+        except Exception:
+            _log.exception("Payroll Summary")
+            show_error(self, "Payroll Summary", "An unexpected error occurred. See application log for details.")
             return
 
         self._current_report = report
         self._update_summary(report)
         if not report.has_data:
-            self._runs_table.setRowCount(0)
-            self._employees_table.setRowCount(0)
-            self._statutory_table.setRowCount(0)
+            self._runs_model.removeRows(0, self._runs_model.rowCount())
+            self._employees_model.removeRows(0, self._employees_model.rowCount())
+            self._statutory_model.removeRows(0, self._statutory_model.rowCount())
             self._stack.setCurrentIndex(2)
             return
         self._bind_runs(report)
@@ -328,45 +384,60 @@ class PayrollSummaryWindow(QFrame):
         self._summary_values["outstanding"].setText(self._fmt(report.total_outstanding))
 
     def _bind_runs(self, report: PayrollSummaryReportDTO) -> None:
-        self._runs_table.setRowCount(len(report.run_rows))
-        for row_index, row in enumerate(report.run_rows):
-            period_item = QTableWidgetItem(f"{row.period_month:02d}/{row.period_year}")
-            period_item.setData(Qt.ItemDataRole.UserRole, row.run_id)
-            self._runs_table.setItem(row_index, 0, period_item)
-            self._runs_table.setItem(row_index, 1, QTableWidgetItem(f"{row.run_reference} - {row.run_label}"))
-            self._runs_table.setItem(row_index, 2, QTableWidgetItem(row.status_code.upper()))
-            self._runs_table.setItem(row_index, 3, QTableWidgetItem(str(row.employee_count)))
-            self._set_amount(self._runs_table, row_index, 4, row.gross_pay)
-            self._set_amount(self._runs_table, row_index, 5, row.deductions)
-            self._set_amount(self._runs_table, row_index, 6, row.employer_cost)
-            self._set_amount(self._runs_table, row_index, 7, row.net_pay)
-            self._set_amount(self._runs_table, row_index, 8, row.total_paid)
-            self._set_amount(self._runs_table, row_index, 9, row.outstanding_net_pay)
+        self._runs_model.removeRows(0, self._runs_model.rowCount())
+        for row in report.run_rows:
+            period_item = self._make_item(f"{row.period_month:02d}/{row.period_year}")
+            period_item.setData(row.run_id, Qt.ItemDataRole.UserRole)
+            self._runs_model.appendRow([
+                period_item,
+                self._make_item(f"{row.run_reference} - {row.run_label}"),
+                self._make_item(row.status_code.upper()),
+                self._make_item(str(row.employee_count)),
+                self._make_amount_item(row.gross_pay),
+                self._make_amount_item(row.deductions),
+                self._make_amount_item(row.employer_cost),
+                self._make_amount_item(row.net_pay),
+                self._make_amount_item(row.total_paid),
+                self._make_amount_item(row.outstanding_net_pay),
+            ])
 
     def _bind_employees(self, report: PayrollSummaryReportDTO) -> None:
-        self._employees_table.setRowCount(len(report.employee_rows))
-        for row_index, row in enumerate(report.employee_rows):
-            employee_item = QTableWidgetItem(f"{row.employee_number} - {row.employee_name}")
-            employee_item.setData(Qt.ItemDataRole.UserRole, row.run_employee_id)
-            self._employees_table.setItem(row_index, 0, employee_item)
-            self._set_amount(self._employees_table, row_index, 1, row.gross_pay)
-            self._set_amount(self._employees_table, row_index, 2, row.deductions)
-            self._set_amount(self._employees_table, row_index, 3, row.employer_cost)
-            self._set_amount(self._employees_table, row_index, 4, row.net_pay)
+        self._employees_model.removeRows(0, self._employees_model.rowCount())
+        for row in report.employee_rows:
+            employee_item = self._make_item(f"{row.employee_number} - {row.employee_name}")
+            employee_item.setData(row.run_employee_id, Qt.ItemDataRole.UserRole)
+            self._employees_model.appendRow([
+                employee_item,
+                self._make_amount_item(row.gross_pay),
+                self._make_amount_item(row.deductions),
+                self._make_amount_item(row.employer_cost),
+                self._make_amount_item(row.net_pay),
+            ])
 
     def _bind_statutory(self, report: PayrollSummaryReportDTO) -> None:
-        self._statutory_table.setRowCount(len(report.statutory_rows))
-        for row_index, row in enumerate(report.statutory_rows):
-            self._statutory_table.setItem(row_index, 0, QTableWidgetItem(row.authority_label))
-            self._set_amount(self._statutory_table, row_index, 1, row.total_due)
-            self._set_amount(self._statutory_table, row_index, 2, row.total_remitted)
-            self._set_amount(self._statutory_table, row_index, 3, row.outstanding)
-            self._statutory_table.setItem(row_index, 4, QTableWidgetItem(str(row.batch_count)))
+        self._statutory_model.removeRows(0, self._statutory_model.rowCount())
+        for row in report.statutory_rows:
+            self._statutory_model.appendRow([
+                self._make_item(row.authority_label),
+                self._make_amount_item(row.total_due),
+                self._make_amount_item(row.total_remitted),
+                self._make_amount_item(row.outstanding),
+                self._make_item(str(row.batch_count)),
+            ])
 
-    def _set_amount(self, table: QTableWidget, row_index: int, column_index: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _make_amount_item(self, amount: Decimal) -> QStandardItem:
+        item = QStandardItem(self._fmt(amount))
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_index, column_index, item)
+        return item
 
     def _on_refresh(self) -> None:
         run_id = self._run_combo.currentData()
@@ -388,16 +459,26 @@ class PayrollSummaryWindow(QFrame):
         )
         ReportPrintPreviewDialog.show_preview(preview, parent=self)
 
-    def _on_run_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        run_item = self._runs_table.item(row, 0)
-        if run_item is None:
+    def _on_run_double_clicked(self, index) -> None:
+        proxy = self._runs_table.view().model()
+        if proxy is None:
             return
-        run_id = run_item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        period_item = self._runs_model.item(row, 0)
+        if period_item is None:
+            return
+        run_id = period_item.data(Qt.ItemDataRole.UserRole)
         if isinstance(run_id, int):
             PayrollRunPostingDetailDialog(self._service_registry, self._current_filter.company_id or 0, run_id, self).exec()
 
-    def _on_employee_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        employee_item = self._employees_table.item(row, 0)
+    def _on_employee_double_clicked(self, index) -> None:
+        proxy = self._employees_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        employee_item = self._employees_model.item(row, 0)
         if employee_item is None:
             return
         run_employee_id = employee_item.data(Qt.ItemDataRole.UserRole)

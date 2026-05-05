@@ -46,6 +46,10 @@ from seeker_accounting.platform.numbering.numbering_service import NumberingServ
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
 
+from seeker_accounting.modules.taxation.repositories.vat_period_lock_repository import (
+    VatPeriodLockRepository,
+)
+
 AccountRepositoryFactory = Callable[[Session], AccountRepository]
 FiscalPeriodRepositoryFactory = Callable[[Session], FiscalPeriodRepository]
 JournalEntryRepositoryFactory = Callable[[Session], JournalEntryRepository]
@@ -53,6 +57,7 @@ CompanyRepositoryFactory = Callable[[Session], CompanyRepository]
 PurchaseCreditNoteRepositoryFactory = Callable[[Session], PurchaseCreditNoteRepository]
 AccountRoleMappingRepositoryFactory = Callable[[Session], AccountRoleMappingRepository]
 TaxCodeAccountMappingRepositoryFactory = Callable[[Session], TaxCodeAccountMappingRepository]
+VatPeriodLockRepositoryFactory = Callable[[Session], VatPeriodLockRepository]
 
 
 class PurchaseCreditNotePostingService:
@@ -73,10 +78,12 @@ class PurchaseCreditNotePostingService:
         permission_service: PermissionService,
         tax_fact_service: TaxFactService,
         audit_service: AuditService | None = None,
+        vat_period_lock_repository_factory: VatPeriodLockRepositoryFactory | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._app_context = app_context
         self._tax_fact_service = tax_fact_service
+        self._vat_period_lock_repository_factory = vat_period_lock_repository_factory
         self._credit_note_repository_factory = credit_note_repository_factory
         self._journal_entry_repository_factory = journal_entry_repository_factory
         self._account_repository_factory = account_repository_factory
@@ -122,6 +129,16 @@ class PurchaseCreditNotePostingService:
             if fiscal_period.status_code != "OPEN":
                 raise ValidationError("Credit note can only be posted into an open fiscal period.")
 
+            # --- T43: VAT period lock check ---
+            if self._vat_period_lock_repository_factory is not None:
+                tax_point = cn.tax_point_date or cn.credit_date
+                vat_lock_repo = self._vat_period_lock_repository_factory(uow.session)
+                if vat_lock_repo.is_locked(company_id, tax_point):
+                    raise ValidationError(
+                        "VAT period has been filed; backdating is prohibited. "
+                        "Amend the return instead."
+                    )
+
             # --- AP control account ---
             ap_mapping = role_mapping_repo.get_by_role_code(company_id, "ap_control")
             if ap_mapping is None:
@@ -156,16 +173,37 @@ class PurchaseCreditNotePostingService:
             line_number += 1
 
             # Credit expense accounts (reduces expense)
-            expense_credits: dict[int, Decimal] = {}
+            expense_credits: dict[tuple[int, int | None, int | None, int | None, int | None], Decimal] = {}
             tax_credits: dict[int, Decimal] = {}
 
             for cn_line in cn.lines:
+                expense_key: tuple[int, int | None, int | None, int | None, int | None] | None = None
                 if cn_line.expense_account_id is not None:
-                    expense_credits[cn_line.expense_account_id] = (
-                        expense_credits.get(cn_line.expense_account_id, Decimal("0.00"))
+                    expense_key = self._dimensioned_account_key(
+                        cn_line.expense_account_id,
+                        line=cn_line,
+                        header_contract_id=cn.contract_id,
+                        header_project_id=cn.project_id,
+                    )
+                    expense_credits[expense_key] = (
+                        expense_credits.get(expense_key, Decimal("0.00"))
                         + cn_line.line_subtotal_amount
                     )
                 if cn_line.tax_code_id is not None and cn_line.line_tax_amount > Decimal("0.00"):
+                    tax_code_obj = cn_line.tax_code
+                    is_recoverable = (
+                        tax_code_obj is None or tax_code_obj.is_recoverable is not False
+                    )
+                    if not is_recoverable:
+                        if expense_key is None:
+                            raise ValidationError(
+                                f"Expense account on line {cn_line.line_number} is required to reverse non-recoverable tax."
+                            )
+                        expense_credits[expense_key] = (
+                            expense_credits.get(expense_key, Decimal("0.00"))
+                            + cn_line.line_tax_amount
+                        )
+                        continue
                     tax_mapping = tax_mapping_repo.get_by_tax_code(company_id, cn_line.tax_code_id)
                     if tax_mapping is None or tax_mapping.tax_asset_account_id is None:
                         raise ValidationError(
@@ -178,7 +216,8 @@ class PurchaseCreditNotePostingService:
                         + cn_line.line_tax_amount
                     )
 
-            for exp_account_id, amount in expense_credits.items():
+            for expense_key, amount in expense_credits.items():
+                exp_account_id, contract_id, project_id, project_job_id, project_cost_code_id = expense_key
                 journal_lines.append(
                     JournalEntryLine(
                         journal_entry_id=0,
@@ -187,6 +226,10 @@ class PurchaseCreditNotePostingService:
                         line_description=f"Expense reduction - Credit note {cn.credit_number}",
                         debit_amount=Decimal("0.00"),
                         credit_amount=amount,
+                        contract_id=contract_id,
+                        project_id=project_id,
+                        project_job_id=project_job_id,
+                        project_cost_code_id=project_cost_code_id,
                     )
                 )
                 line_number += 1
@@ -257,6 +300,7 @@ class PurchaseCreditNotePostingService:
                             line_is_recoverable = detail.tax_code.is_recoverable
                         else:
                             line_is_recoverable = None
+                        _tc_rc = detail.tax_code
                         tax_facts.append(
                             TaxFactInput(
                                 tax_code_id=detail.tax_code_id,
@@ -264,6 +308,9 @@ class PurchaseCreditNotePostingService:
                                 tax_amount=-detail.tax_amount,
                                 is_recoverable=line_is_recoverable,
                                 source_line_id=cn_line.id,
+                                is_reverse_charge=bool(
+                                    getattr(_tc_rc, "is_reverse_charge", False)
+                                ),
                             )
                         )
                     continue
@@ -281,6 +328,9 @@ class PurchaseCreditNotePostingService:
                         tax_amount=-cn_line.line_tax_amount,
                         is_recoverable=line_is_recoverable,
                         source_line_id=cn_line.id,
+                        is_reverse_charge=bool(
+                            getattr(tax_code_obj, "is_reverse_charge", False)
+                        ),
                     )
                 )
             if tax_facts:
@@ -296,6 +346,7 @@ class PurchaseCreditNotePostingService:
                     posted_at=posted_at_value,
                     posted_by_user_id=actor_id,
                     line_facts=tax_facts,
+                    tax_point_date=cn.tax_point_date or cn.credit_date,
                 )
 
             # --- Assign credit note number and update status ---
@@ -325,6 +376,24 @@ class PurchaseCreditNotePostingService:
                 journal_entry_id=journal_entry.id,
                 status_code=cn.status_code,
             )
+
+    @staticmethod
+    def _dimensioned_account_key(
+        account_id: int,
+        *,
+        line: object,
+        header_contract_id: int | None,
+        header_project_id: int | None,
+    ) -> tuple[int, int | None, int | None, int | None, int | None]:
+        contract_id = getattr(line, "contract_id", None) or header_contract_id
+        project_id = getattr(line, "project_id", None) or header_project_id
+        return (
+            account_id,
+            contract_id,
+            project_id,
+            getattr(line, "project_job_id", None),
+            getattr(line, "project_cost_code_id", None),
+        )
 
     def _require_company(self, session: Session, company_id: int) -> None:
         repo = self._company_repository_factory(session)

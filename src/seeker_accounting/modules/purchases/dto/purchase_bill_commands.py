@@ -30,6 +30,7 @@ class CreatePurchaseBillCommand:
     contract_id: int | None = None
     project_id: int | None = None
     is_tax_inclusive: bool | None = None
+    tax_point_date: date | None = None
     lines: tuple[PurchaseBillLineCommand, ...] = ()
 
 
@@ -45,6 +46,7 @@ class UpdatePurchaseBillCommand:
     contract_id: int | None = None
     project_id: int | None = None
     is_tax_inclusive: bool | None = None
+    tax_point_date: date | None = None
     lines: tuple[PurchaseBillLineCommand, ...] = ()
 
 

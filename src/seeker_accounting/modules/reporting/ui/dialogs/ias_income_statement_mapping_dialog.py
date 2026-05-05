@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
+from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -15,8 +19,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -37,7 +39,10 @@ from seeker_accounting.modules.reporting.specs.ias_income_statement_spec import 
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+
+
+_log = logging.getLogger(__name__)
 
 
 class IasIncomeStatementMappingDialog(QDialog):
@@ -158,15 +163,29 @@ class IasIncomeStatementMappingDialog(QDialog):
         self._account_selection_label.setObjectName("PageSummary")
         layout.addWidget(self._account_selection_label)
 
-        self._account_table = QTableWidget(card)
-        self._account_table.setColumnCount(5)
-        self._account_table.setHorizontalHeaderLabels(
+        self._account_model = QStandardItemModel(0, 5, card)
+        self._account_model.setHorizontalHeaderLabels(
             ("Code", "Account", "Default Sign", "Current Mapping", "Status")
         )
-        configure_compact_table(self._account_table)
-        self._account_table.setSortingEnabled(False)
-        self._account_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self._account_table.itemSelectionChanged.connect(self._on_account_selection_changed)
+        self._account_table = DataTable(
+            columns=(
+                DataTableColumn(key="code", title="Code"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="sign", title="Default Sign"),
+                DataTableColumn(key="mapping", title="Current Mapping"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
+        )
+        self._account_table.set_model(self._account_model)
+        self._account_table.view().setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._account_table.view().selectionModel().selectionChanged.connect(
+            lambda *_: self._on_account_selection_changed()
+        )
         layout.addWidget(self._account_table, 1)
         return card
 
@@ -182,14 +201,28 @@ class IasIncomeStatementMappingDialog(QDialog):
         title.setObjectName("DialogSectionTitle")
         layout.addWidget(title)
 
-        self._mapping_table = QTableWidget(card)
-        self._mapping_table.setColumnCount(5)
-        self._mapping_table.setHorizontalHeaderLabels(("Order", "Account", "Mapping", "Sign", "State"))
-        configure_compact_table(self._mapping_table)
-        self._mapping_table.setSortingEnabled(False)
-        self._mapping_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._mapping_table.itemSelectionChanged.connect(self._on_mapping_selection_changed)
-        self._mapping_table.cellDoubleClicked.connect(self._on_mapping_double_clicked)
+        self._mapping_model = QStandardItemModel(0, 5, card)
+        self._mapping_model.setHorizontalHeaderLabels(("Order", "Account", "Mapping", "Sign", "State"))
+        self._mapping_table = DataTable(
+            columns=(
+                DataTableColumn(key="order", title="Order"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="mapping", title="Mapping"),
+                DataTableColumn(key="sign", title="Sign"),
+                DataTableColumn(key="state", title="State"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=card,
+        )
+        self._mapping_table.set_model(self._mapping_model)
+        self._mapping_table.view().setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._mapping_table.view().selectionModel().selectionChanged.connect(
+            lambda *_: self._on_mapping_selection_changed()
+        )
+        self._mapping_table.view().doubleClicked.connect(self._on_mapping_double_clicked)
         layout.addWidget(self._mapping_table, 1)
         return card
 
@@ -274,8 +307,12 @@ class IasIncomeStatementMappingDialog(QDialog):
             preserve_mapping_id = None
         try:
             self._snapshot = self._mapping_service.get_editor_snapshot(self._company_id)
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "IAS Mapping Editor", str(exc))
+            return
+        except Exception:
+            _log.exception("IAS Mapping Editor")
+            show_error(self, "IAS Mapping Editor", "An unexpected error occurred. See application log for details.")
             return
 
         self._populate_section_combo()
@@ -312,31 +349,31 @@ class IasIncomeStatementMappingDialog(QDialog):
     def _populate_account_table(self) -> None:
         if self._snapshot is None:
             return
-        self._account_table.setRowCount(0)
+        self._account_model.removeRows(0, self._account_model.rowCount())
         for option in self._snapshot.account_options:
-            row = self._account_table.rowCount()
-            self._account_table.insertRow(row)
-            self._set_table_item(self._account_table, row, 0, option.account_code, option.account_id)
-            self._set_table_item(self._account_table, row, 1, option.account_name)
-            self._set_table_item(self._account_table, row, 2, self._sign_label(option.default_sign_behavior_code))
-            self._set_table_item(self._account_table, row, 3, self._current_mapping_label(option))
-            self._set_table_item(self._account_table, row, 4, self._account_state_label(option))
-        self._account_table.resizeColumnsToContents()
+            self._account_model.appendRow([
+                self._make_item(option.account_code, user_data=option.account_id),
+                self._make_item(option.account_name),
+                self._make_item(self._sign_label(option.default_sign_behavior_code)),
+                self._make_item(self._current_mapping_label(option)),
+                self._make_item(self._account_state_label(option)),
+            ])
+        self._account_table.view().resizeColumnsToContents()
         self._filter_account_rows()
 
     def _populate_mapping_table(self) -> None:
         if self._snapshot is None:
             return
-        self._mapping_table.setRowCount(0)
+        self._mapping_model.removeRows(0, self._mapping_model.rowCount())
         for mapping in self._snapshot.mappings:
-            row = self._mapping_table.rowCount()
-            self._mapping_table.insertRow(row)
-            self._set_table_item(self._mapping_table, row, 0, str(mapping.display_order), mapping.id)
-            self._set_table_item(self._mapping_table, row, 1, f"{mapping.account_code}  {mapping.account_name}".strip())
-            self._set_table_item(self._mapping_table, row, 2, self._mapping_target_label(mapping.section_code, mapping.subsection_code))
-            self._set_table_item(self._mapping_table, row, 3, self._sign_label(mapping.sign_behavior_code))
-            self._set_table_item(self._mapping_table, row, 4, "Active" if mapping.is_active else "Inactive")
-        self._mapping_table.resizeColumnsToContents()
+            self._mapping_model.appendRow([
+                self._make_item(str(mapping.display_order), user_data=mapping.id),
+                self._make_item(f"{mapping.account_code}  {mapping.account_name}".strip()),
+                self._make_item(self._mapping_target_label(mapping.section_code, mapping.subsection_code)),
+                self._make_item(self._sign_label(mapping.sign_behavior_code)),
+                self._make_item("Active" if mapping.is_active else "Inactive"),
+            ])
+        self._mapping_table.view().resizeColumnsToContents()
 
     def _update_summary_band(self) -> None:
         if self._snapshot is None:
@@ -367,7 +404,7 @@ class IasIncomeStatementMappingDialog(QDialog):
         dlg = QDialog(self)
         dlg.setWindowTitle("Validation Issues")
         dlg.setModal(True)
-        dlg.resize(520, 340)
+        apply_window_size(dlg, "modules.reporting.ui.dialogs.ias.income.statement.mapping.dialog.0")
 
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(12, 10, 12, 10)
@@ -409,8 +446,10 @@ class IasIncomeStatementMappingDialog(QDialog):
 
     def _selected_account_ids(self) -> tuple[int, ...]:
         ids: list[int] = []
-        for index in self._account_table.selectionModel().selectedRows():
-            item = self._account_table.item(index.row(), 0)
+        proxy = self._account_table.view().model()
+        for index in self._account_table.view().selectionModel().selectedRows():
+            src = proxy.mapToSource(index) if proxy is not None else index
+            item = self._account_model.item(src.row(), 0)
             if item is None:
                 continue
             account_id = item.data(Qt.ItemDataRole.UserRole)
@@ -418,13 +457,18 @@ class IasIncomeStatementMappingDialog(QDialog):
                 ids.append(account_id)
         return tuple(ids)
 
-    def _selected_mapping(self) -> IasIncomeStatementMappingDTO | None:
+    def _selected_mapping(self) -> "IasIncomeStatementMappingDTO | None":
         if self._snapshot is None:
             return None
-        row = self._mapping_table.currentRow()
+        proxy = self._mapping_table.view().model()
+        current = self._mapping_table.view().currentIndex()
+        if not current.isValid():
+            return None
+        src = proxy.mapToSource(current) if proxy is not None else current
+        row = src.row()
         if row < 0:
             return None
-        item = self._mapping_table.item(row, 0)
+        item = self._mapping_model.item(row, 0)
         if item is None:
             return None
         mapping_id = item.data(Qt.ItemDataRole.UserRole)
@@ -445,14 +489,19 @@ class IasIncomeStatementMappingDialog(QDialog):
         needle = self._account_search.text().strip().lower()
         for row, option in enumerate(self._snapshot.account_options):
             visible = not needle or needle in option.account_code.lower() or needle in option.account_name.lower()
-            self._account_table.setRowHidden(row, not visible)
+            self._account_table.view().setRowHidden(row, not visible)
 
     def _on_mapping_selection_changed(self) -> None:
         mapping = self._selected_mapping()
         self._toggle_button.setText("Deactivate Mapping" if mapping is None or mapping.is_active else "Reactivate Mapping")
 
-    def _on_mapping_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._mapping_table.item(row, 0)
+    def _on_mapping_double_clicked(self, index) -> None:
+        proxy = self._mapping_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        item = self._mapping_model.item(row, 0)
         if item is None:
             return
         mapping_id = item.data(Qt.ItemDataRole.UserRole)
@@ -476,14 +525,22 @@ class IasIncomeStatementMappingDialog(QDialog):
         self._status_label.setText(f"Loaded mapping for {mapping.account_code} into the editor.")
 
     def _select_account_rows(self, account_ids: tuple[int, ...]) -> None:
-        self._account_table.clearSelection()
-        for row in range(self._account_table.rowCount()):
-            item = self._account_table.item(row, 0)
+        view = self._account_table.view()
+        view.clearSelection()
+        proxy = view.model()
+        selection_model = view.selectionModel()
+        for row in range(self._account_model.rowCount()):
+            item = self._account_model.item(row, 0)
             if item is None:
                 continue
             account_id = item.data(Qt.ItemDataRole.UserRole)
             if account_id in account_ids:
-                self._account_table.selectRow(row)
+                src_index = self._account_model.index(row, 0)
+                proxy_index = proxy.mapFromSource(src_index) if proxy is not None else src_index
+                selection_model.select(
+                    proxy_index,
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+                )
 
     def _sync_editor_to_account(self, account_id: int) -> None:
         if self._snapshot is None:
@@ -698,24 +755,20 @@ class IasIncomeStatementMappingDialog(QDialog):
         self._update_default_sign_hint()
 
     def _select_mapping_row(self, mapping_id: int) -> None:
-        for row in range(self._mapping_table.rowCount()):
-            item = self._mapping_table.item(row, 0)
+        proxy = self._mapping_table.view().model()
+        for row in range(self._mapping_model.rowCount()):
+            item = self._mapping_model.item(row, 0)
             if item is not None and item.data(Qt.ItemDataRole.UserRole) == mapping_id:
-                self._mapping_table.selectRow(row)
+                if proxy is not None:
+                    proxy_index = proxy.mapFromSource(self._mapping_model.index(row, 0))
+                    self._mapping_table.view().setCurrentIndex(proxy_index)
                 self._load_mapping_into_editor(mapping_id)
                 return
 
-    def _set_table_item(
-        self,
-        table: QTableWidget,
-        row: int,
-        column: int,
-        text: str,
-        user_data: object | None = None,
-    ) -> None:
-        item = QTableWidgetItem(text)
-        if column != 0:
-            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
         if user_data is not None:
-            item.setData(Qt.ItemDataRole.UserRole, user_data)
-        table.setItem(row, column, item)
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item

@@ -6,6 +6,7 @@ posting services and must not be targeted by manual journal lines).
 """
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
@@ -50,7 +51,7 @@ class AccountPickerDialog(QDialog):
         self.setWindowTitle("Select Account")
         self.setObjectName("AccountPickerDialog")
         self.setModal(True)
-        self.resize(640, 480)
+        apply_window_size(self, "modules.accounting.journals.ui.account.picker.dialog.0")
 
         # Active, non-control accounts only
         self._accounts = [

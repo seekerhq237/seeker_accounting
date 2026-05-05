@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 
 from PySide6.QtWidgets import (
@@ -44,7 +45,7 @@ class CopyBudgetVersionDialog(BaseDialog):
     ) -> None:
         super().__init__("Copy Budget Version", parent)
         self.setObjectName("CopyBudgetVersionDialog")
-        self.resize(520, 430)
+        apply_window_size(self, "modules.budgeting.ui.copy.budget.version.dialog.0")
 
         self._company_id = company_id
         self._project_id = project_id

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -70,7 +71,7 @@ class TaxCodeDialog(BaseDialog):
         title = "New Tax Code" if tax_code_id is None else "Edit Tax Code"
         super().__init__(title, parent, help_key="dialog.tax_code")
         self.setObjectName("TaxCodeDialog")
-        self.resize(620, 520)
+        apply_window_size(self, "modules.accounting.reference.data.ui.tax.code.dialog.0")
 
         intro_label = QLabel(
             "Define a company tax code with clear effective dates and a compact calculation setup suitable for first-pass accounting workflows.",

@@ -32,6 +32,7 @@ class PurchaseCreditNote(TimestampMixin, Base):
     )
     supplier_credit_reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
     credit_date: Mapped[date] = mapped_column(Date(), nullable=False)
+    tax_point_date: Mapped[date | None] = mapped_column(Date(), nullable=True)
     currency_code: Mapped[str] = mapped_column(
         String(3),
         ForeignKey("currencies.code", ondelete="RESTRICT"),

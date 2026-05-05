@@ -302,6 +302,7 @@ class PurchaseBillService:
                 contract_id=normalized_command.contract_id,
                 project_id=normalized_command.project_id,
                 is_tax_inclusive=effective_inclusive,
+                tax_point_date=normalized_command.tax_point_date,
                 subtotal_amount=subtotal_amount,
                 tax_amount=tax_amount,
                 total_amount=total_amount,
@@ -385,6 +386,7 @@ class PurchaseBillService:
             bill.contract_id = normalized_command.contract_id
             bill.project_id = normalized_command.project_id
             bill.is_tax_inclusive = effective_inclusive
+            bill.tax_point_date = normalized_command.tax_point_date
             bill.subtotal_amount = subtotal_amount
             bill.tax_amount = tax_amount
             bill.total_amount = total_amount
@@ -886,6 +888,7 @@ class PurchaseBillService:
             lines=line_dtos,
             contract_id=bill.contract_id,
             project_id=bill.project_id,
+            tax_point_date=bill.tax_point_date,
         )
 
     def _record_audit(

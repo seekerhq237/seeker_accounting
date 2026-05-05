@@ -80,6 +80,7 @@ SIDEBAR_MODULES: tuple[SidebarModule, ...] = (
             SidebarChild(nav_id=nav_ids.CHART_OF_ACCOUNTS, label="Chart of Accounts"),
             SidebarChild(nav_id=nav_ids.FISCAL_PERIODS, label="Fiscal Periods"),
             SidebarChild(nav_id=nav_ids.JOURNALS, label="Journal"),
+            SidebarChild(nav_id=nav_ids.DEFERRALS, label="Deferrals"),
         ),
     ),
     SidebarModule(
@@ -125,6 +126,10 @@ SIDEBAR_MODULES: tuple[SidebarModule, ...] = (
             SidebarChild(nav_id=nav_ids.ITEMS, label="Items"),
             SidebarChild(nav_id=nav_ids.INVENTORY_DOCUMENTS, label="Inventory Documents"),
             SidebarChild(nav_id=nav_ids.STOCK_POSITION, label="Stock Position"),
+            SidebarChild(nav_id=nav_ids.INVENTORY_DASHBOARD, label="Inventory Dashboard"),
+            SidebarChild(nav_id=nav_ids.PRICE_LISTS, label="Price Lists"),
+            SidebarChild(nav_id=nav_ids.REORDER_PLANNING, label="Reorder Planning"),
+            SidebarChild(nav_id=nav_ids.INVENTORY_REPORTS, label="Inventory Reports"),
         ),
     ),
     SidebarModule(
@@ -305,6 +310,13 @@ NAVIGATION_SECTIONS: tuple[NavigationSection, ...] = (
                 label="Journals",
                 section_label="Accounting",
                 description="Journal entry",
+                module_code=ModuleCode.JOURNALS,
+            ),
+            NavigationItem(
+                nav_id=nav_ids.DEFERRALS,
+                label="Deferrals",
+                section_label="Accounting",
+                description="Prepaid expenses and unearned revenue",
                 module_code=ModuleCode.JOURNALS,
             ),
         ),

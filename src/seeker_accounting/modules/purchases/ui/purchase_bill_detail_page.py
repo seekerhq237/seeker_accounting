@@ -11,16 +11,20 @@ import logging
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+)
+
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
@@ -34,8 +38,6 @@ from seeker_accounting.platform.exceptions import NotFoundError
 from seeker_accounting.shared.ui.entity_detail.entity_detail_page import EntityDetailPage
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBarItem
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
-
 _log = logging.getLogger(__name__)
 
 _CURRENCY_FMT = "{:,.2f}"
@@ -119,22 +121,24 @@ class PurchaseBillDetailPage(EntityDetailPage):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        self._lines_table = QTableWidget(container)
-        self._lines_table.setObjectName("DashboardActivityTable")
-        self._lines_table.setColumnCount(7)
-        self._lines_table.setHorizontalHeaderLabels(
-            ("Description", "Account", "Qty", "Unit Cost", "Tax", "Subtotal", "Total")
+        self._lines_model = QStandardItemModel(0, 7, container)
+        self._lines_model.setHorizontalHeaderLabels(
+            ["Description", "Account", "Qty", "Unit Cost", "Tax", "Subtotal", "Total"]
         )
-        configure_dense_table(self._lines_table)
-
-        hdr = self._lines_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self._lines_table = DataTable(
+            columns=(
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="qty", title="Qty"),
+                DataTableColumn(key="unit_cost", title="Unit Cost"),
+                DataTableColumn(key="tax", title="Tax"),
+                DataTableColumn(key="subtotal", title="Subtotal"),
+                DataTableColumn(key="total", title="Total"),
+            ),
+            show_search=False,
+            parent=container,
+        )
+        self._lines_table.set_model(self._lines_model)
 
         self._lines_empty = QLabel("No line items.", container)
         self._lines_empty.setObjectName("DashboardEmptyLabel")
@@ -223,21 +227,24 @@ class PurchaseBillDetailPage(EntityDetailPage):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        self._payments_table = QTableWidget(container)
-        self._payments_table.setObjectName("DashboardActivityTable")
-        self._payments_table.setColumnCount(6)
-        self._payments_table.setHorizontalHeaderLabels(
-            ("Payment #", "Date", "Account", "Amount Paid", "Applied Here", "Status")
+        self._payments_model = QStandardItemModel(0, 6, container)
+        self._payments_model.setHorizontalHeaderLabels(
+            ["Payment #", "Date", "Account", "Amount Paid", "Applied Here", "Status"]
         )
-        configure_dense_table(self._payments_table)
-
-        hdr = self._payments_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self._payments_table = DataTable(
+            columns=(
+                DataTableColumn(key="payment_num", title="Payment #"),
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="amount_paid", title="Amount Paid"),
+                DataTableColumn(key="applied", title="Applied Here"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            parent=container,
+        )
+        self._payments_table.set_model(self._payments_model)
+        apply_status_chip_to_column(self._payments_table.view(), 5)
 
         self._payments_empty = QLabel("No payments allocated to this bill.", container)
         self._payments_empty.setObjectName("DashboardEmptyLabel")
@@ -245,7 +252,7 @@ class PurchaseBillDetailPage(EntityDetailPage):
         self._payments_empty.setMinimumHeight(60)
         self._payments_empty.setVisible(False)
 
-        self._payments_table.itemDoubleClicked.connect(self._on_payment_double_clicked)
+        self._payments_table.view().doubleClicked.connect(self._on_payment_double_clicked)
 
         layout.addWidget(self._payments_table, 1)
         layout.addWidget(self._payments_empty)
@@ -277,8 +284,12 @@ class PurchaseBillDetailPage(EntityDetailPage):
             show_error(self, "Bill Detail", "Purchase bill not found.")
             self._navigate_back()
             return
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Bill Detail", f"Failed to load purchase bill: {exc}")
+            return
+        except Exception:
+            _log.exception("Bill Detail")
+            show_error(self, "Bill Detail", "An unexpected error occurred. See application log for details.")
             return
 
         try:
@@ -331,24 +342,29 @@ class PurchaseBillDetailPage(EntityDetailPage):
             MoneyBarItem(label="Open Balance", value=_fmt(t.open_balance_amount, currency), tone=open_tone),
         ])
 
+    @staticmethod
+    def _make_item(text: str | None, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_lines_tab(self) -> None:
         bill = self._bill
         if bill is None:
             return
 
-        table = self._lines_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._lines_model.removeRows(0, self._lines_model.rowCount())
 
         if not bill.lines:
-            table.setVisible(False)
+            self._lines_table.setVisible(False)
             self._lines_empty.setVisible(True)
         else:
-            table.setVisible(True)
+            self._lines_table.setVisible(True)
             self._lines_empty.setVisible(False)
-            for row_idx, line in enumerate(bill.lines):
-                self._add_lines_table_row(table, row_idx, line)
-            table.setSortingEnabled(True)
+            for line in bill.lines:
+                self._add_lines_table_row(line)
 
         t = bill.totals
         currency = bill.currency_code
@@ -356,37 +372,28 @@ class PurchaseBillDetailPage(EntityDetailPage):
         self._totals_tax.setText(_fmt(t.tax_amount, currency))
         self._totals_total.setText(_fmt(t.total_amount, currency))
 
-    def _add_lines_table_row(self, table: QTableWidget, row_idx: int, line: PurchaseBillLineDTO) -> None:
-        table.insertRow(row_idx)
-
-        table.setItem(row_idx, 0, QTableWidgetItem(line.description or "—"))
-
-        acct_text = f"{line.expense_account_code}  {line.expense_account_name}"
-        table.setItem(row_idx, 1, QTableWidgetItem(acct_text))
-
+    def _add_lines_table_row(self, line: PurchaseBillLineDTO) -> None:
         if line.quantity is not None:
             qty_str = _CURRENCY_FMT.format(line.quantity).rstrip("0").rstrip(".")
         else:
             qty_str = "—"
-        qty_cell = QTableWidgetItem(qty_str)
-        qty_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 2, qty_cell)
-
         cost_str = _CURRENCY_FMT.format(line.unit_cost) if line.unit_cost is not None else "—"
-        cost_cell = QTableWidgetItem(cost_str)
-        cost_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 3, cost_cell)
 
-        tax_text = line.tax_code_code or "—"
-        table.setItem(row_idx, 4, QTableWidgetItem(tax_text))
+        def _r(text: str) -> QStandardItem:
+            item = QStandardItem(text)
+            item.setEditable(False)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return item
 
-        subtotal_cell = QTableWidgetItem(_CURRENCY_FMT.format(line.line_subtotal_amount))
-        subtotal_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 5, subtotal_cell)
-
-        total_cell = QTableWidgetItem(_CURRENCY_FMT.format(line.line_total_amount))
-        total_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 6, total_cell)
+        self._lines_model.appendRow([
+            self._make_item(line.description or "—"),
+            self._make_item(f"{line.expense_account_code}  {line.expense_account_name}"),
+            _r(qty_str),
+            _r(cost_str),
+            self._make_item(line.tax_code_code or "—"),
+            _r(_CURRENCY_FMT.format(line.line_subtotal_amount)),
+            _r(_CURRENCY_FMT.format(line.line_total_amount)),
+        ])
 
     def _populate_details_tab(self) -> None:
         bill = self._bill
@@ -412,47 +419,42 @@ class PurchaseBillDetailPage(EntityDetailPage):
     def _populate_payments_tab(self) -> None:
         rows = self._payments_data
         table = self._payments_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._payments_model.removeRows(0, self._payments_model.rowCount())
 
         if not rows:
-            table.setVisible(False)
+            self._payments_table.setVisible(False)
             self._payments_empty.setVisible(True)
             return
 
-        table.setVisible(True)
+        self._payments_table.setVisible(True)
         self._payments_empty.setVisible(False)
 
         currency = self._bill.currency_code if self._bill else ""
 
-        for row_idx, row in enumerate(rows):
-            table.insertRow(row_idx)
-
-            num_item = QTableWidgetItem(row.payment_number)
-            num_item.setData(Qt.ItemDataRole.UserRole, row.payment_id)
-            table.setItem(row_idx, 0, num_item)
-
-            table.setItem(row_idx, 1, QTableWidgetItem(row.payment_date.strftime("%d %b %Y")))
+        for row in rows:
+            def _r(text: str) -> QStandardItem:
+                item = QStandardItem(text)
+                item.setEditable(False)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                return item
 
             acct_text = f"{row.financial_account_code}  {row.financial_account_name}".strip() or "—"
-            table.setItem(row_idx, 2, QTableWidgetItem(acct_text))
+            status_text = _STATUS_LABELS.get(row.status_code, row.status_code.title()).lower()
+            self._payments_model.appendRow([
+                self._make_item(row.payment_number, user_data=row.payment_id),
+                self._make_item(row.payment_date.strftime("%d %b %Y")),
+                self._make_item(acct_text),
+                _r(_fmt(row.amount_paid, row.currency_code)),
+                _r(_fmt(row.allocated_to_bill, currency)),
+                self._make_item(status_text),
+            ])
 
-            paid_cell = QTableWidgetItem(_fmt(row.amount_paid, row.currency_code))
-            paid_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 3, paid_cell)
-
-            applied_cell = QTableWidgetItem(_fmt(row.allocated_to_bill, currency))
-            applied_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 4, applied_cell)
-
-            status_text = _STATUS_LABELS.get(row.status_code, row.status_code.title())
-            table.setItem(row_idx, 5, QTableWidgetItem(status_text))
-
-        table.setSortingEnabled(True)
-
-    def _on_payment_double_clicked(self, item: QTableWidgetItem) -> None:
-        row = self._payments_table.row(item)
-        id_item = self._payments_table.item(row, 0)
+    def _on_payment_double_clicked(self, index) -> None:
+        proxy = self._payments_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        id_item = self._payments_model.item(src.row(), 0)
         if id_item is None:
             return
         payment_id = id_item.data(Qt.ItemDataRole.UserRole)

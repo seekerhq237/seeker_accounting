@@ -9,6 +9,7 @@ draft's lines in one transaction via
 
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -129,7 +130,7 @@ class BudgetEditorDialog(BaseDialog):
         title = "Edit Budget" if self._is_edit else "New Budget"
         super().__init__(title, parent, help_key="dialog.budget_editor")
         self.setObjectName("BudgetEditorDialog")
-        self.resize(1100, 720)
+        apply_window_size(self, "modules.budgeting.ui.budget.editor.dialog.0")
 
         self._error_label = QLabel(self)
         self._error_label.setObjectName("DialogErrorLabel")

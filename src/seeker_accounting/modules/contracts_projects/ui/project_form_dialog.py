@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from decimal import Decimal, InvalidOperation
@@ -51,7 +52,7 @@ class ProjectFormDialog(BaseDialog):
         title = "New Project" if project_id is None else "Edit Project"
         super().__init__(title, parent, help_key="dialog.project_form")
         self.setObjectName("ProjectFormDialog")
-        self.resize(780, 620)
+        apply_window_size(self, "modules.contracts.projects.ui.project.form.dialog.0")
 
         intro_label = QLabel(
             "Define project master data scoped to the active company. "

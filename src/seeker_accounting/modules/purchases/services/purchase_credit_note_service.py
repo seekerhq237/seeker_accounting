@@ -116,6 +116,7 @@ class PurchaseCreditNoteService:
                 total_amount=grand_total,
                 contract_id=cmd.contract_id,
                 project_id=cmd.project_id,
+                tax_point_date=cmd.tax_point_date,
             )
             repo = self._credit_note_repository_factory(uow.session)
             repo.add(cn)
@@ -171,6 +172,7 @@ class PurchaseCreditNoteService:
             cn.total_amount = grand_total
             cn.contract_id = cmd.contract_id
             cn.project_id = cmd.project_id
+            cn.tax_point_date = cmd.tax_point_date
 
             for ln in lines:
                 ln.purchase_credit_note_id = cn.id

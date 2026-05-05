@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
-    QHeaderView,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -22,9 +22,12 @@ from seeker_accounting.modules.reporting.ui.dialogs.journal_source_detail_dialog
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class LedgerDrilldownDialog(QDialog):
@@ -58,9 +61,8 @@ class LedgerDrilldownDialog(QDialog):
         self._header.setObjectName("InfoCardTitle")
         layout.addWidget(self._header)
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
+        self._model = QStandardItemModel(0, 8, self)
+        self._model.setHorizontalHeaderLabels(
             [
                 "Date",
                 "Entry #",
@@ -72,8 +74,25 @@ class LedgerDrilldownDialog(QDialog):
                 "Running Balance",
             ]
         )
-        configure_compact_table(self._table)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="entry", title="Entry #"),
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="line_memo", title="Line Memo"),
+                DataTableColumn(key="debit", title="Debit"),
+                DataTableColumn(key="credit", title="Credit"),
+                DataTableColumn(key="running_balance", title="Running Balance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table, 1)
 
         self._footer = QLabel("", self)
@@ -95,8 +114,12 @@ class LedgerDrilldownDialog(QDialog):
             show_error(self, "Ledger Drilldown", str(exc))
             self.reject()
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Ledger Drilldown", str(exc))
+
+        except Exception:
+            _log.exception("Ledger Drilldown")
+            show_error(self, "Ledger Drilldown", "An unexpected error occurred. See application log for details.")
             self.reject()
             return
 
@@ -112,7 +135,8 @@ class LedgerDrilldownDialog(QDialog):
             f"Closing: {self._fmt(account.closing_balance)}"
         )
 
-        self._table.setRowCount(len(account.lines))
+        self._model.removeRows(0, self._model.rowCount())
+        self._model.setRowCount(len(account.lines))
         for row_index, line in enumerate(account.lines):
             self._set_text(row_index, 0, line.entry_date.strftime("%Y-%m-%d"))
             self._set_text(row_index, 1, line.entry_number or "-")
@@ -124,18 +148,25 @@ class LedgerDrilldownDialog(QDialog):
             self._set_amount(row_index, 7, line.running_balance, line.journal_entry_id)
 
     def _set_text(self, row: int, col: int, text: str) -> None:
-        item = QTableWidgetItem(text)
-        self._table.setItem(row, col, item)
+        item = QStandardItem(text)
+        item.setEditable(False)
+        self._model.setItem(row, col, item)
 
     def _set_amount(self, row: int, col: int, amount: Decimal, journal_entry_id: int | None = None) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+        item = QStandardItem(self._fmt(amount))
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         if isinstance(journal_entry_id, int):
-            item.setData(Qt.ItemDataRole.UserRole, journal_entry_id)
-        self._table.setItem(row, col, item)
+            item.setData(journal_entry_id, Qt.ItemDataRole.UserRole)
+        self._model.setItem(row, col, item)
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 7)
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        item = self._model.item(row, 7)
         if item is None:
             return
         journal_entry_id = item.data(Qt.ItemDataRole.UserRole)

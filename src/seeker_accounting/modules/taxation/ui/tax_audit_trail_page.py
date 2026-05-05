@@ -14,8 +14,8 @@ from datetime import date, datetime, time
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDateEdit,
     QFrame,
     QHBoxLayout,
@@ -23,8 +23,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -38,20 +36,20 @@ from seeker_accounting.platform.exceptions import (
     PermissionDeniedError,
     ValidationError,
 )
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.dto.audit_event_dto import AuditEventDTO
 
 
-_COLUMNS = (
-    "Timestamp",
-    "Event Type",
-    "Entity Type",
-    "Entity ID",
-    "Description",
-    "Actor",
+_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="timestamp", title="Timestamp"),
+    DataTableColumn(key="event_type", title="Event Type"),
+    DataTableColumn(key="entity_type", title="Entity Type"),
+    DataTableColumn(key="entity_id", title="Entity ID"),
+    DataTableColumn(key="description", title="Description"),
+    DataTableColumn(key="actor", title="Actor"),
 )
 _PAGE_SIZE = 200
 
@@ -176,13 +174,21 @@ class TaxAuditTrailPage(RibbonHostMixin, QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._table = QTableWidget(wrapper)
+        self._model = QStandardItemModel(0, len(_COLUMNS), wrapper)
+        self._model.setHorizontalHeaderLabels([c.title for c in _COLUMNS])
+
+        self._table = DataTable(
+            columns=_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No audit events match the current filters.",
+            parent=wrapper,
+        )
         self._table.setObjectName("TaxAuditTrailTable")
-        self._table.setColumnCount(len(_COLUMNS))
-        self._table.setHorizontalHeaderLabels(list(_COLUMNS))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.set_model(self._model)
         layout.addWidget(self._table, 1)
 
         pager = QFrame(wrapper)
@@ -259,15 +265,29 @@ class TaxAuditTrailPage(RibbonHostMixin, QWidget):
         self._update_pager()
         self._stack.setCurrentWidget(self._workspace)
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setRowCount(len(self._events))
-        for ri, ev in enumerate(self._events):
-            self._table.setItem(ri, 0, QTableWidgetItem(ev.created_at.strftime("%Y-%m-%d %H:%M:%S")))
-            self._table.setItem(ri, 1, QTableWidgetItem(ev.event_type_code))
-            self._table.setItem(ri, 2, QTableWidgetItem(ev.entity_type))
-            self._table.setItem(ri, 3, QTableWidgetItem(str(ev.entity_id) if ev.entity_id is not None else ""))
-            self._table.setItem(ri, 4, QTableWidgetItem(ev.description))
-            self._table.setItem(ri, 5, QTableWidgetItem(ev.actor_display_name or ""))
+        self._model.removeRows(0, self._model.rowCount())
+        for ev in self._events:
+            ts_str = ev.created_at.strftime("%Y-%m-%d %H:%M:%S") if ev.created_at else ""
+            entity_id_str = str(ev.entity_id) if ev.entity_id is not None else ""
+            self._model.appendRow(
+                [
+                    self._make_item(ts_str, user_data=ev.id),
+                    self._make_item(ev.event_type_code),
+                    self._make_item(ev.entity_type),
+                    self._make_item(entity_id_str),
+                    self._make_item(ev.description),
+                    self._make_item(ev.actor_display_name or ""),
+                ]
+            )
 
     def _update_pager(self) -> None:
         page = (self._offset // _PAGE_SIZE) + 1

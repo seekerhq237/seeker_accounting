@@ -15,17 +15,15 @@ from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -51,6 +49,11 @@ from seeker_accounting.modules.taxation.ui.withholding_certificates_dialogs impo
 from seeker_accounting.platform.exceptions import (
     PermissionDeniedError,
 )
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
 
 
@@ -69,11 +72,6 @@ def _date_text(value: date | None) -> str:
     return value.isoformat()
 
 
-def _right(item: QTableWidgetItem) -> QTableWidgetItem:
-    item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
-    return item
-
-
 _DIRECTION_FILTER_OPTIONS: tuple[tuple[str | None, str], ...] = (
     (None, "All directions"),
     (WHT_DIRECTION_INBOUND, "Inbound (received)"),
@@ -89,17 +87,17 @@ _STATUS_FILTER_OPTIONS: tuple[tuple[str | None, str], ...] = (
 
 
 class WithholdingCertificatesPage(RibbonHostMixin, QWidget):
-    COLUMNS: tuple[str, ...] = (
-        "Direction",
-        "Date",
-        "Number",
-        "Counterparty",
-        "NIU",
-        "Status",
-        "Taxable base",
-        "Tax amount",
-        "Source JE",
-        "Notes",
+    COLUMNS: tuple[DataTableColumn, ...] = (
+        DataTableColumn(key="direction", title="Direction"),
+        DataTableColumn(key="date", title="Date"),
+        DataTableColumn(key="number", title="Number"),
+        DataTableColumn(key="counterparty", title="Counterparty"),
+        DataTableColumn(key="niu", title="NIU"),
+        DataTableColumn(key="status", title="Status"),
+        DataTableColumn(key="taxable_base", title="Taxable base", is_numeric=True),
+        DataTableColumn(key="tax_amount", title="Tax amount", is_numeric=True),
+        DataTableColumn(key="source_je", title="Source JE"),
+        DataTableColumn(key="notes", title="Notes"),
     )
 
     def __init__(
@@ -254,23 +252,27 @@ class WithholdingCertificatesPage(RibbonHostMixin, QWidget):
         layout.addLayout(filter_row)
 
         # ── Table ──
-        self._table = QTableWidget(0, len(self.COLUMNS), wrapper)
-        self._table.setHorizontalHeaderLabels(list(self.COLUMNS))
-        self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.verticalHeader().setVisible(False)
-        self._table.setAlternatingRowColors(True)
-        header = self._table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setStretchLastSection(True)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
+        self._model = QStandardItemModel(0, len(self.COLUMNS), wrapper)
+        self._model.setHorizontalHeaderLabels([c.title for c in self.COLUMNS])
+
+        self._table = DataTable(
+            columns=self.COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No certificates match the current filters.",
+            parent=wrapper,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 5)
+        self._table.selection_changed.connect(lambda _rows: self._update_action_state())
         layout.addWidget(self._table, 1)
 
         # ── Totals footer ──
         self._totals_label = QLabel(wrapper)
         self._totals_label.setObjectName("PageSummary")
-        self._totals_label.setStyleSheet("color: #374151; font-size: 12px;")
         layout.addWidget(self._totals_label)
 
         return wrapper
@@ -329,28 +331,45 @@ class WithholdingCertificatesPage(RibbonHostMixin, QWidget):
 
     # ── Populate ──────────────────────────────────────────────────────
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setRowCount(len(self._certificates))
-        for ri, c in enumerate(self._certificates):
-            self._table.setItem(ri, 0, QTableWidgetItem(c.direction))
-            self._table.setItem(ri, 1, QTableWidgetItem(_date_text(c.certificate_date)))
-            self._table.setItem(ri, 2, QTableWidgetItem(c.certificate_number))
-            self._table.setItem(ri, 3, QTableWidgetItem(c.counterparty_name))
-            self._table.setItem(ri, 4, QTableWidgetItem(c.counterparty_niu or ""))
-            self._table.setItem(ri, 5, QTableWidgetItem(c.status_code))
-            self._table.setItem(ri, 6, _right(QTableWidgetItem(_money(c.taxable_base))))
-            self._table.setItem(ri, 7, _right(QTableWidgetItem(_money(c.tax_amount))))
+        self._model.removeRows(0, self._model.rowCount())
+        for c in self._certificates:
             if c.source_document_type == "journal_entry" and c.source_document_id:
                 je_text = f"JE #{c.source_document_id}"
             else:
                 je_text = ""
-            self._table.setItem(ri, 8, QTableWidgetItem(je_text))
-            self._table.setItem(
-                ri,
-                9,
-                QTableWidgetItem(
-                    (c.notes or "").splitlines()[0] if c.notes else ""
-                ),
+            notes_text = (c.notes or "").splitlines()[0] if c.notes else ""
+            self._model.appendRow(
+                [
+                    self._make_item(c.direction, user_data=c.id),
+                    self._make_item(_date_text(c.certificate_date)),
+                    self._make_item(c.certificate_number),
+                    self._make_item(c.counterparty_name),
+                    self._make_item(c.counterparty_niu or ""),
+                    self._make_item(c.status_code),
+                    self._make_numeric(c.taxable_base),
+                    self._make_numeric(c.tax_amount),
+                    self._make_item(je_text),
+                    self._make_item(notes_text),
+                ]
             )
 
     def _update_totals_footer(self) -> None:
@@ -382,11 +401,10 @@ class WithholdingCertificatesPage(RibbonHostMixin, QWidget):
     # ── Selection / state ─────────────────────────────────────────────
 
     def _selected_certificate(self) -> WithholdingTaxCertificateDTO | None:
-        sel_model = self._table.selectionModel()
-        rows = sel_model.selectedRows() if sel_model else []
+        rows = self._table.selected_rows()
         if not rows:
             return None
-        idx = rows[0].row()
+        idx = rows[0]
         if 0 <= idx < len(self._certificates):
             return self._certificates[idx]
         return None

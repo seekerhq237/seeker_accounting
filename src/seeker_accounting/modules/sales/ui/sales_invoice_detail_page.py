@@ -11,16 +11,20 @@ import logging
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+)
+
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
@@ -30,12 +34,10 @@ from seeker_accounting.modules.sales.dto.sales_invoice_dto import (
     SalesInvoiceLineDTO,
 )
 from seeker_accounting.modules.sales.dto.customer_receipt_dto import InvoiceReceiptRowDTO
-from seeker_accounting.platform.exceptions import NotFoundError
+from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError
 from seeker_accounting.shared.ui.entity_detail.entity_detail_page import EntityDetailPage
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBarItem
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_dense_table
-
 _log = logging.getLogger(__name__)
 
 _CURRENCY_FMT = "{:,.2f}"
@@ -121,22 +123,24 @@ class SalesInvoiceDetailPage(EntityDetailPage):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        self._lines_table = QTableWidget(container)
-        self._lines_table.setObjectName("DashboardActivityTable")
-        self._lines_table.setColumnCount(7)
-        self._lines_table.setHorizontalHeaderLabels(
-            ("Description", "Account", "Qty", "Unit Price", "Tax", "Subtotal", "Total")
+        self._lines_model = QStandardItemModel(0, 7, container)
+        self._lines_model.setHorizontalHeaderLabels(
+            ["Description", "Account", "Qty", "Unit Price", "Tax", "Subtotal", "Total"]
         )
-        configure_dense_table(self._lines_table)
-
-        hdr = self._lines_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        self._lines_table = DataTable(
+            columns=(
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="qty", title="Qty"),
+                DataTableColumn(key="unit_price", title="Unit Price"),
+                DataTableColumn(key="tax", title="Tax"),
+                DataTableColumn(key="subtotal", title="Subtotal"),
+                DataTableColumn(key="total", title="Total"),
+            ),
+            show_search=False,
+            parent=container,
+        )
+        self._lines_table.set_model(self._lines_model)
 
         self._lines_empty = QLabel("No line items.", container)
         self._lines_empty.setObjectName("DashboardEmptyLabel")
@@ -225,21 +229,24 @@ class SalesInvoiceDetailPage(EntityDetailPage):
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
-        self._receipts_table = QTableWidget(container)
-        self._receipts_table.setObjectName("DashboardActivityTable")
-        self._receipts_table.setColumnCount(6)
-        self._receipts_table.setHorizontalHeaderLabels(
-            ("Receipt #", "Date", "Account", "Amount Received", "Applied Here", "Status")
+        self._receipts_model = QStandardItemModel(0, 6, container)
+        self._receipts_model.setHorizontalHeaderLabels(
+            ["Receipt #", "Date", "Account", "Amount Received", "Applied Here", "Status"]
         )
-        configure_dense_table(self._receipts_table)
-
-        hdr = self._receipts_table.horizontalHeader()
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        self._receipts_table = DataTable(
+            columns=(
+                DataTableColumn(key="receipt_num", title="Receipt #"),
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="amount_received", title="Amount Received"),
+                DataTableColumn(key="applied", title="Applied Here"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            parent=container,
+        )
+        self._receipts_table.set_model(self._receipts_model)
+        apply_status_chip_to_column(self._receipts_table.view(), 5)
 
         self._receipts_empty = QLabel("No receipts allocated to this invoice.", container)
         self._receipts_empty.setObjectName("DashboardEmptyLabel")
@@ -247,7 +254,7 @@ class SalesInvoiceDetailPage(EntityDetailPage):
         self._receipts_empty.setMinimumHeight(60)
         self._receipts_empty.setVisible(False)
 
-        self._receipts_table.itemDoubleClicked.connect(self._on_receipt_double_clicked)
+        self._receipts_table.view().doubleClicked.connect(self._on_receipt_double_clicked)
 
         layout.addWidget(self._receipts_table, 1)
         layout.addWidget(self._receipts_empty)
@@ -279,8 +286,12 @@ class SalesInvoiceDetailPage(EntityDetailPage):
             show_error(self, "Invoice Detail", "Invoice not found.")
             self._navigate_back()
             return
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Invoice Detail", f"Failed to load invoice: {exc}")
+            return
+        except Exception:
+            _log.exception("Invoice Detail")
+            show_error(self, "Invoice Detail", "An unexpected error occurred. See application log for details.")
             return
 
         try:
@@ -333,24 +344,29 @@ class SalesInvoiceDetailPage(EntityDetailPage):
             MoneyBarItem(label="Open Balance", value=_fmt(t.open_balance_amount, currency), tone=open_tone),
         ])
 
+    @staticmethod
+    def _make_item(text: str | None, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_lines_tab(self) -> None:
         inv = self._invoice
         if inv is None:
             return
 
-        table = self._lines_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._lines_model.removeRows(0, self._lines_model.rowCount())
 
         if not inv.lines:
-            table.setVisible(False)
+            self._lines_table.setVisible(False)
             self._lines_empty.setVisible(True)
         else:
-            table.setVisible(True)
+            self._lines_table.setVisible(True)
             self._lines_empty.setVisible(False)
-            for row_idx, line in enumerate(inv.lines):
-                self._add_lines_table_row(table, row_idx, line)
-            table.setSortingEnabled(True)
+            for line in inv.lines:
+                self._add_lines_table_row(line)
 
         currency = inv.currency_code
         t = inv.totals
@@ -358,32 +374,22 @@ class SalesInvoiceDetailPage(EntityDetailPage):
         self._totals_tax.setText(_fmt(t.tax_amount, currency))
         self._totals_total.setText(_fmt(t.total_amount, currency))
 
-    def _add_lines_table_row(self, table: QTableWidget, row_idx: int, line: SalesInvoiceLineDTO) -> None:
-        table.insertRow(row_idx)
+    def _add_lines_table_row(self, line: SalesInvoiceLineDTO) -> None:
+        def _r(text: str) -> QStandardItem:
+            item = QStandardItem(text)
+            item.setEditable(False)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return item
 
-        table.setItem(row_idx, 0, QTableWidgetItem(line.description or "—"))
-
-        acct_text = f"{line.revenue_account_code}  {line.revenue_account_name}"
-        table.setItem(row_idx, 1, QTableWidgetItem(acct_text))
-
-        qty_cell = QTableWidgetItem(_CURRENCY_FMT.format(line.quantity).rstrip("0").rstrip("."))
-        qty_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 2, qty_cell)
-
-        price_cell = QTableWidgetItem(_CURRENCY_FMT.format(line.unit_price))
-        price_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 3, price_cell)
-
-        tax_text = line.tax_code_code or "—"
-        table.setItem(row_idx, 4, QTableWidgetItem(tax_text))
-
-        subtotal_cell = QTableWidgetItem(_CURRENCY_FMT.format(line.line_subtotal_amount))
-        subtotal_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 5, subtotal_cell)
-
-        total_cell = QTableWidgetItem(_CURRENCY_FMT.format(line.line_total_amount))
-        total_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        table.setItem(row_idx, 6, total_cell)
+        self._lines_model.appendRow([
+            self._make_item(line.description or "—"),
+            self._make_item(f"{line.revenue_account_code}  {line.revenue_account_name}"),
+            _r(_CURRENCY_FMT.format(line.quantity).rstrip("0").rstrip(".")),
+            _r(_CURRENCY_FMT.format(line.unit_price)),
+            self._make_item(line.tax_code_code or "—"),
+            _r(_CURRENCY_FMT.format(line.line_subtotal_amount)),
+            _r(_CURRENCY_FMT.format(line.line_total_amount)),
+        ])
 
     def _populate_details_tab(self) -> None:
         inv = self._invoice
@@ -408,49 +414,42 @@ class SalesInvoiceDetailPage(EntityDetailPage):
 
     def _populate_receipts_tab(self) -> None:
         rows = self._receipts_data
-        table = self._receipts_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._receipts_model.removeRows(0, self._receipts_model.rowCount())
 
         if not rows:
-            table.setVisible(False)
+            self._receipts_table.setVisible(False)
             self._receipts_empty.setVisible(True)
             return
 
-        table.setVisible(True)
+        self._receipts_table.setVisible(True)
         self._receipts_empty.setVisible(False)
 
         currency = self._invoice.currency_code if self._invoice else ""
-        status_labels = _STATUS_LABELS
 
-        for row_idx, row in enumerate(rows):
-            table.insertRow(row_idx)
-
-            num_item = QTableWidgetItem(row.receipt_number)
-            num_item.setData(Qt.ItemDataRole.UserRole, row.receipt_id)
-            table.setItem(row_idx, 0, num_item)
-
-            table.setItem(row_idx, 1, QTableWidgetItem(row.receipt_date.strftime("%d %b %Y")))
+        for row in rows:
+            def _r(text: str) -> QStandardItem:
+                item = QStandardItem(text)
+                item.setEditable(False)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                return item
 
             acct_text = f"{row.financial_account_code}  {row.financial_account_name}".strip() or "—"
-            table.setItem(row_idx, 2, QTableWidgetItem(acct_text))
+            status_text = _STATUS_LABELS.get(row.status_code, row.status_code.title()).lower()
+            self._receipts_model.appendRow([
+                self._make_item(row.receipt_number, user_data=row.receipt_id),
+                self._make_item(row.receipt_date.strftime("%d %b %Y")),
+                self._make_item(acct_text),
+                _r(_fmt(row.amount_received, row.currency_code)),
+                _r(_fmt(row.allocated_to_invoice, currency)),
+                self._make_item(status_text),
+            ])
 
-            recv_cell = QTableWidgetItem(_fmt(row.amount_received, row.currency_code))
-            recv_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 3, recv_cell)
-
-            applied_cell = QTableWidgetItem(_fmt(row.allocated_to_invoice, currency))
-            applied_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 4, applied_cell)
-
-            status_text = status_labels.get(row.status_code, row.status_code.title())
-            table.setItem(row_idx, 5, QTableWidgetItem(status_text))
-
-        table.setSortingEnabled(True)
-
-    def _on_receipt_double_clicked(self, item: QTableWidgetItem) -> None:
-        row = self._receipts_table.row(item)
-        id_item = self._receipts_table.item(row, 0)
+    def _on_receipt_double_clicked(self, index) -> None:
+        proxy = self._receipts_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        id_item = self._receipts_model.item(src.row(), 0)
         if id_item is None:
             return
         receipt_id = id_item.data(Qt.ItemDataRole.UserRole)
@@ -462,16 +461,27 @@ class SalesInvoiceDetailPage(EntityDetailPage):
 
     # ── Actions ───────────────────────────────────────────────────────
 
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Permission Denied",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
     def _set_actions_enabled(self, enabled: bool) -> None:
         inv = self._invoice
         is_draft = inv is not None and inv.status_code.upper() == "DRAFT"
         is_posted = inv is not None and inv.status_code.upper() == "POSTED"
-        self._edit_button.setEnabled(enabled and is_draft)
-        self._post_button.setEnabled(enabled and not is_posted)
+        perm = self._service_registry.permission_service
+        self._edit_button.setEnabled(enabled and is_draft and perm.has_permission("sales.invoices.edit"))
+        self._post_button.setEnabled(enabled and not is_posted and perm.has_permission("sales.invoices.post"))
         # Hide Post button once the invoice is already posted
         self._post_button.setVisible(enabled and not is_posted)
 
     def _open_edit_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("sales.invoices.edit"):
+            self._show_permission_denied("sales.invoices.edit")
+            return
         if self._invoice is None:
             return
         active_company = self._service_registry.company_context_service.get_active_company()
@@ -489,6 +499,9 @@ class SalesInvoiceDetailPage(EntityDetailPage):
             self._load_data()
 
     def _open_post_dialog(self) -> None:
+        if not self._service_registry.permission_service.has_permission("sales.invoices.post"):
+            self._show_permission_denied("sales.invoices.post")
+            return
         if self._invoice is None:
             return
         active_company = self._service_registry.company_context_service.get_active_company()

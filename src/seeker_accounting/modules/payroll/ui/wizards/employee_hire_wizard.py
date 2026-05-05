@@ -55,6 +55,7 @@ from seeker_accounting.platform.exceptions import (
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 
 _log = logging.getLogger(__name__)
@@ -99,10 +100,10 @@ class EmployeeHireWizardDialog(BaseDialog):
             help_key="wizard.employee_hire",
         )
         self.setObjectName("EmployeeHireWizardDialog")
-        self.resize(720, 620)
+        apply_window_size(self, "modules.payroll.ui.wizards.employee.hire.wizard.0")
 
         intro = QLabel(
-            "Create an employee, first compensation profile, and "
+            "Create an employee, first compensation, and "
             "recurring component assignments in a single guided flow.",
             self,
         )
@@ -249,14 +250,14 @@ class EmployeeHireWizardDialog(BaseDialog):
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
-        card = self._card("First Compensation Profile")
+        card = self._card("First compensation")
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(8)
 
         self._profile_name_edit = QLineEdit(card)
         self._profile_name_edit.setPlaceholderText("Standard")
-        grid.addWidget(create_field_block("Profile Name *", self._profile_name_edit), 0, 0)
+        grid.addWidget(create_field_block("Compensation name *", self._profile_name_edit), 0, 0)
 
         self._salary_spin = QDoubleSpinBox(card)
         self._salary_spin.setMaximum(1_000_000_000.0)
@@ -277,7 +278,7 @@ class EmployeeHireWizardDialog(BaseDialog):
         outer.addWidget(card)
 
         hint = QLabel(
-            "You can add further profiles later (e.g. for raises or "
+            "You can add further compensation records later (e.g. for raises or "
             "allowance restructuring).",
             page,
         )
@@ -318,7 +319,7 @@ class EmployeeHireWizardDialog(BaseDialog):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
 
-        card = self._card("Recurring Component Assignments")
+        card = self._card("Recurring component assignments")
         hint = QLabel(
             "Select statutory and recurring components that apply to this employee. "
             "Deductions such as CNPS, IRPP, TDL are typical selections.",
@@ -551,7 +552,7 @@ class EmployeeHireWizardDialog(BaseDialog):
 
     def _validate_compensation(self) -> bool:
         if not self._profile_name_edit.text().strip():
-            self._set_error("Profile name is required.")
+            self._set_error("Compensation name is required.")
             return False
         if self._salary_spin.value() <= 0:
             self._set_error("Basic salary must be greater than zero.")
@@ -620,7 +621,7 @@ class EmployeeHireWizardDialog(BaseDialog):
         summary_bits = [f"Employee {employee.employee_number} — {display_name} created."]
         if profile is not None:
             summary_bits.append(
-                f"Compensation profile '{profile.profile_name}' "
+                f"Compensation '{profile.profile_name}' "
                 f"({profile.basic_salary:,.2f} {profile.currency_code}) effective "
                 f"{profile.effective_from.isoformat()}."
             )
@@ -691,7 +692,7 @@ class EmployeeHireWizardDialog(BaseDialog):
                 self._company_id, cmd
             )
         except (ValidationError, ConflictError, PermissionDeniedError, NotFoundError) as exc:
-            self._set_error(f"Compensation profile: {exc}")
+            self._set_error(f"Compensation: {exc}")
             return None
 
     def _commit_assignments(self, employee_id: int) -> list[int]:

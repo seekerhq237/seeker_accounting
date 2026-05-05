@@ -12,6 +12,8 @@ class AppContext:
     theme_name: str
     permission_snapshot: tuple[str, ...] = field(default_factory=tuple)
     current_session_id: int | None = field(default=None)
+    table_density: str = "comfortable"
+    telemetry_opted_in: bool = False
 
     def set_theme(self, theme_name: str) -> None:
         self.theme_name = theme_name
@@ -19,3 +21,11 @@ class AppContext:
     def set_active_company(self, company_id: int | None, company_name: str | None) -> None:
         self.active_company_id = company_id
         self.active_company_name = company_name
+
+    def set_table_density(self, density: str) -> None:
+        if density not in {"comfortable", "dense"}:
+            raise ValueError("table density must be 'comfortable' or 'dense'")
+        self.table_density = density
+
+    def set_telemetry_opted_in(self, opted_in: bool) -> None:
+        self.telemetry_opted_in = bool(opted_in)

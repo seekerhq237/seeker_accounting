@@ -17,6 +17,7 @@ from seeker_accounting.modules.payroll.engines.engine_types import (
     EngineContext,
     EngineLineResult,
     RuleSetInput,
+    quantize_xaf,
 )
 
 _TDL_RULE = "TDL_MAIN"
@@ -80,4 +81,4 @@ def _resolve_tdl_bracket(base: Decimal, rule_set: RuleSetInput | None) -> Decima
             matched_amount = bracket.fixed_amount
             break
         matched_amount = bracket.fixed_amount
-    return matched_amount.quantize(Decimal("0.0001"))
+    return quantize_xaf(matched_amount)

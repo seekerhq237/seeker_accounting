@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,9 +24,23 @@ from seeker_accounting.modules.accounting.reference_data.ui.document_sequence_di
 )
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.app.shell.ribbon import RibbonHostMixin
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+DOCUMENT_SEQUENCE_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="document_type", title="Document Type"),
+    DataTableColumn(key="prefix", title="Prefix"),
+    DataTableColumn(key="next_number", title="Next Number", is_numeric=True),
+    DataTableColumn(key="padding_width", title="Padding Width", is_numeric=True),
+    DataTableColumn(key="reset_frequency", title="Reset Frequency"),
+    DataTableColumn(key="status", title="Status"),
+)
 
 
 class DocumentSequencesPage(RibbonHostMixin, QWidget):
@@ -62,7 +74,7 @@ class DocumentSequencesPage(RibbonHostMixin, QWidget):
 
         if active_company is None:
             self._sequences = []
-            self._table.setRowCount(0)
+            self._sequences_model.removeRows(0, self._sequences_model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -74,7 +86,7 @@ class DocumentSequencesPage(RibbonHostMixin, QWidget):
             )
         except Exception as exc:
             self._sequences = []
-            self._table.setRowCount(0)
+            self._sequences_model.removeRows(0, self._sequences_model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
@@ -149,16 +161,23 @@ class DocumentSequencesPage(RibbonHostMixin, QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._table = QTableWidget(card)
-        self._table.setObjectName("DocumentSequencesTable")
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(
-            ("Document Type", "Prefix", "Next Number", "Padding Width", "Reset Frequency", "Status")
+        self._sequences_model = QStandardItemModel(0, len(DOCUMENT_SEQUENCE_COLUMNS), self)
+        self._sequences_model.setHorizontalHeaderLabels([c.title for c in DOCUMENT_SEQUENCE_COLUMNS])
+
+        self._table = DataTable(
+            columns=DOCUMENT_SEQUENCE_COLUMNS,
+            show_search=True,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No document sequences to display.",
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+        self._table.set_model(self._sequences_model)
+        self._sequences_status_delegate = apply_status_chip_to_column(self._table.view(), 5)
+        self._table.selection_changed.connect(self._update_action_state)
+        self._table.row_activated.connect(self._on_row_activated)
         layout.addWidget(self._table)
         return card
 
@@ -244,74 +263,64 @@ class DocumentSequencesPage(RibbonHostMixin, QWidget):
             return
         self._stack.setCurrentWidget(self._empty_state)
 
+    @staticmethod
+    def _make_item(text, *, user_data: object | None = None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-
+        self._sequences_model.removeRows(0, self._sequences_model.rowCount())
         for sequence in self._sequences:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
-
-            values = (
-                sequence.document_type_code,
-                sequence.prefix or "",
-                str(sequence.next_number),
-                str(sequence.padding_width),
-                sequence.reset_frequency_code or "",
-                "Active" if sequence.is_active else "Inactive",
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, sequence.id)
-                if column_index in {2, 3, 5}:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, column_index, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, header.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(4, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, header.ResizeMode.ResizeToContents)
-        self._table.setSortingEnabled(True)
+            items = [
+                self._make_item(sequence.document_type_code, user_data=sequence.id),
+                self._make_item(sequence.prefix or ""),
+                self._make_item(str(sequence.next_number)),
+                self._make_item(str(sequence.padding_width)),
+                self._make_item(sequence.reset_frequency_code or ""),
+                self._make_item("active" if sequence.is_active else "inactive"),
+            ]
+            self._sequences_model.appendRow(items)
 
         count = len(self._sequences)
         self._record_count_label.setText(f"{count} sequence" if count == 1 else f"{count} sequences")
 
     def _restore_selection(self, selected_sequence_id: int | None) -> None:
-        if self._table.rowCount() == 0:
+        if not self._sequences:
             return
-
         if selected_sequence_id is None:
-            self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, s in enumerate(self._sequences) if s.id == selected_sequence_id),
+                0,
+            )
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == selected_sequence_id:
-                self._table.selectRow(row_index)
-                return
-
-        self._table.selectRow(0)
+        src_index = self._sequences_model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(
+            proxy_index,
+            sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows,
+        )
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_sequence(self) -> DocumentSequenceListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-
-        item = self._table.item(current_row, 0)
-        if item is None:
+        row_index = rows[0]
+        if row_index < 0 or row_index >= len(self._sequences):
             return None
-
-        sequence_id = item.data(Qt.ItemDataRole.UserRole)
-        for sequence in self._sequences:
-            if sequence.id == sequence_id:
-                return sequence
-        return None
+        return self._sequences[row_index]
 
     def _show_permission_denied(self, permission_code: str) -> None:
         show_error(
@@ -483,7 +492,7 @@ class DocumentSequencesPage(RibbonHostMixin, QWidget):
     def _open_companies_workspace(self) -> None:
         self._service_registry.navigation_service.navigate(nav_ids.COMPANIES)
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
+    def _on_row_activated(self, _row: int) -> None:
         self._open_edit_dialog()
 
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:

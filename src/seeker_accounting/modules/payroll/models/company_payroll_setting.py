@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from seeker_accounting.db.base import Base
@@ -41,6 +41,16 @@ class CompanyPayrollSetting(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # P7: Segregation-of-duties enforcement.
+    # When True, the user who submits a run cannot also approve or post it,
+    # and the user who approves cannot also post.
+    sod_strict: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, default=False, server_default="0"
+    )
+    variance_threshold_percent: Mapped[object] = mapped_column(
+        Numeric(5, 2), nullable=False, default=10, server_default="10.00"
+    )
+    variance_per_component_thresholds: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
     company: Mapped["Company"] = relationship("Company")
     default_payroll_currency: Mapped["Currency"] = relationship("Currency")

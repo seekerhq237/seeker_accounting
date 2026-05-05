@@ -12,6 +12,8 @@ itself.
 
 from __future__ import annotations
 
+import logging
+
 from datetime import date
 from decimal import Decimal
 
@@ -60,7 +62,11 @@ from seeker_accounting.modules.taxation.ui.tax_compliance_dialogs import (
     RecordTaxPaymentDialog,
     SettleVATReturnDialog,
 )
+from seeker_accounting.modules.taxation.ui.tax_return_detail_dialog import (
+    TaxReturnDetailDialog,
+)
 from seeker_accounting.platform.exceptions import (
+    AppError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
@@ -73,6 +79,9 @@ from seeker_accounting.shared.ui.message_boxes import (
 
 
 _DASH = "\u2014"
+
+
+_log = logging.getLogger(__name__)
 
 
 def _money(value: Decimal | float | int | None) -> str:
@@ -219,6 +228,14 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         self._payment_button.clicked.connect(self._handle_record_payment)
         layout.addWidget(self._payment_button)
 
+        self._view_return_button = QPushButton("View Return", card)
+        self._view_return_button.setProperty("variant", "secondary")
+        self._view_return_button.setToolTip(
+            "Open the selected return in DGI VAT-form layout (Sections 4 \u2014 8)."
+        )
+        self._view_return_button.clicked.connect(self._handle_view_return)
+        layout.addWidget(self._view_return_button)
+
         self._export_pdf_button = QPushButton("Export PDF", card)
         self._export_pdf_button.setProperty("variant", "secondary")
         self._export_pdf_button.clicked.connect(self._handle_export_pdf)
@@ -307,6 +324,9 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             self._update_action_state
         )
         self._returns_table.itemSelectionChanged.connect(self._handle_return_selected)
+        self._returns_table.itemDoubleClicked.connect(
+            lambda *_: self._handle_view_return()
+        )
 
         return wrapper
 
@@ -361,7 +381,9 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             self._returns = []
             self._payments = []
             self._meta_label.setText("Select a company")
-            self._set_actions_enabled(False, False, False, False, False, False, False, False, False)
+            self._set_actions_enabled(
+                False, False, False, False, False, False, False, False, False, False
+            )
             self._stack.setCurrentWidget(self._no_company_card)
             return
 
@@ -462,6 +484,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         file_return: bool,
         settle: bool,
         record_payment: bool,
+        view_return: bool,
         export_pdf: bool,
         dsf: bool,
     ) -> None:
@@ -472,6 +495,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         self._file_button.setEnabled(file_return)
         self._settle_button.setEnabled(settle)
         self._payment_button.setEnabled(record_payment)
+        self._view_return_button.setEnabled(view_return)
         self._export_pdf_button.setEnabled(export_pdf)
         self._dsf_button.setEnabled(dsf)
 
@@ -479,7 +503,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         active = self._active_company()
         if active is None:
             self._set_actions_enabled(
-                False, False, False, False, False, False, False, False, False
+                False, False, False, False, False, False, False, False, False, False
             )
             self._notify_ribbon_state_changed()
             return
@@ -509,7 +533,8 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         )
         # Record payment only works on FILED returns (must be an actual liability).
         payment_eligible = rt is not None and rt.status_code == RETURN_STATUS_FILED
-        # PDF export works on any selected return.
+        # View / Export PDF work on any selected return (DRAFT or FILED).
+        view_eligible = rt is not None
         export_pdf_eligible = rt is not None
 
         self._set_actions_enabled(
@@ -520,6 +545,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             file_return=can_file_return and file_eligible,
             settle=can_settle_return and settle_eligible,
             record_payment=can_manage_payments and payment_eligible,
+            view_return=view_eligible,
             export_pdf=can_export_pdf and export_pdf_eligible,
             dsf=can_export_dsf,
         )
@@ -657,6 +683,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             "tax_compliance.file_return": self._handle_file_return,
             "tax_compliance.settle_return": self._handle_settle_return,
             "tax_compliance.record_payment": self._handle_record_payment,
+            "tax_compliance.view_return": self._handle_view_return,
             "tax_compliance.export_pdf": self._handle_export_pdf,
             "tax_compliance.export_dsf": self._handle_export_dsf,
             "tax_compliance.refresh": self.reload,
@@ -674,6 +701,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             "tax_compliance.file_return": self._file_button.isEnabled(),
             "tax_compliance.settle_return": self._settle_button.isEnabled(),
             "tax_compliance.record_payment": self._payment_button.isEnabled(),
+            "tax_compliance.view_return": self._view_return_button.isEnabled(),
             "tax_compliance.export_pdf": self._export_pdf_button.isEnabled(),
             "tax_compliance.export_dsf": self._dsf_button.isEnabled(),
             "tax_compliance.refresh": True,
@@ -715,8 +743,12 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         except (NotFoundError, ConflictError, PermissionDeniedError) as exc:
             show_error(self, "Draft VAT Return", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Draft VAT Return", f"Could not draft return.\n\n{exc}")
+            return
+        except Exception:
+            _log.exception("Draft VAT Return")
+            show_error(self, "Draft VAT Return", "An unexpected error occurred. See application log for details.")
             return
 
         show_info(self, "Draft VAT Return", "Draft return generated.")
@@ -776,6 +808,40 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
                     "DSF Export",
                     f"DSF written to:\n{result.output_path}",
                 )
+
+    def _handle_view_return(self) -> None:
+        active = self._active_company()
+        rt = self._selected_return()
+        if active is None or rt is None:
+            return
+
+        # Hydrate with full lines (the page list may be a thin row).
+        try:
+            full = self._service_registry.tax_return_service.get_return(
+                active.company_id, rt.id
+            )
+        except (NotFoundError, PermissionDeniedError) as exc:
+            show_error(self, "View Return", str(exc))
+            return
+        except Exception as exc:  # pragma: no cover - defensive
+            _log.exception("View Return")
+            show_error(
+                self,
+                "View Return",
+                f"Could not load return.\n\n{exc}",
+            )
+            return
+
+        dialog = TaxReturnDetailDialog(
+            self._service_registry,
+            active.company_id,
+            active.company_name,
+            full,
+            parent=self,
+        )
+        dialog.exec()
+        if dialog.was_redrafted():
+            self.reload()
 
     def _handle_export_pdf(self) -> None:
         active = self._active_company()

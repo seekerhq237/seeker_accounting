@@ -12,6 +12,7 @@ Usage from a page / dialog:
 
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
@@ -264,7 +265,7 @@ def show_help_in_dialog(help_key: str, dialog: QWidget) -> None:
     dlg = QDialog(dialog)
     dlg.setWindowTitle("Help")
     dlg.setModal(True)
-    dlg.resize(520, 460)
+    apply_window_size(dlg, "shared.ui.help.overlay.0")
     dlg.setObjectName("HelpPopupDialog")
 
     # Reuse the same panel structure / object names so existing QSS applies.

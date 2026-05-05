@@ -12,6 +12,7 @@ from seeker_accounting.app.shell.child_windows.child_window_manager import (
 )
 from seeker_accounting.app.shell.ribbon.ribbon_registry import RibbonRegistry
 from seeker_accounting.config.settings import AppSettings
+from seeker_accounting.modules.accounting.deferrals.services.deferral_service import DeferralService
 from seeker_accounting.modules.accounting.chart_of_accounts.services.chart_of_accounts_service import (
     ChartOfAccountsService,
 )
@@ -79,6 +80,27 @@ from seeker_accounting.modules.taxation.services.tax_audit_trail_service import 
 )
 from seeker_accounting.modules.taxation.services.tax_return_pdf_export_service import (
     TaxReturnPDFExportService,
+)
+from seeker_accounting.modules.taxation.services.vat_period_lock_service import (
+    VATPeriodLockService,
+)
+from seeker_accounting.modules.taxation.services.vat_reconciliation_service import (
+    VATReconciliationService,
+)
+from seeker_accounting.modules.taxation.services.vat_annex_export_service import (
+    VATAnnexExportService,
+)
+from seeker_accounting.modules.taxation.services.vat_efiling_payload_service import (
+    VATEFilingPayloadService,
+)
+from seeker_accounting.modules.taxation.services.pro_rata_service import (
+    ProRataService,
+)
+from seeker_accounting.modules.taxation.services.vat_capital_goods_service import (
+    VatCapitalGoodsService,
+)
+from seeker_accounting.modules.taxation.services.vat_exception_report_service import (
+    VATExceptionReportService,
 )
 from seeker_accounting.modules.companies.services.company_context_service import CompanyContextService
 from seeker_accounting.modules.companies.services.company_logo_service import CompanyLogoService
@@ -271,6 +293,22 @@ from seeker_accounting.modules.inventory.services.inventory_posting_service impo
 from seeker_accounting.modules.inventory.services.inventory_valuation_service import InventoryValuationService
 from seeker_accounting.modules.inventory.services.unit_of_measure_service import UnitOfMeasureService
 from seeker_accounting.modules.inventory.services.uom_category_service import UomCategoryService
+from seeker_accounting.modules.inventory.services.cogs_sync_service import CogsSyncService
+from seeker_accounting.modules.inventory.services.goods_receipt_service import GoodsReceiptService
+from seeker_accounting.modules.inventory.services.item_supplier_service import ItemSupplierService
+from seeker_accounting.modules.inventory.services.vat_into_cost_service import VatIntoCostService
+from seeker_accounting.modules.inventory.services.landed_cost_service import LandedCostService
+from seeker_accounting.modules.inventory.services.ohada_inventory_service import OhadaInventoryService
+from seeker_accounting.modules.inventory.services.price_list_service import PriceListService
+from seeker_accounting.modules.inventory.services.reorder_planning_service import ReorderPlanningService
+from seeker_accounting.modules.inventory.services.inventory_dashboard_service import InventoryDashboardService
+from seeker_accounting.modules.inventory.services.item_barcode_service import ItemBarcodeService
+from seeker_accounting.modules.reporting.services.inventory_kardex_report_service import InventoryKardexReportService
+from seeker_accounting.modules.reporting.services.inventory_aging_report_service import InventoryAgeingReportService
+from seeker_accounting.modules.reporting.services.inventory_abc_analysis_service import InventoryAbcAnalysisService
+from seeker_accounting.modules.reporting.services.inventory_item_profitability_service import InventoryItemProfitabilityService
+from seeker_accounting.modules.reporting.services.grni_accrual_report_service import GrniAccrualReportService
+from seeker_accounting.modules.reporting.services.inventory_reconciliation_report_service import InventoryReconciliationReportService
 from seeker_accounting.modules.fixed_assets.services.asset_category_service import AssetCategoryService
 from seeker_accounting.modules.fixed_assets.services.asset_service import AssetService
 from seeker_accounting.modules.fixed_assets.services.depreciation_schedule_service import DepreciationScheduleService
@@ -399,6 +437,13 @@ class ServiceRegistry:
     tax_dashboard_service: TaxDashboardService
     tax_audit_trail_service: TaxAuditTrailService
     tax_return_pdf_export_service: TaxReturnPDFExportService
+    vat_period_lock_service: VATPeriodLockService
+    vat_reconciliation_service: VATReconciliationService
+    vat_annex_export_service: VATAnnexExportService
+    vat_efiling_payload_service: VATEFilingPayloadService
+    pro_rata_service: ProRataService
+    vat_capital_goods_service: VatCapitalGoodsService
+    vat_exception_report_service: VATExceptionReportService
     numbering_setup_service: NumberingSetupService
     chart_of_accounts_service: ChartOfAccountsService
     chart_seed_service: ChartSeedService
@@ -444,6 +489,22 @@ class ServiceRegistry:
     inventory_document_service: InventoryDocumentService
     inventory_posting_service: InventoryPostingService
     inventory_valuation_service: InventoryValuationService
+    cogs_sync_service: CogsSyncService
+    goods_receipt_service: GoodsReceiptService
+    item_supplier_service: ItemSupplierService
+    vat_into_cost_service: VatIntoCostService
+    landed_cost_service: LandedCostService
+    ohada_inventory_service: OhadaInventoryService
+    price_list_service: PriceListService
+    reorder_planning_service: ReorderPlanningService
+    inventory_dashboard_service: InventoryDashboardService
+    item_barcode_service: ItemBarcodeService
+    inventory_kardex_report_service: InventoryKardexReportService
+    inventory_aging_report_service: InventoryAgeingReportService
+    inventory_abc_analysis_service: InventoryAbcAnalysisService
+    inventory_item_profitability_service: InventoryItemProfitabilityService
+    grni_accrual_report_service: GrniAccrualReportService
+    inventory_reconciliation_report_service: InventoryReconciliationReportService
     asset_category_service: AssetCategoryService
     asset_service: AssetService
     depreciation_schedule_service: DepreciationScheduleService
@@ -509,6 +570,7 @@ class ServiceRegistry:
     backup_merge_service: BackupMergeService
     license_service: LicenseService
     wizard_run_service: WizardRunService
+    deferral_service: DeferralService
 
     # Shell subsystems introduced with the Sage-style ribbon / child-window
     # UX. These use ``default_factory`` so no existing construction site

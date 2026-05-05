@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDateEdit,
     QFrame,
@@ -11,8 +14,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,10 +43,13 @@ from seeker_accounting.modules.reporting.ui.widgets.reporting_empty_state import
 )
 from seeker_accounting.shared.ui.message_boxes import show_error
 from seeker_accounting.shared.ui.searchable_combo_box import SearchableComboBox
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.platform.exceptions import ValidationError
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class SupplierStatementWindow(QFrame):
@@ -204,13 +208,29 @@ class SupplierStatementWindow(QFrame):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 0, 20, 20)
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="document", title="Document"),
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="bills", title="Bills"),
+                DataTableColumn(key="payments", title="Payments"),
+                DataTableColumn(key="balance", title="Balance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._model = QStandardItemModel(0, 8, panel)
+        self._model.setHorizontalHeaderLabels(
             ["Date", "Type", "Document", "Reference", "Description", "Bills", "Payments", "Balance"]
         )
-        configure_compact_table(self._table)
-        self._table.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self._table, 1)
         return panel
 
@@ -235,7 +255,7 @@ class SupplierStatementWindow(QFrame):
     def _load_report(self) -> None:
         if not isinstance(self._current_filter.supplier_id, int):
             self._current_report = None
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentIndex(1)
             self._update_summary(None)
             return
@@ -244,32 +264,39 @@ class SupplierStatementWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "Supplier Statement", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Supplier Statement", str(exc))
+            return
+        except Exception:
+            _log.exception("Supplier Statement")
+            show_error(self, "Supplier Statement", "An unexpected error occurred. See application log for details.")
             return
         self._current_report = report
         self._update_summary(report)
         if not report.has_activity:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentIndex(2)
             return
         self._bind_rows(report)
         self._stack.setCurrentIndex(0)
 
     def _bind_rows(self, report: SupplierStatementReportDTO) -> None:
-        self._table.setRowCount(len(report.lines))
-        for row_index, line in enumerate(report.lines):
-            self._table.setItem(row_index, 0, QTableWidgetItem(line.movement_date.strftime("%Y-%m-%d")))
-            self._table.setItem(row_index, 1, QTableWidgetItem(line.movement_type_label))
-            self._table.setItem(row_index, 2, QTableWidgetItem(line.document_number))
-            self._table.setItem(row_index, 3, QTableWidgetItem(line.reference_text or "-"))
-            self._table.setItem(row_index, 4, QTableWidgetItem(line.description or "-"))
-            self._set_amount(row_index, 5, line.bill_amount)
-            self._set_amount(row_index, 6, line.payment_amount)
-            balance_item = QTableWidgetItem(self._fmt(line.running_balance))
-            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            balance_item.setData(Qt.ItemDataRole.UserRole, line.journal_entry_id)
-            self._table.setItem(row_index, 7, balance_item)
+        self._model.removeRows(0, self._model.rowCount())
+        for line in report.lines:
+            bills_item = self._make_amount_item(self._fmt(line.bill_amount) if line.bill_amount else "")
+            payments_item = self._make_amount_item(self._fmt(line.payment_amount) if line.payment_amount else "")
+            balance_item = self._make_amount_item(self._fmt(line.running_balance))
+            balance_item.setData(line.journal_entry_id, Qt.ItemDataRole.UserRole)
+            self._model.appendRow([
+                self._make_item(line.movement_date.strftime("%Y-%m-%d")),
+                self._make_item(line.movement_type_label),
+                self._make_item(line.document_number),
+                self._make_item(line.reference_text or "-"),
+                self._make_item(line.description or "-"),
+                bills_item,
+                payments_item,
+                balance_item,
+            ])
 
     def _update_summary(self, report: SupplierStatementReportDTO | None) -> None:
         if report is None:
@@ -282,10 +309,20 @@ class SupplierStatementWindow(QFrame):
         self._summary_values["activity"].setText(self._fmt(activity))
         self._summary_values["closing"].setText(self._fmt(report.closing_balance))
 
-    def _set_amount(self, row_index: int, column_index: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount) if amount else "")
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_amount_item(text: str) -> QStandardItem:
+        item = QStandardItem(text)
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row_index, column_index, item)
+        return item
 
     def _on_refresh(self) -> None:
         self._current_filter = OperationalReportFilterDTO(
@@ -306,8 +343,13 @@ class SupplierStatementWindow(QFrame):
         )
         ReportPrintPreviewDialog.show_preview(preview, parent=self)
 
-    def _on_cell_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        balance_item = self._table.item(row, 7)
+    def _on_cell_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        row = src.row()
+        balance_item = self._model.item(row, 7)
         if balance_item is None:
             return
         journal_entry_id = balance_item.data(Qt.ItemDataRole.UserRole)

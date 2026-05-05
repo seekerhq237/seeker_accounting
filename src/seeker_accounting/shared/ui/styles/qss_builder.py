@@ -8,6 +8,7 @@ def build_stylesheet(palette: ThemePalette, tokens: ThemeTokens) -> str:
     typography = tokens.typography
     radius = tokens.radius
     sizes = tokens.sizes
+    spacing = tokens.spacing
 
     return f"""
 QWidget {{
@@ -2418,5 +2419,493 @@ QFrame#EntityInfoSeparator {{
     border: none;
     max-height: 1px;
     margin: 4px 0;
+}}
+
+/* === Phase 1 components === */
+
+QWidget#StatusChip {{
+    min-height: {sizes.chip_height}px;
+    max-height: {sizes.chip_height}px;
+    padding: 0 {sizes.chip_padding_h}px;
+    border-radius: {sizes.chip_radius}px;
+    border: 1px solid {palette.border_default};
+    background: {palette.status_neutral_bg};
+    color: {palette.status_neutral_fg};
+    font-size: {typography.size_small}px;
+    font-weight: {typography.weight_semibold};
+    margin: 0;
+}}
+
+QWidget#StatusChip[chipFamily="success"] {{
+    background: {palette.status_success_bg};
+    color: {palette.status_success_fg};
+    border-color: {palette.status_success_border};
+}}
+
+QWidget#StatusChip[chipFamily="warning"] {{
+    background: {palette.status_warning_bg};
+    color: {palette.status_warning_fg};
+    border-color: {palette.status_warning_border};
+}}
+
+QWidget#StatusChip[chipFamily="danger"] {{
+    background: {palette.status_danger_bg};
+    color: {palette.status_danger_fg};
+    border-color: {palette.status_danger_border};
+}}
+
+QWidget#StatusChip[chipFamily="info"] {{
+    background: {palette.status_info_bg};
+    color: {palette.status_info_fg};
+    border-color: {palette.status_info_border};
+}}
+
+QWidget#StatusChip[chipFamily="neutral"] {{
+    background: {palette.status_neutral_bg};
+    color: {palette.status_neutral_fg};
+    border-color: {palette.status_neutral_border};
+}}
+
+QWidget#StatusChip[chipFamily="accent"] {{
+    background: {palette.status_accent_bg};
+    color: {palette.status_accent_fg};
+    border-color: {palette.status_accent_border};
+}}
+
+QWidget#CommandBar {{
+    background: {palette.command_bar_surface};
+    min-height: {sizes.command_bar_height}px;
+    max-height: {sizes.command_bar_height}px;
+    border: none;
+    border-bottom: 1px solid {palette.border_default};
+}}
+
+QToolButton#CommandBarButton {{
+    min-height: {sizes.command_bar_button_height}px;
+    max-height: {sizes.command_bar_button_height}px;
+    min-width: {sizes.command_bar_button_min_width}px;
+    padding-left: {sizes.command_bar_button_padding_h}px;
+    padding-right: {sizes.command_bar_button_padding_h}px;
+    border: none;
+    border-radius: {radius.small}px;
+    background: transparent;
+    color: {palette.text_primary};
+    font-size: {typography.size_body}px;
+    font-weight: {typography.weight_medium};
+}}
+
+QToolButton#CommandBarButton:hover {{
+    background: {palette.command_bar_button_hover};
+}}
+
+QToolButton#CommandBarButton:pressed {{
+    background: {palette.command_bar_button_pressed};
+}}
+
+QToolButton#CommandBarButton:disabled {{
+    color: {palette.disabled_text};
+    background: transparent;
+}}
+
+QToolButton#CommandBarButton[primary="true"] {{
+    background: {palette.accent};
+    color: {palette.accent_text};
+}}
+
+QToolButton#CommandBarButton[primary="true"]:hover {{
+    background: {palette.accent_hover};
+}}
+
+QToolButton#CommandBarButton[primary="true"]:pressed {{
+    background: {palette.accent_hover};
+}}
+
+QToolButton#CommandBarButton[danger="true"] {{
+    color: {palette.danger};
+}}
+
+QToolButton#CommandBarButton[danger="true"]:hover {{
+    background: {palette.command_bar_button_hover};
+    color: {palette.danger};
+}}
+
+QToolButton#CommandBarOverflow {{
+    min-height: {sizes.command_bar_button_height}px;
+    max-height: {sizes.command_bar_button_height}px;
+    min-width: {sizes.command_bar_overflow_width}px;
+    max-width: {sizes.command_bar_overflow_width}px;
+    border: none;
+    border-radius: {radius.small}px;
+    background: transparent;
+    color: {palette.text_primary};
+}}
+
+QToolButton#CommandBarOverflow:hover {{
+    background: {palette.command_bar_button_hover};
+}}
+
+QToolButton#CommandBarOverflow:pressed {{
+    background: {palette.command_bar_button_pressed};
+}}
+
+QFrame#CommandBarSeparator {{
+    background: {palette.command_bar_separator};
+    border: none;
+    max-width: 1px;
+    min-width: 1px;
+    margin: 6px 0;
+}}
+
+QFrame#CommandBarGroupSeparator {{
+    background: {palette.command_bar_separator};
+    border: none;
+    max-width: 1px;
+    min-width: 1px;
+    margin: 2px 0;
+}}
+
+QWidget#DataTableToolbar {{
+    background: {palette.data_table_toolbar_surface};
+    min-height: {sizes.data_table_toolbar_height}px;
+    max-height: {sizes.data_table_toolbar_height}px;
+    border: none;
+    border-bottom: 1px solid {palette.border_default};
+}}
+
+QTableView#EnterpriseTable {{
+    background: {palette.workspace_surface};
+    alternate-background-color: {palette.data_table_row_alt};
+    gridline-color: {palette.data_table_grid_line};
+    selection-background-color: {palette.data_table_row_selected};
+    selection-color: {palette.data_table_row_selected_fg};
+    border: 1px solid {palette.border_default};
+    color: {palette.text_primary};
+}}
+
+QTableView#EnterpriseTable::item {{
+    padding-left: {sizes.data_table_cell_padding_h}px;
+    padding-right: {sizes.data_table_cell_padding_h}px;
+    border: none;
+}}
+
+QTableView#EnterpriseTable::item:selected {{
+    background: {palette.data_table_row_selected};
+    color: {palette.data_table_row_selected_fg};
+}}
+
+QTableView#EnterpriseTable QHeaderView::section {{
+    background: {palette.data_table_header_bg};
+    color: {palette.data_table_header_fg};
+    min-height: {sizes.data_table_header_height}px;
+    padding-left: {sizes.data_table_cell_padding_h}px;
+    padding-right: {sizes.data_table_cell_padding_h}px;
+    border: none;
+    border-bottom: 1px solid {palette.border_default};
+    font-weight: {typography.weight_semibold};
+}}
+
+QTableView#EnterpriseTable QHeaderView::section:horizontal:!last {{
+    border-right: 1px solid {palette.data_table_grid_line};
+}}
+
+QTableView#EnterpriseTable QTableCornerButton::section {{
+    background: {palette.data_table_header_bg};
+    border: none;
+    border-bottom: 1px solid {palette.border_default};
+}}
+
+/* === Phase 2 components === */
+
+QWidget#WorkflowStepper {{
+    background: {palette.workspace_surface};
+    border: 1px solid {palette.border_default};
+    border-radius: {radius.medium}px;
+    min-height: {sizes.workflow_stepper_height}px;
+    max-height: {sizes.workflow_stepper_height}px;
+}}
+
+/* === Phase 2 dialog refinements === */
+
+QFrame#WarningCallout {{
+    background: {palette.status_warning_bg};
+    border: none;
+    border-left: 3px solid {palette.status_warning_border};
+    border-radius: {radius.small}px;
+}}
+
+QLabel#WarningCalloutText {{
+    color: {palette.status_warning_fg};
+    font-size: {typography.size_dense}px;
+    background: transparent;
+}}
+
+QFrame#TotalsCard {{
+    background: {palette.secondary_surface};
+    border: 1px solid {palette.border_default};
+    border-radius: {radius.medium}px;
+}}
+
+QLabel#TotalsValue {{
+    font-size: 15px;
+    font-weight: {typography.weight_semibold};
+    color: {palette.text_primary};
+    background: transparent;
+}}
+
+QLabel#TotalsValue[tone="positive"] {{
+    color: {palette.success};
+}}
+
+QLabel#TotalsValue[tone="negative"] {{
+    color: {palette.danger};
+}}
+
+QFrame#NotesCallout {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-left: 3px solid {palette.border_strong};
+    border-radius: {radius.small}px;
+}}
+
+QLabel#NotesCallout > QLabel {{
+    background: transparent;
+}}
+
+QLabel#AmountDisplay {{
+    font-size: 22px;
+    font-weight: {typography.weight_semibold};
+    color: {palette.text_primary};
+    background: transparent;
+}}
+
+QLabel#DialogMetaValue {{
+    color: {palette.text_primary};
+    font-size: {typography.size_body}px;
+    background: transparent;
+}}
+
+/* === Phase 3: shell ribbon CommandBar adoption === */
+QWidget#RibbonSurface {{
+    background: {palette.command_bar_surface};
+    border: none;
+}}
+
+/* ── Payroll P1: Severity Pills ─────────────────────────────── */
+QWidget#SeverityPill {{
+    min-height: {sizes.severity_pill_height}px;
+    max-height: {sizes.severity_pill_height}px;
+    padding: 0 {sizes.severity_pill_padding_h}px;
+    border-radius: {sizes.severity_pill_radius}px;
+    border: 1px solid transparent;
+    font-size: {typography.size_small}px;
+    font-weight: {typography.weight_semibold};
+}}
+QWidget#SeverityPill[severity="blocker"] {{
+    background: {palette.severity_blocker_bg};
+    color: {palette.severity_blocker_fg};
+    border-color: {palette.severity_blocker_accent};
+}}
+QWidget#SeverityPill[severity="error"] {{
+    background: {palette.severity_error_bg};
+    color: {palette.severity_error_fg};
+    border-color: {palette.severity_error_accent};
+}}
+QWidget#SeverityPill[severity="warning"] {{
+    background: {palette.severity_warning_bg};
+    color: {palette.severity_warning_fg};
+    border-color: {palette.severity_warning_accent};
+}}
+QWidget#SeverityPill[severity="info"] {{
+    background: {palette.severity_info_bg};
+    color: {palette.severity_info_fg};
+    border-color: {palette.severity_info_accent};
+}}
+QWidget#SeverityPill[severity="notice"] {{
+    background: {palette.severity_notice_bg};
+    color: {palette.severity_notice_fg};
+    border-color: {palette.severity_notice_accent};
+}}
+
+/* ── Payroll P1: Inline Issue Band ──────────────────────────── */
+QFrame#InlineIssueBand {{
+    border-radius: {sizes.issue_band_radius}px;
+    border: 1px solid transparent;
+    border-left-width: {sizes.issue_band_accent_thickness}px;
+    min-height: {sizes.issue_band_min_height}px;
+    padding: {spacing.issue_band_padding_v}px {spacing.issue_band_padding_h}px;
+}}
+QFrame#InlineIssueBand[severity="blocker"] {{
+    background: {palette.severity_blocker_bg};
+    border-color: {palette.severity_blocker_accent};
+}}
+QFrame#InlineIssueBand[severity="error"] {{
+    background: {palette.severity_error_bg};
+    border-color: {palette.severity_error_accent};
+}}
+QFrame#InlineIssueBand[severity="warning"] {{
+    background: {palette.severity_warning_bg};
+    border-color: {palette.severity_warning_accent};
+}}
+QFrame#InlineIssueBand[severity="info"] {{
+    background: {palette.severity_info_bg};
+    border-color: {palette.severity_info_accent};
+}}
+QFrame#InlineIssueBand[severity="notice"] {{
+    background: {palette.severity_notice_bg};
+    border-color: {palette.severity_notice_accent};
+}}
+QLabel#InlineIssueBandTitle {{
+    font-weight: {typography.weight_semibold};
+    background: transparent;
+    color: inherit;
+}}
+QLabel#InlineIssueBandBody {{
+    background: transparent;
+    color: inherit;
+    font-size: {typography.size_small}px;
+}}
+
+/* ── Payroll P1: Form Dialog primitives ─────────────────────── */
+QFrame#FormDialogFooter {{
+    background: {palette.secondary_surface};
+    border-top: 1px solid {palette.divider_subtle};
+}}
+QFrame#FormDialogSection {{
+    background: transparent;
+    border: none;
+}}
+QLabel#FormDialogSectionTitle {{
+    font-size: {typography.size_section_title}px;
+    font-weight: {typography.weight_semibold};
+    color: {palette.text_primary};
+    background: transparent;
+}}
+QLabel#FormFieldLabel {{
+    font-size: {typography.size_small}px;
+    font-weight: {typography.weight_medium};
+    color: {palette.text_secondary};
+    background: transparent;
+}}
+QLabel#FormFieldError {{
+    font-size: {typography.size_small}px;
+    color: {palette.severity_error_accent};
+    background: transparent;
+}}
+QLabel#FormFieldHint {{
+    font-size: {typography.size_small}px;
+    color: {palette.text_muted};
+    background: transparent;
+}}
+
+/* ── Payroll P1: Side Panel ─────────────────────────────────── */
+QFrame#SidePanel {{
+    background: {palette.raised_surface};
+    border-left: 1px solid {palette.border_default};
+}}
+QFrame#SidePanelHeader {{
+    background: {palette.secondary_surface};
+    border-bottom: 1px solid {palette.divider_subtle};
+}}
+QLabel#SidePanelTitle {{
+    font-size: {typography.size_section_title}px;
+    font-weight: {typography.weight_semibold};
+    color: {palette.text_primary};
+    background: transparent;
+}}
+QPushButton#SidePanelCloseButton {{
+    background: transparent;
+    border: none;
+    color: {palette.text_secondary};
+    padding: 4px 8px;
+    border-radius: {radius.small}px;
+}}
+QPushButton#SidePanelCloseButton:hover {{
+    background: {palette.accent_soft};
+    color: {palette.text_primary};
+}}
+
+/* ── Payroll P1: KPI Tile ───────────────────────────────────── */
+QFrame#KpiTile {{
+    background: {palette.workspace_surface};
+    border: 1px solid {palette.border_default};
+    border-radius: {sizes.kpi_tile_radius}px;
+    min-width: {sizes.kpi_tile_min_width}px;
+    min-height: {sizes.kpi_tile_height}px;
+    max-height: {sizes.kpi_tile_height}px;
+}}
+QFrame#KpiTile[clickable="true"]:hover {{
+    border-color: {palette.accent};
+}}
+QLabel#KpiTileLabel {{
+    font-size: {typography.size_small}px;
+    color: {palette.text_muted};
+    font-weight: {typography.weight_medium};
+    background: transparent;
+}}
+QLabel#KpiTileValue {{
+    font-size: {typography.size_section_title}px;
+    color: {palette.text_primary};
+    font-weight: {typography.weight_semibold};
+    background: transparent;
+}}
+QLabel#KpiTileTrendUp {{
+    font-size: {typography.size_small}px;
+    color: {palette.success};
+    background: transparent;
+}}
+QLabel#KpiTileTrendDown {{
+    font-size: {typography.size_small}px;
+    color: {palette.danger};
+    background: transparent;
+}}
+QLabel#KpiTileTrendFlat {{
+    font-size: {typography.size_small}px;
+    color: {palette.text_muted};
+    background: transparent;
+}}
+
+/* ── Payroll P1: Workbench Header ───────────────────────────── */
+QFrame#WorkbenchHeader {{
+    background: {palette.workspace_surface};
+    border-bottom: 1px solid {palette.divider_subtle};
+    min-height: {sizes.workbench_header_height}px;
+    max-height: {sizes.workbench_header_height}px;
+}}
+QLabel#WorkbenchHeaderTitle {{
+    font-size: {typography.size_section_title}px;
+    font-weight: {typography.weight_semibold};
+    color: {palette.text_primary};
+    background: transparent;
+}}
+QLabel#WorkbenchHeaderSubtitle {{
+    font-size: {typography.size_small}px;
+    color: {palette.text_muted};
+    background: transparent;
+}}
+QLabel#WorkbenchHeaderBreadcrumb {{
+    font-size: {typography.size_small}px;
+    color: {palette.text_secondary};
+    background: transparent;
+}}
+
+/* ── Payroll P1: Empty State ────────────────────────────────── */
+QFrame#EmptyState {{
+    background: transparent;
+}}
+QLabel#EmptyStateHeadline {{
+    font-size: {typography.size_section_title}px;
+    font-weight: {typography.weight_semibold};
+    color: {palette.text_primary};
+    background: transparent;
+}}
+QLabel#EmptyStateBody {{
+    font-size: {typography.size_body}px;
+    color: {palette.text_secondary};
+    background: transparent;
+}}
+QLabel#EmptyStateGlyph {{
+    font-size: 32px;
+    color: {palette.text_muted};
+    background: transparent;
 }}
 """.strip()

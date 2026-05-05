@@ -1,4 +1,10 @@
-"""RibbonButton — icon-above-label flat tool button used in RibbonSurface."""
+"""RibbonButton — DEPRECATED.
+
+The shell ribbon now renders via the shared adaptive `CommandBar`
+(see :class:`seeker_accounting.shared.ui.components.command_bar.CommandBar`).
+This module is retained for backward compatibility with any direct
+callers; new code MUST NOT use it.
+"""
 
 from __future__ import annotations
 

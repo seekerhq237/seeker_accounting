@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import logging
+
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -18,9 +19,12 @@ from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.accounting.journals.dto.journal_dto import JournalEntryDetailDTO
 from seeker_accounting.platform.exceptions import NotFoundError
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class JournalSourceDetailDialog(QDialog):
@@ -63,12 +67,25 @@ class JournalSourceDetailDialog(QDialog):
 
         layout.addWidget(self._header_card)
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels(
+        self._model = QStandardItemModel(0, 5, self)
+        self._model.setHorizontalHeaderLabels(
             ["Line", "Account", "Description", "Debit", "Credit"]
         )
-        configure_compact_table(self._table)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="debit", title="Debit"),
+                DataTableColumn(key="credit", title="Credit"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
         layout.addWidget(self._table, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
@@ -90,8 +107,12 @@ class JournalSourceDetailDialog(QDialog):
             show_error(self, "Journal Detail", str(exc))
             self.reject()
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Journal Detail", str(exc))
+
+        except Exception:
+            _log.exception("Journal Detail")
+            show_error(self, "Journal Detail", "An unexpected error occurred. See application log for details.")
             self.reject()
             return
 
@@ -115,7 +136,8 @@ class JournalSourceDetailDialog(QDialog):
             meta_parts.append(f"Description: {entry.description}")
         self._meta_lbl.setText(" · ".join(meta_parts))
 
-        self._table.setRowCount(len(entry.lines))
+        self._model.removeRows(0, self._model.rowCount())
+        self._model.setRowCount(len(entry.lines))
         for idx, line in enumerate(entry.lines):
             self._set_text(idx, 0, str(line.line_number))
             account_label = f"{line.account_code} · {line.account_name}"
@@ -125,13 +147,15 @@ class JournalSourceDetailDialog(QDialog):
             self._set_amount(idx, 4, line.credit_amount)
 
     def _set_text(self, row: int, col: int, text: str) -> None:
-        item = QTableWidgetItem(text)
-        self._table.setItem(row, col, item)
+        item = QStandardItem(text)
+        item.setEditable(False)
+        self._model.setItem(row, col, item)
 
     def _set_amount(self, row: int, col: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+        item = QStandardItem(self._fmt(amount))
+        item.setEditable(False)
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, col, item)
+        self._model.setItem(row, col, item)
 
     @staticmethod
     def _fmt(amount: Decimal) -> str:

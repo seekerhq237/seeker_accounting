@@ -216,8 +216,9 @@ class PayrollExportDialog(QDialog):
                 f"Payslip exported for {result.employee_display_name}.\n\nSaved to: {result.file_path}",
             )
             self.accept()
-        except Exception as exc:
-            show_error(self, "Export Failed", f"Could not export payslip:\n{exc}")
+        except Exception:
+            _log.exception("Payslip PDF export failed for run_employee=%s", self._run_employee_id)
+            show_error(self, "Export Failed", "Could not export payslip. See application log for details.")
 
     def _export_batch_payslips(self) -> None:
         output_dir = QFileDialog.getExistingDirectory(
@@ -247,8 +248,9 @@ class PayrollExportDialog(QDialog):
             else:
                 show_info(self, "Export Complete", msg)
             self.accept()
-        except Exception as exc:
-            show_error(self, "Export Failed", f"Could not export payslips:\n{exc}")
+        except Exception:
+            _log.exception("Batch payslip export failed for run=%s", self._run_id)
+            show_error(self, "Export Failed", "Could not export payslips. See application log for details.")
 
     def _export_summary(self) -> None:
         is_csv = hasattr(self, "_radio_csv") and self._radio_csv.isChecked()
@@ -286,5 +288,6 @@ class PayrollExportDialog(QDialog):
                 f"Summary exported ({result.format.upper()}) for {result.employee_count} employees.\n\nSaved to: {result.file_path}",
             )
             self.accept()
-        except Exception as exc:
-            show_error(self, "Export Failed", f"Could not export summary:\n{exc}")
+        except Exception:
+            _log.exception("Payroll summary export failed for run=%s", self._run_id)
+            show_error(self, "Export Failed", "Could not export summary. See application log for details.")

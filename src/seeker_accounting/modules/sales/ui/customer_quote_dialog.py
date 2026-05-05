@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 
 from datetime import date
@@ -59,7 +60,7 @@ class CustomerQuoteDialog(QDialog):
         is_edit = quote_id is not None
         self.setWindowTitle(f"{'Edit' if is_edit else 'New'} Customer Quote - {company_name}")
         self.setModal(True)
-        self.resize(960, 700)
+        apply_window_size(self, "modules.sales.ui.customer.quote.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 14, 16, 14)
@@ -304,8 +305,12 @@ class CustomerQuoteDialog(QDialog):
             self._notes_input.textChanged.connect(self._on_data_changed)
             self._lines_grid.lines_changed.connect(self._on_data_changed)
             self._on_currency_changed(self._currency_combo.current_value())
-        except Exception as exc:
+        except AppError as exc:
             self._show_error(f"Failed to load reference data: {exc}")
+
+        except Exception:
+            _log.exception("Unexpected error")
+            self._show_error("An unexpected error occurred. See application log for details.")
 
     def _base_currency_code(self) -> str | None:
         try:
@@ -473,7 +478,7 @@ class ConvertQuoteDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Convert Quote to Invoice — {quote_number}")
         self.setModal(True)
-        self.resize(440, 260)
+        apply_window_size(self, "modules.sales.ui.customer.quote.dialog.1")
 
         self._result: ConvertCustomerQuoteCommand | None = None
 

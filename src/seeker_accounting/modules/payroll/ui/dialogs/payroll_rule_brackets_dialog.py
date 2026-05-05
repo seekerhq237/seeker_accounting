@@ -5,8 +5,8 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -15,8 +15,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -28,7 +26,7 @@ from seeker_accounting.modules.payroll.dto.payroll_rule_dto import (
     UpsertPayrollRuleBracketCommand,
 )
 from seeker_accounting.platform.exceptions import ValidationError
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _log = logging.getLogger(__name__)
 
@@ -81,7 +79,8 @@ class _BracketLineDialog(QDialog):
         is_edit = bracket is not None
         self.setWindowTitle("Edit Bracket Line" if is_edit else "Add Bracket Line")
         self.setModal(True)
-        self.resize(400, 340)
+        from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _tok
+        self.setMinimumSize(_tok.sizes.dialog_min_w_small, _tok.sizes.dialog_min_h_medium)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -211,7 +210,8 @@ class PayrollRuleBracketsDialog(QDialog):
 
         self.setWindowTitle(f"Brackets — {rule_code}")
         self.setModal(True)
-        self.resize(760, 480)
+        from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS as _tok
+        self.setMinimumSize(_tok.sizes.dialog_min_w_xlarge, _tok.sizes.dialog_min_h_xlarge)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -244,14 +244,22 @@ class PayrollRuleBracketsDialog(QDialog):
         layout.addLayout(toolbar)
 
         # ── Table ─────────────────────────────────────────────────────────────
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(len(_HEADERS))
-        self._table.setHorizontalHeaderLabels(_HEADERS)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_edit())
-        configure_compact_table(self._table)
+        self._model = QStandardItemModel(0, len(_HEADERS), self)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="line", title="Line #"),
+                DataTableColumn(key="lower", title="Lower Bound"),
+                DataTableColumn(key="upper", title="Upper Bound"),
+                DataTableColumn(key="rate", title="Rate %"),
+                DataTableColumn(key="fixed", title="Fixed Amt"),
+                DataTableColumn(key="deduction", title="Deduction Amt"),
+                DataTableColumn(key="cap", title="Cap Amt"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(lambda _: self._on_edit())
         layout.addWidget(self._table, 1)
 
         self._error_label = QLabel(self)
@@ -281,10 +289,10 @@ class PayrollRuleBracketsDialog(QDialog):
         self._populate(rs.brackets)
 
     def _populate(self, brackets: tuple[PayrollRuleBracketDTO, ...]) -> None:
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         sorted_brackets = sorted(brackets, key=lambda b: b.line_number)
         for row_idx, b in enumerate(sorted_brackets):
-            self._table.insertRow(row_idx)
+            self._model.insertRow(row_idx)
             self._set_cell(row_idx, _COL_LINE, str(b.line_number), b.line_number)
             self._set_cell(row_idx, _COL_LOWER, _dec(b.lower_bound_amount), align_right=True)
             self._set_cell(row_idx, _COL_UPPER, _dec(b.upper_bound_amount), align_right=True)
@@ -301,27 +309,26 @@ class PayrollRuleBracketsDialog(QDialog):
         user_data: object = None,
         align_right: bool = False,
     ) -> None:
-        item = QTableWidgetItem(text)
-        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+        item = QStandardItem(text)
         if user_data is not None:
-            item.setData(Qt.ItemDataRole.UserRole, user_data)
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
         if align_right:
             item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, col, item)
+        self._model.setItem(row, col, item)
 
     def _selected_line_number(self) -> int | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, _COL_LINE)
+        item = self._model.item(rows[0], _COL_LINE)
         if item is None:
             return None
         data = item.data(Qt.ItemDataRole.UserRole)
         return int(data) if data is not None else None
 
     def _selected_bracket(self) -> PayrollRuleBracketDTO | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
         try:
             rs = self._sr.payroll_rule_service.get_rule_set(self._company_id, self._rule_set_id)
@@ -337,8 +344,8 @@ class PayrollRuleBracketsDialog(QDialog):
 
     def _next_line_number(self) -> int:
         max_line = 0
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, _COL_LINE)
+        for row in range(self._model.rowCount()):
+            item = self._model.item(row, _COL_LINE)
             if item:
                 data = item.data(Qt.ItemDataRole.UserRole)
                 if data is not None:

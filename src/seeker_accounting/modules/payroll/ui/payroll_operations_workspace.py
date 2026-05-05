@@ -9,26 +9,24 @@ Tabs:
 """
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QTextDocument
+from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel, QTextDocument
 from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QMessageBox,
     QPushButton,
     QStackedWidget,
     QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,8 +40,8 @@ from seeker_accounting.modules.payroll.ui.dialogs.validation_check_detail_dialog
     ValidationCheckDetailDialog,
 )
 from seeker_accounting.platform.exceptions import ValidationError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _MONTHS = {
     1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr",
@@ -56,6 +54,9 @@ _SEVERITY_COLORS = {
     "warning": "#fd7e14",
     "info": "#0d6efd",
 }
+
+
+_log = logging.getLogger(__name__)
 
 
 class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
@@ -101,7 +102,7 @@ class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
         self._audit_tab = _AuditTab(service_registry, self)
 
         self._tabs.addTab(self._validation_tab, "Validation")
-        self._tabs.addTab(self._packs_tab, "Statutory Packs")
+        self._tabs.addTab(self._packs_tab, "Statutory packs")
         self._tabs.addTab(self._imports_tab, "Imports")
         self._tabs.addTab(self._print_tab, "Print")
         self._tabs.addTab(self._audit_tab, "Audit Log")
@@ -110,14 +111,14 @@ class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
 
         # Selection change hooks for ribbon context swap (validation
         # severity, pack selection, run selection in print tab).
-        self._validation_tab._table.selectionModel().selectionChanged.connect(
-            lambda *_: self._notify_ribbon_context_changed()
+        self._validation_tab._table.selection_changed.connect(
+            lambda _: self._notify_ribbon_context_changed()
         )
-        self._packs_tab._table.selectionModel().selectionChanged.connect(
-            lambda *_: self._notify_ribbon_context_changed()
+        self._packs_tab._table.selection_changed.connect(
+            lambda _: self._notify_ribbon_context_changed()
         )
-        self._print_tab._runs_table.selectionModel().selectionChanged.connect(
-            lambda *_: self._notify_ribbon_context_changed()
+        self._print_tab._runs_table.selection_changed.connect(
+            lambda _: self._notify_ribbon_context_changed()
         )
 
         # Auto-select company
@@ -152,10 +153,10 @@ class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
     _TAB_AUDIT = 4
 
     def _selected_validation_severity(self) -> str | None:
-        row = self._validation_tab._table.currentRow()
-        if row < 0:
+        rows = self._validation_tab._table.selected_rows()
+        if not rows:
             return None
-        item = self._validation_tab._table.item(row, 0)
+        item = self._validation_tab._model.item(rows[0], 0)
         if item is None:
             return None
         check = item.data(Qt.ItemDataRole.UserRole)
@@ -215,7 +216,7 @@ class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
         import_button_enabled = (
             has_import_file and self._imports_tab._btn_import.isEnabled()
         )
-        run_selected = has_company and self._print_tab._runs_table.currentRow() >= 0
+        run_selected = has_company and bool(self._print_tab._runs_table.selected_rows())
         return {
             # Validation
             "payroll_operations.run_assessment":    has_company,
@@ -233,8 +234,6 @@ class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
             # Cross-tab
             "payroll_operations.refresh":           True,
         }
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Tab 1 — Validation Dashboard
 # ══════════════════════════════════════════════════════════════════════════════
@@ -281,14 +280,20 @@ class _ValidationTab(QWidget):
         layout.addWidget(self._summary_label)
 
         # Results table
-        self._table = QTableWidget()
-        cols = ["Severity", "Category", "Title", "Message", "Entity"]
-        self._table.setColumnCount(len(cols))
-        self._table.setHorizontalHeaderLabels(cols)
-        configure_compact_table(self._table)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._table.doubleClicked.connect(self._on_check_double_clicked)
+        self._model = QStandardItemModel(0, 5)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="severity", title="Severity"),
+                DataTableColumn(key="category", title="Category"),
+                DataTableColumn(key="title", title="Title"),
+                DataTableColumn(key="message", title="Message"),
+                DataTableColumn(key="entity", title="Entity"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(lambda *_: self._on_check_double_clicked())
 
         hint = QLabel("Double-click a row to see full details and remediation steps.")
         hint.setStyleSheet("color: #888; font-size: 11px; padding: 1px 0 4px 0;")
@@ -308,8 +313,12 @@ class _ValidationTab(QWidget):
                 self._year_combo.currentData(),
                 self._month_combo.currentData(),
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Validation Error", str(exc))
+            return
+        except Exception:
+            _log.exception("Validation Error")
+            show_error(self, "Validation Error", "An unexpected error occurred. See application log for details.")
             return
 
         # Summary
@@ -327,24 +336,23 @@ class _ValidationTab(QWidget):
             )
 
         # Table
-        self._table.setRowCount(len(result.checks))
-        for row, check in enumerate(result.checks):
-            color = _SEVERITY_COLORS.get(check.severity, "#333")
-            sev_item = QTableWidgetItem(check.severity.upper())
-            sev_item.setForeground(Qt.GlobalColor.white)
-            sev_item.setData(Qt.ItemDataRole.UserRole, check)
-            self._table.setItem(row, 0, sev_item)
-
-            self._table.setItem(row, 1, QTableWidgetItem(check.category.title()))
-            self._table.setItem(row, 2, QTableWidgetItem(check.title))
-            self._table.setItem(row, 3, QTableWidgetItem(check.message))
-            self._table.setItem(row, 4, QTableWidgetItem(check.entity_label or ""))
+        self._model.removeRows(0, self._model.rowCount())
+        for check in result.checks:
+            sev_item = self._make_item(check.severity.upper(), user_data=check)
+            sev_item.setForeground(QBrush(QColor("white")))
+            self._model.appendRow([
+                sev_item,
+                self._make_item(check.category.title()),
+                self._make_item(check.title),
+                self._make_item(check.message),
+                self._make_item(check.entity_label or ""),
+            ])
 
     def _on_check_double_clicked(self) -> None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         if item is None:
             return
         check = item.data(Qt.ItemDataRole.UserRole)
@@ -352,6 +360,14 @@ class _ValidationTab(QWidget):
             return
         dlg = ValidationCheckDetailDialog(check, parent=self)
         dlg.exec()
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -374,13 +390,20 @@ class _StatutoryPacksTab(QWidget):
         layout.addWidget(self._status_label)
 
         # Packs table
-        self._table = QTableWidget()
-        cols = ["Pack Code", "Display Name", "Country", "Effective From", "Status"]
-        self._table.setColumnCount(len(cols))
-        self._table.setHorizontalHeaderLabels(cols)
-        configure_compact_table(self._table)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._model = QStandardItemModel(0, 5)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="pack_code", title="Pack Code"),
+                DataTableColumn(key="display_name", title="Display Name"),
+                DataTableColumn(key="country", title="Country"),
+                DataTableColumn(key="effective_from", title="Effective From"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            selection_mode="single",
+            parent=self,
+        )
+        self._table.set_model(self._model)
         layout.addWidget(self._table)
 
         # Actions
@@ -415,8 +438,12 @@ class _StatutoryPacksTab(QWidget):
             versions = self._registry.payroll_pack_version_service.list_available_versions(
                 self._company_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Error", str(exc))
+            return
+        except Exception:
+            _log.exception("Error")
+            show_error(self, "Error", "An unexpected error occurred. See application log for details.")
             return
 
         current = next((v for v in versions if v.is_current), None)
@@ -425,21 +452,31 @@ class _StatutoryPacksTab(QWidget):
         else:
             self._status_label.setText("No statutory pack is currently applied.")
 
-        self._table.setRowCount(len(versions))
-        for row, v in enumerate(versions):
-            self._table.setItem(row, 0, QTableWidgetItem(v.pack_code))
-            self._table.setItem(row, 1, QTableWidgetItem(v.display_name))
-            self._table.setItem(row, 2, QTableWidgetItem(v.country_code))
-            self._table.setItem(row, 3, QTableWidgetItem(str(v.effective_from)))
+        self._model.removeRows(0, self._model.rowCount())
+        for v in versions:
             status = "Current" if v.is_current else "Available"
-            self._table.setItem(row, 4, QTableWidgetItem(status))
+            self._model.appendRow([
+                self._make_item(v.pack_code),
+                self._make_item(v.display_name),
+                self._make_item(v.country_code),
+                self._make_item(str(v.effective_from)),
+                self._make_item(status),
+            ])
 
     def _selected_pack_code(self) -> str | None:
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         return item.text() if item else None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_preview(self) -> None:
         pack_code = self._selected_pack_code()
@@ -456,8 +493,11 @@ class _StatutoryPacksTab(QWidget):
                 f"Rule sets to create: {preview.rule_sets_to_create}"
             )
             self._preview_label.show()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Preview Error", str(exc))
+        except Exception:
+            _log.exception("Preview Error")
+            show_error(self, "Preview Error", "An unexpected error occurred. See application log for details.")
 
     def _on_apply(self) -> None:
         pack_code = self._selected_pack_code()
@@ -481,8 +521,11 @@ class _StatutoryPacksTab(QWidget):
             )
             show_info(self, "Pack Applied", result.message)
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Apply Error", str(exc))
+        except Exception:
+            _log.exception("Apply Error")
+            show_error(self, "Apply Error", "An unexpected error occurred. See application log for details.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -508,11 +551,11 @@ class _ImportsTab(QWidget):
         self._type_combo.addItem("Departments", "departments")
         self._type_combo.addItem("Positions", "positions")
         self._type_combo.addItem("Employees", "employees")
-        self._type_combo.addItem("Payroll Components", "payroll_components")
+        self._type_combo.addItem("Payroll components", "payroll_components")
         self._type_combo.addItem("Payroll Rule Sets", "payroll_rule_sets")
         self._type_combo.addItem("Payroll Rule Brackets", "payroll_rule_brackets")
-        self._type_combo.addItem("Compensation Profiles", "employee_compensation_profiles")
-        self._type_combo.addItem("Component Assignments", "employee_component_assignments")
+        self._type_combo.addItem("Compensation", "employee_compensation_profiles")
+        self._type_combo.addItem("Component assignments", "employee_component_assignments")
         type_row.addWidget(self._type_combo)
 
         self._btn_browse = QPushButton("Browse CSV…")
@@ -541,11 +584,18 @@ class _ImportsTab(QWidget):
         layout.addLayout(action_row)
 
         # Preview / result table
-        self._table = QTableWidget()
-        self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(["Row", "Status", "Values", "Issues"])
-        configure_compact_table(self._table)
-        self._table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._model = QStandardItemModel(0, 4)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="row", title="Row"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="values", title="Values"),
+                DataTableColumn(key="issues", title="Issues"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
         layout.addWidget(self._table)
 
         self._result_label = QLabel("")
@@ -554,6 +604,14 @@ class _ImportsTab(QWidget):
         layout.addWidget(self._result_label)
 
         self._selected_file: str | None = None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def set_company(self, company_id: int) -> None:
         self._company_id = company_id
@@ -576,19 +634,25 @@ class _ImportsTab(QWidget):
             result = self._registry.payroll_import_service.preview(
                 self._company_id, entity_type, self._selected_file
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Preview Error", str(exc))
             return
+        except Exception:
+            _log.exception("Preview Error")
+            show_error(self, "Preview Error", "An unexpected error occurred. See application log for details.")
+            return
 
-        self._table.setRowCount(len(result.preview_rows))
-        for row_idx, pr in enumerate(result.preview_rows):
-            self._table.setItem(row_idx, 0, QTableWidgetItem(str(pr.row_number)))
+        self._model.removeRows(0, self._model.rowCount())
+        for pr in result.preview_rows:
             status = "Error" if pr.has_errors else ("Warning" if pr.issues else "OK")
-            self._table.setItem(row_idx, 1, QTableWidgetItem(status))
             vals = ", ".join(f"{k}={v}" for k, v in pr.values.items() if v)
-            self._table.setItem(row_idx, 2, QTableWidgetItem(vals))
             issues = "; ".join(i.message for i in pr.issues)
-            self._table.setItem(row_idx, 3, QTableWidgetItem(issues))
+            self._model.appendRow([
+                self._make_item(str(pr.row_number)),
+                self._make_item(status),
+                self._make_item(vals),
+                self._make_item(issues),
+            ])
 
         self._result_label.setText(
             f"Total: {result.total_rows} rows — "
@@ -625,8 +689,11 @@ class _ImportsTab(QWidget):
                 msg += "\n\nDetails:\n" + "\n".join(result.messages[:20])
             show_info(self, "Import Result", msg)
 
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Import Error", str(exc))
+        except Exception:
+            _log.exception("Import Error")
+            show_error(self, "Import Error", "An unexpected error occurred. See application log for details.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -647,13 +714,21 @@ class _PrintTab(QWidget):
         layout.addWidget(QLabel("Select a payroll run to print payslips or summary report."))
 
         # Runs table
-        self._runs_table = QTableWidget()
-        cols = ["Run Ref", "Label", "Period", "Status", "Employees", "Net Payable"]
-        self._runs_table.setColumnCount(len(cols))
-        self._runs_table.setHorizontalHeaderLabels(cols)
-        configure_compact_table(self._runs_table)
-        self._runs_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._runs_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._runs_model = QStandardItemModel(0, 6)
+        self._runs_table = DataTable(
+            columns=(
+                DataTableColumn(key="run_ref", title="Run Ref"),
+                DataTableColumn(key="label", title="Label"),
+                DataTableColumn(key="period", title="Period"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="employees", title="Employees"),
+                DataTableColumn(key="net_payable", title="Net Payable", is_numeric=True),
+            ),
+            show_search=False,
+            selection_mode="single",
+            parent=self,
+        )
+        self._runs_table.set_model(self._runs_model)
         layout.addWidget(self._runs_table)
 
         # Print buttons
@@ -714,27 +789,36 @@ class _PrintTab(QWidget):
         except Exception:
             runs = []
 
-        self._runs_table.setRowCount(len(runs))
-        for row, r in enumerate(runs):
-            self._runs_table.setItem(row, 0, QTableWidgetItem(r.run_reference))
-            self._runs_table.setItem(row, 1, QTableWidgetItem(r.run_label))
+        self._runs_model.removeRows(0, self._runs_model.rowCount())
+        for r in runs:
             period = f"{_MONTHS.get(r.period_month, '?')} {r.period_year}"
-            self._runs_table.setItem(row, 2, QTableWidgetItem(period))
-            self._runs_table.setItem(row, 3, QTableWidgetItem(r.status_code.title()))
-            self._runs_table.setItem(row, 4, QTableWidgetItem(str(r.employee_count)))
-            net_item = QTableWidgetItem(f"{r.total_net_payable:,.2f}")
-            net_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._runs_table.setItem(row, 5, net_item)
+            self._runs_model.appendRow([
+                self._make_item(r.run_reference),
+                self._make_item(r.run_label),
+                self._make_item(period),
+                self._make_item(r.status_code.title()),
+                self._make_item(str(r.employee_count)),
+                self._make_item(f"{r.total_net_payable:,.2f}"),
+            ])
 
     def _selected_run(self):
-        row = self._runs_table.currentRow()
-        if row < 0 or not self._company_id:
+        rows = self._runs_table.selected_rows()
+        if not rows or not self._company_id:
             return None
+        row = rows[0]
         try:
             runs = self._registry.payroll_run_service.list_runs(self._company_id)
             return runs[row] if row < len(runs) else None
         except Exception:
             return None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_print_payslips(self) -> None:
         run = self._selected_run()
@@ -750,8 +834,11 @@ class _PrintTab(QWidget):
                 return
             html = _build_payslips_html(payslips)
             self._print_html(html)
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Print Error", str(exc))
+        except Exception:
+            _log.exception("Print Error")
+            show_error(self, "Print Error", "An unexpected error occurred. See application log for details.")
 
     def _on_print_summary(self) -> None:
         run = self._selected_run()
@@ -764,8 +851,11 @@ class _PrintTab(QWidget):
             )
             html = _build_summary_html(data)
             self._print_html(html)
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Print Error", str(exc))
+        except Exception:
+            _log.exception("Print Error")
+            show_error(self, "Print Error", "An unexpected error occurred. See application log for details.")
 
     def _on_save_pdf(self) -> None:
         run = self._selected_run()
@@ -791,8 +881,11 @@ class _PrintTab(QWidget):
             doc.setHtml(html)
             doc.print_(printer)
             show_info(self, "Saved", f"PDF saved to {file_path}")
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "PDF Error", str(exc))
+        except Exception:
+            _log.exception("PDF Error")
+            show_error(self, "PDF Error", "An unexpected error occurred. See application log for details.")
 
     def _on_export_payslips_format(self) -> None:
         """Export payslips for a run — opens format/path selector then exports."""
@@ -899,8 +992,11 @@ class _PrintTab(QWidget):
                         f"Exported {exported_count} payslips to:\n{out_dir}",
                     )
 
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Export Error", str(exc))
+        except Exception:
+            _log.exception("Export Error")
+            show_error(self, "Export Error", "An unexpected error occurred. See application log for details.")
 
     def _on_export(self, export_mode: str) -> None:
         """Open the export dialog for the selected run."""
@@ -975,14 +1071,20 @@ class _AuditTab(QWidget):
         filter_row.addStretch()
         layout.addLayout(filter_row)
 
-        self._table = QTableWidget()
-        cols = ["Timestamp", "Event", "Module", "Entity", "Description", "Actor"]
-        self._table.setColumnCount(len(cols))
-        self._table.setHorizontalHeaderLabels(cols)
-        configure_compact_table(self._table)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._model = QStandardItemModel(0, 6)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="timestamp", title="Timestamp"),
+                DataTableColumn(key="event", title="Event"),
+                DataTableColumn(key="module", title="Module"),
+                DataTableColumn(key="entity", title="Entity"),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="actor", title="Actor"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
         layout.addWidget(self._table)
 
     def set_company(self, company_id: int) -> None:
@@ -1003,16 +1105,26 @@ class _AuditTab(QWidget):
         except Exception:
             events = []
 
-        self._table.setRowCount(len(events))
-        for row, ev in enumerate(events):
+        self._model.removeRows(0, self._model.rowCount())
+        for ev in events:
             ts = ev.created_at.strftime("%Y-%m-%d %H:%M") if ev.created_at else ""
-            self._table.setItem(row, 0, QTableWidgetItem(ts))
-            self._table.setItem(row, 1, QTableWidgetItem(ev.event_type_code))
-            self._table.setItem(row, 2, QTableWidgetItem(ev.module_code))
             entity = f"{ev.entity_type}#{ev.entity_id}" if ev.entity_id else ev.entity_type
-            self._table.setItem(row, 3, QTableWidgetItem(entity))
-            self._table.setItem(row, 4, QTableWidgetItem(ev.description))
-            self._table.setItem(row, 5, QTableWidgetItem(ev.actor_display_name or ""))
+            self._model.appendRow([
+                self._make_item(ts),
+                self._make_item(ev.event_type_code),
+                self._make_item(ev.module_code),
+                self._make_item(entity),
+                self._make_item(ev.description),
+                self._make_item(ev.actor_display_name or ""),
+            ])
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
 
 # ══════════════════════════════════════════════════════════════════════════════

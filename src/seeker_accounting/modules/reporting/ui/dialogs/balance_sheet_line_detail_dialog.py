@@ -3,14 +3,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -29,7 +28,7 @@ from seeker_accounting.modules.reporting.ui.dialogs.ledger_drilldown_dialog impo
 from seeker_accounting.modules.reporting.ui.widgets.reporting_empty_state import (
     ReportingEmptyState,
 )
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO = Decimal("0.00")
 
@@ -119,12 +118,25 @@ class OhadaBalanceSheetLineDetailDialog(QDialog):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(["Account", "Source Line", "Contribution", "Debit", "Credit", "Amount"])
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._model = QStandardItemModel(0, 6, panel)
+        self._model.setHorizontalHeaderLabels(["Account", "Source Line", "Contribution", "Debit", "Credit", "Amount"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="source_line", title="Source Line"),
+                DataTableColumn(key="contribution", title="Contribution"),
+                DataTableColumn(key="debit", title="Debit"),
+                DataTableColumn(key="credit", title="Credit"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table)
         return panel
 
@@ -147,28 +159,41 @@ class OhadaBalanceSheetLineDetailDialog(QDialog):
             self._stack.setCurrentIndex(1)
             return
 
-        self._table.setRowCount(len(self._detail_dto.accounts))
-        for row_index, account in enumerate(self._detail_dto.accounts):
-            account_item = QTableWidgetItem(f"{account.account_code} | {account.account_name}")
-            account_item.setData(Qt.ItemDataRole.UserRole, account.account_id)
-            self._table.setItem(row_index, 0, account_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(account.line_code or "-"))
-            self._table.setItem(row_index, 2, QTableWidgetItem(account.contribution_kind_code.replace("_", " ").title()))
-            self._set_amount(row_index, 3, account.total_debit)
-            self._set_amount(row_index, 4, account.total_credit)
-            self._set_amount(row_index, 5, account.amount)
+        self._model.removeRows(0, self._model.rowCount())
+        for account in self._detail_dto.accounts:
+            self._model.appendRow([
+                self._make_item(f"{account.account_code} | {account.account_name}", user_data=account.account_id),
+                self._make_item(account.line_code or "-"),
+                self._make_item(account.contribution_kind_code.replace("_", " ").title()),
+                self._make_amount_item(account.total_debit),
+                self._make_amount_item(account.total_credit),
+                self._make_amount_item(account.amount),
+            ])
         self._stack.setCurrentIndex(0)
 
-    def _set_amount(self, row: int, col: int, amount: Decimal | None) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+    def _make_amount_item(self, amount: Decimal | None) -> QStandardItem:
+        item = self._make_item(self._fmt(amount))
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, col, item)
+        return item
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 0)
-        if item is None:
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        account_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        account_id = id_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(account_id, int):
             return
         LedgerDrilldownDialog.open(
@@ -282,12 +307,25 @@ class IasBalanceSheetLineDetailDialog(QDialog):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(["Account", "Line", "Contribution", "Debit", "Credit", "Amount"])
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._model = QStandardItemModel(0, 6, panel)
+        self._model.setHorizontalHeaderLabels(["Account", "Line", "Contribution", "Debit", "Credit", "Amount"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="account", title="Account"),
+                DataTableColumn(key="line", title="Line"),
+                DataTableColumn(key="contribution", title="Contribution"),
+                DataTableColumn(key="debit", title="Debit"),
+                DataTableColumn(key="credit", title="Credit"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table)
         return panel
 
@@ -310,28 +348,41 @@ class IasBalanceSheetLineDetailDialog(QDialog):
             self._stack.setCurrentIndex(1)
             return
 
-        self._table.setRowCount(len(self._detail_dto.accounts))
-        for row_index, account in enumerate(self._detail_dto.accounts):
-            account_item = QTableWidgetItem(f"{account.account_code} | {account.account_name}")
-            account_item.setData(Qt.ItemDataRole.UserRole, account.account_id)
-            self._table.setItem(row_index, 0, account_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(account.line_label))
-            self._table.setItem(row_index, 2, QTableWidgetItem(account.contribution_kind_code.replace("_", " ").title()))
-            self._set_amount(row_index, 3, account.total_debit)
-            self._set_amount(row_index, 4, account.total_credit)
-            self._set_amount(row_index, 5, account.amount)
+        self._model.removeRows(0, self._model.rowCount())
+        for account in self._detail_dto.accounts:
+            self._model.appendRow([
+                self._make_item(f"{account.account_code} | {account.account_name}", user_data=account.account_id),
+                self._make_item(account.line_label),
+                self._make_item(account.contribution_kind_code.replace("_", " ").title()),
+                self._make_amount_item(account.total_debit),
+                self._make_amount_item(account.total_credit),
+                self._make_amount_item(account.amount),
+            ])
         self._stack.setCurrentIndex(0)
 
-    def _set_amount(self, row: int, col: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+    def _make_amount_item(self, amount: Decimal | None) -> QStandardItem:
+        item = self._make_item(self._fmt(amount))
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, col, item)
+        return item
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 0)
-        if item is None:
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        account_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        account_id = id_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(account_id, int):
             return
         LedgerDrilldownDialog.open(

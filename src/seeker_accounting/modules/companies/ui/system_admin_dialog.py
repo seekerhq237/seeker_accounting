@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 import json
 from datetime import datetime, timezone
 
@@ -26,6 +29,9 @@ from seeker_accounting.modules.companies.services.system_admin_company_service i
 from seeker_accounting.platform.exceptions.app_exceptions import ValidationError
 
 
+_log = logging.getLogger(__name__)
+
+
 class SystemAdminDialog(QDialog):
     """System administration panel for managing companies.
 
@@ -50,7 +56,7 @@ class SystemAdminDialog(QDialog):
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowCloseButtonHint
         )
-        self.resize(900, 560)
+        apply_window_size(self, "modules.companies.ui.system.admin.dialog.0")
         self.setMinimumSize(760, 420)
         self.setModal(True)
         self._build_ui()
@@ -421,8 +427,12 @@ class SystemAdminDialog(QDialog):
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(payload, fh, indent=2, ensure_ascii=False)
-        except Exception as exc:
+        except AppError as exc:
             QMessageBox.critical(self, "Export Failed", str(exc))
+            return
+        except Exception:
+            _log.exception("Export Failed")
+            QMessageBox.critical(self, "Export Failed", "An unexpected error occurred. See application log for details.")
             return
 
         QMessageBox.information(
@@ -443,8 +453,12 @@ class SystemAdminDialog(QDialog):
         try:
             with open(path, encoding="utf-8") as fh:
                 payload = json.load(fh)
-        except Exception as exc:
+        except AppError as exc:
             QMessageBox.critical(self, "Import Failed", f"Could not read backup file:\n{exc}")
+            return
+        except Exception:
+            _log.exception("Import Failed")
+            QMessageBox.critical(self, "Import Failed", "An unexpected error occurred. See application log for details.")
             return
 
         if not isinstance(payload, dict) or payload.get("format") != self._BACKUP_FORMAT:

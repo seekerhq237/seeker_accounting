@@ -97,6 +97,32 @@ class ComponentAssignmentRepository:
             if a.effective_to is None or a.effective_to >= period_date
         ]
 
+    def map_active_for_period(
+        self,
+        company_id: int,
+        period_date: date,
+    ) -> dict[int, list[EmployeeComponentAssignment]]:
+        """Bulk-load: return ``{employee_id: [active_assignments]}`` for the period.
+
+        Single SQL round-trip across all employees of the company. Used by
+        the payroll run calculation engine to avoid N+1 queries.
+        """
+        stmt = (
+            select(EmployeeComponentAssignment)
+            .where(
+                EmployeeComponentAssignment.company_id == company_id,
+                EmployeeComponentAssignment.is_active == True,  # noqa: E712
+                EmployeeComponentAssignment.effective_from <= period_date,
+            )
+            .options(selectinload(EmployeeComponentAssignment.component))
+        )
+        result: dict[int, list[EmployeeComponentAssignment]] = {}
+        for assignment in self._session.scalars(stmt):
+            if assignment.effective_to is not None and assignment.effective_to < period_date:
+                continue
+            result.setdefault(assignment.employee_id, []).append(assignment)
+        return result
+
     def check_duplicate(
         self,
         company_id: int,

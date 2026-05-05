@@ -57,3 +57,16 @@ class TaxCodeRepository:
         if exclude_tax_code_id is not None:
             predicate = predicate & (TaxCode.id != exclude_tax_code_id)
         return bool(self._session.scalar(select(exists().where(predicate))))
+
+    def find_first_by_tax_type(
+        self, company_id: int, tax_type_code: str, active_only: bool = True
+    ) -> TaxCode | None:
+        """Return the first active tax code matching ``tax_type_code`` for a company."""
+        stmt = select(TaxCode).where(
+            TaxCode.company_id == company_id,
+            TaxCode.tax_type_code == tax_type_code,
+        )
+        if active_only:
+            stmt = stmt.where(TaxCode.is_active.is_(True))
+        stmt = stmt.order_by(TaxCode.id.asc()).limit(1)
+        return self._session.scalar(stmt)

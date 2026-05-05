@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import datetime
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -12,8 +15,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -45,10 +46,13 @@ from seeker_accounting.modules.reporting.ui.widgets.reporting_filter_bar import 
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _ZERO_QTY = Decimal("0.0000")
 _WINDOWS: list["StockMovementWindow"] = []
+
+
+_log = logging.getLogger(__name__)
 
 
 class StockMovementDetailDialog(QDialog):
@@ -74,25 +78,33 @@ class StockMovementDetailDialog(QDialog):
 
         root.addWidget(self._build_header())
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(10)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Date",
-                "Document #",
-                "Type",
-                "Reference",
-                "Location",
-                "Inward",
-                "Outward",
-                "Running Qty",
-                "Unit Cost",
-                "Amount",
-            ]
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="doc_num", title="Document #"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="location", title="Location"),
+                DataTableColumn(key="inward", title="Inward"),
+                DataTableColumn(key="outward", title="Outward"),
+                DataTableColumn(key="running_qty", title="Running Qty"),
+                DataTableColumn(key="unit_cost", title="Unit Cost"),
+                DataTableColumn(key="amount", title="Amount"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
         )
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._model = QStandardItemModel(0, 10, self)
+        self._model.setHorizontalHeaderLabels([
+            "Date", "Document #", "Type", "Reference", "Location",
+            "Inward", "Outward", "Running Qty", "Unit Cost", "Amount",
+        ])
+        self._table.set_model(self._model)
+        self._table.view().setSortingEnabled(False)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         root.addWidget(self._table, 1)
 
         footer = QLabel(
@@ -144,39 +156,43 @@ class StockMovementDetailDialog(QDialog):
         return card
 
     def _bind_rows(self) -> None:
-        rows = self._detail_dto.rows
-        self._table.setRowCount(len(rows))
-        for row_index, row in enumerate(rows):
-            self._set_text(row_index, 0, row.document_date.strftime("%Y-%m-%d"))
-            document_item = QTableWidgetItem(row.document_number)
+        self._model.removeRows(0, self._model.rowCount())
+        for row in self._detail_dto.rows:
+            date_item = self._make_item(row.document_date.strftime("%Y-%m-%d"))
+            document_item = self._make_item(row.document_number)
             if row.posted_journal_entry_id is not None:
-                document_item.setData(Qt.ItemDataRole.UserRole, row.posted_journal_entry_id)
-            self._table.setItem(row_index, 1, document_item)
-            self._set_text(row_index, 2, row.document_type_code.replace("_", " ").title())
-            self._set_text(row_index, 3, row.reference_number or "-")
+                document_item.setData(row.posted_journal_entry_id, Qt.ItemDataRole.UserRole)
+            type_item = self._make_item(row.document_type_code.replace("_", " ").title())
+            ref_item = self._make_item(row.reference_number or "-")
             location_label = " | ".join(
                 part for part in (row.location_code, row.location_name) if part
             ) or "-"
-            self._set_text(row_index, 4, location_label)
-            self._set_amount(row_index, 5, self._fmt_qty(row.inward_quantity))
-            self._set_amount(row_index, 6, self._fmt_qty(row.outward_quantity))
-            self._set_amount(row_index, 7, self._fmt_qty(row.running_quantity))
-            self._set_amount(row_index, 8, self._fmt_unit_cost(row.unit_cost))
-            self._set_amount(row_index, 9, self._fmt_amount(row.line_amount))
+            location_item = self._make_item(location_label)
+            inward_item = self._make_item(self._fmt_qty(row.inward_quantity))
+            inward_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            outward_item = self._make_item(self._fmt_qty(row.outward_quantity))
+            outward_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            running_item = self._make_item(self._fmt_qty(row.running_quantity))
+            running_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            unit_cost_item = self._make_item(self._fmt_unit_cost(row.unit_cost))
+            unit_cost_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            amount_item = self._make_item(self._fmt_amount(row.line_amount))
+            amount_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._model.appendRow([
+                date_item, document_item, type_item, ref_item, location_item,
+                inward_item, outward_item, running_item, unit_cost_item, amount_item,
+            ])
 
-    def _set_text(self, row: int, column: int, value: str) -> None:
-        self._table.setItem(row, column, QTableWidgetItem(value))
-
-    def _set_amount(self, row: int, column: int, value: str) -> None:
-        item = QTableWidgetItem(value)
-        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, column, item)
-
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        item = self._table.item(row, 1)
-        if item is None:
+    def _on_row_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        journal_entry_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        doc_item = self._model.item(row, 1)
+        if doc_item is None:
+            return
+        journal_entry_id = doc_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(journal_entry_id, int):
             return
         JournalSourceDetailDialog.open(
@@ -185,6 +201,14 @@ class StockMovementDetailDialog(QDialog):
             journal_entry_id,
             parent=self,
         )
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _add_pair(self, layout: QHBoxLayout, label: str, value: str) -> None:
         pair = QWidget(self)
@@ -437,23 +461,30 @@ class StockMovementWindow(QFrame):
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 0, 20, 20)
 
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Item Code",
-                "Item Name",
-                "UOM",
-                "Opening",
-                "Inward",
-                "Outward",
-                "Closing",
-                "Moves",
-            ]
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="item_code", title="Item Code"),
+                DataTableColumn(key="item_name", title="Item Name"),
+                DataTableColumn(key="uom", title="UOM"),
+                DataTableColumn(key="opening", title="Opening"),
+                DataTableColumn(key="inward", title="Inward"),
+                DataTableColumn(key="outward", title="Outward"),
+                DataTableColumn(key="closing", title="Closing"),
+                DataTableColumn(key="moves", title="Moves"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
         )
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_table_double_clicked)
+        self._movement_model = QStandardItemModel(0, 8, panel)
+        self._movement_model.setHorizontalHeaderLabels([
+            "Item Code", "Item Name", "UOM", "Opening", "Inward", "Outward", "Closing", "Moves",
+        ])
+        self._table.set_model(self._movement_model)
+        self._table.view().setSortingEnabled(False)
+        self._table.view().doubleClicked.connect(self._on_table_double_clicked)
         layout.addWidget(self._table, 1)
         return panel
 
@@ -504,8 +535,12 @@ class StockMovementWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "Stock Movement Report", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "Stock Movement Report", str(exc))
+            return
+        except Exception:
+            _log.exception("Stock Movement Report")
+            show_error(self, "Stock Movement Report", "An unexpected error occurred. See application log for details.")
             return
 
         self._current_report = report
@@ -518,31 +553,36 @@ class StockMovementWindow(QFrame):
         self._stack.setCurrentIndex(0)
 
     def _bind_report(self, report: StockMovementReportDTO) -> None:
-        self._table.setRowCount(len(report.rows))
-        for row_index, row in enumerate(report.rows):
-            code_item = QTableWidgetItem(row.item_code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.item_id)
-            self._table.setItem(row_index, 0, code_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(row.item_name))
-            self._table.setItem(row_index, 2, QTableWidgetItem(row.unit_of_measure_code))
-            self._set_amount_item(row_index, 3, self._fmt_qty(row.opening_quantity))
-            self._set_amount_item(row_index, 4, self._fmt_qty(row.inward_quantity))
-            self._set_amount_item(row_index, 5, self._fmt_qty(row.outward_quantity))
-            self._set_amount_item(row_index, 6, self._fmt_qty(row.closing_quantity))
-            self._set_amount_item(row_index, 7, str(row.movement_count), align_right=False)
+        self._movement_model.removeRows(0, self._movement_model.rowCount())
+        for row in report.rows:
+            code_item = self._make_item(row.item_code)
+            code_item.setData(row.item_id, Qt.ItemDataRole.UserRole)
+            opening_item = self._make_item(self._fmt_qty(row.opening_quantity))
+            opening_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            inward_item = self._make_item(self._fmt_qty(row.inward_quantity))
+            inward_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            outward_item = self._make_item(self._fmt_qty(row.outward_quantity))
+            outward_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            closing_item = self._make_item(self._fmt_qty(row.closing_quantity))
+            closing_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self._movement_model.appendRow([
+                code_item,
+                self._make_item(row.item_name),
+                self._make_item(row.unit_of_measure_code),
+                opening_item,
+                inward_item,
+                outward_item,
+                closing_item,
+                self._make_item(str(row.movement_count)),
+            ])
 
-    def _set_amount_item(
-        self,
-        row: int,
-        column: int,
-        text: str,
-        *,
-        align_right: bool = True,
-    ) -> None:
-        item = QTableWidgetItem(text)
-        if align_right:
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, column, item)
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _update_warning_band(self, warnings) -> None:
         messages = [warning.message for warning in warnings]
@@ -605,13 +645,18 @@ class StockMovementWindow(QFrame):
         preview_meta = self._report_service.build_print_preview_meta(self._current_report, company_name)
         ReportPrintPreviewDialog.show_preview(preview_meta, parent=self)
 
-    def _on_table_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
+    def _on_table_double_clicked(self, index) -> None:
         if self._current_report is None:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        item_id = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        code_item = self._movement_model.item(row, 0)
+        if code_item is None:
+            return
+        item_id = code_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(item_id, int):
             return
         try:

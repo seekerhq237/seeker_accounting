@@ -88,3 +88,20 @@ class UpdateEmployeeCommand:
     tax_identifier: str | None = field(default=None)
     cnps_number: str | None = field(default=None)
     default_payment_account_id: int | None = field(default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class TerminateEmployeeCommand:
+    """Focused command for the Termination business process."""
+
+    termination_date: date
+    reason: str
+    last_pay_date: date | None = field(default=None)
+
+
+@dataclass(frozen=True, slots=True)
+class RehireEmployeeCommand:
+    """Focused command for the Rehire business process."""
+
+    new_hire_date: date
+    clear_termination_date: bool = field(default=True)

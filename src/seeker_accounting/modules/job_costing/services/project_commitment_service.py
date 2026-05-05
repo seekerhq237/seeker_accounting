@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
 from seeker_accounting.modules.accounting.reference_data.repositories.currency_repository import CurrencyRepository
+from seeker_accounting.modules.budgeting.services.budget_control_service import BudgetControlService
 from seeker_accounting.modules.contracts_projects.repositories.project_cost_code_repository import (
     ProjectCostCodeRepository,
 )
@@ -73,6 +74,7 @@ class ProjectCommitmentService:
         currency_repository_factory: CurrencyRepositoryFactory,
         project_job_repository_factory: ProjectJobRepositoryFactory,
         project_cost_code_repository_factory: ProjectCostCodeRepositoryFactory,
+        budget_control_service: BudgetControlService | None = None,
         audit_service: "AuditService | None" = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -83,6 +85,7 @@ class ProjectCommitmentService:
         self._currency_repo_factory = currency_repository_factory
         self._job_repo_factory = project_job_repository_factory
         self._cost_code_repo_factory = project_cost_code_repository_factory
+        self._budget_control_service = budget_control_service
         self._audit_service = audit_service
 
     # ── CRUD ──────────────────────────────────────────────────────────
@@ -284,6 +287,7 @@ class ProjectCommitmentService:
             lines = line_repo.list_by_commitment(commitment.id)
             if not lines:
                 raise ValidationError("Cannot approve a commitment with no lines.")
+            self._enforce_budget_for_commitment(commitment, lines)
 
             commitment.status_code = "approved"
             commitment.approved_at = datetime.now(timezone.utc)
@@ -396,6 +400,29 @@ class ProjectCommitmentService:
                 raise NotFoundError(f"Job {command.project_job_id} not found.")
             if job.project_id != commitment.project_id:
                 raise ValidationError("Job does not belong to the commitment's project.")
+
+    def _enforce_budget_for_commitment(
+        self,
+        commitment: ProjectCommitment,
+        lines: list[ProjectCommitmentLine],
+    ) -> None:
+        if self._budget_control_service is None:
+            return
+        requests: dict[tuple[int | None, int | None], Decimal] = {}
+        for line in lines:
+            if line.line_amount <= Decimal("0.00"):
+                continue
+            key = (line.project_job_id, line.project_cost_code_id)
+            requests[key] = requests.get(key, Decimal("0.00")) + line.line_amount
+        for (project_job_id, project_cost_code_id), amount in requests.items():
+            self._budget_control_service.enforce_budget(
+                commitment.project_id,
+                amount,
+                project_job_id=project_job_id,
+                project_cost_code_id=project_cost_code_id,
+                context_label=f"Commitment {commitment.commitment_number}",
+                exclude_commitment_id=commitment.id,
+            )
 
     def _recalculate_total(
         self,

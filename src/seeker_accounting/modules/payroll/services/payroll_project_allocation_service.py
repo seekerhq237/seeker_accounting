@@ -206,6 +206,7 @@ class PayrollProjectAllocationService:
         for index, stored_line in enumerate(stored_lines, start=1):
             allocations.append(
                 PayrollRunEmployeeProjectAllocation(
+                    company_id=run_employee.company_id,
                     payroll_run_employee_id=run_employee.id,
                     line_number=index,
                     contract_id=stored_line.contract_id,

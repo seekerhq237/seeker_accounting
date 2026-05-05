@@ -7,6 +7,7 @@ is triggered. Returns a structured validation result that the UI can display.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Callable
 
 from sqlalchemy.orm import Session
@@ -23,6 +24,13 @@ from seeker_accounting.modules.payroll.repositories.component_assignment_reposit
     ComponentAssignmentRepository,
 )
 from seeker_accounting.modules.payroll.repositories.employee_repository import EmployeeRepository
+
+# Monthly overtime tier caps (Code du Travail Art. 80): 8 hrs/wk × 52 / 12
+_OT_MONTHLY_CAPS: dict[str, Decimal] = {
+    "OVERTIME_DAY_T1": Decimal("34.67"),
+    "OVERTIME_DAY_T2": Decimal("34.67"),
+    "OVERTIME_DAY_T3": Decimal("17.33"),
+}
 
 CompensationProfileRepositoryFactory = Callable[[Session], CompensationProfileRepository]
 ComponentAssignmentRepositoryFactory = Callable[[Session], ComponentAssignmentRepository]
@@ -72,7 +80,7 @@ class PayrollValidationService:
                             employee_display_name=emp.display_name,
                             issue_code="NO_COMPENSATION_PROFILE",
                             issue_message=(
-                                f"{emp.display_name} has no active compensation profile "
+                                f"{emp.display_name} has no active compensation "
                                 f"covering {period_year}-{period_month:02d}."
                             ),
                             severity="error",

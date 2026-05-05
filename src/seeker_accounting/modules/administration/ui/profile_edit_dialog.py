@@ -1,6 +1,9 @@
 """ProfileEditDialog - lightweight self-service profile editor."""
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialogButtonBox,
@@ -23,12 +26,15 @@ _AVATAR_PREVIEW_SIZE = 72
 _AVATAR_FILE_FILTER = "Images (*.png *.jpg *.jpeg *.webp)"
 
 
+_log = logging.getLogger(__name__)
+
+
 class ProfileEditDialog(BaseDialog):
     """Edit own display name, email address, and profile photo."""
 
     def __init__(self, service_registry: ServiceRegistry, parent: QWidget | None = None) -> None:
         super().__init__("Edit Profile", parent, help_key="dialog.profile_edit")
-        self.resize(440, 420)
+        apply_window_size(self, "modules.administration.ui.profile.edit.dialog.0")
         self._service_registry = service_registry
         self._saved = False
         self._pending_avatar_path: str | None = None
@@ -149,8 +155,12 @@ class ProfileEditDialog(BaseDialog):
         except ValidationError as exc:
             self._show_error(str(exc))
             return
-        except Exception as exc:
+        except AppError as exc:
             self._show_error(str(exc))
+            return
+        except Exception:
+            _log.exception("Unexpected error")
+            self._show_error("An unexpected error occurred. See application log for details.")
             return
 
         self._apply_avatar_after_save()

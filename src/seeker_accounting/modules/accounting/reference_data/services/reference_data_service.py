@@ -36,6 +36,7 @@ from seeker_accounting.modules.accounting.reference_data.seeds.global_reference_
 )
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.validation import require_code, require_non_negative_int, require_text
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -128,8 +129,7 @@ class ReferenceDataService:
         normalized_code = self._require_code(command.code, "Payment term code")
         normalized_name = self._require_text(command.name, "Payment term name")
         normalized_description = self._normalize_optional_text(command.description)
-        if command.days_due < 0:
-            raise ValidationError("Payment term days due cannot be negative.")
+        require_non_negative_int(command.days_due, "Payment term days due")
 
         with self._unit_of_work_factory() as uow:
             self._require_company_exists(uow.session, company_id)
@@ -168,8 +168,7 @@ class ReferenceDataService:
         normalized_code = self._require_code(command.code, "Payment term code")
         normalized_name = self._require_text(command.name, "Payment term name")
         normalized_description = self._normalize_optional_text(command.description)
-        if command.days_due < 0:
-            raise ValidationError("Payment term days due cannot be negative.")
+        require_non_negative_int(command.days_due, "Payment term days due")
 
         with self._unit_of_work_factory() as uow:
             self._require_company_exists(uow.session, company_id)
@@ -248,13 +247,10 @@ class ReferenceDataService:
             raise NotFoundError(f"Company with id {company_id} was not found.")
 
     def _require_text(self, value: str, label: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValidationError(f"{label} is required.")
-        return normalized
+        return require_text(value, label)
 
     def _require_code(self, value: str, label: str) -> str:
-        return self._require_text(value, label).upper()
+        return require_code(value, label)
 
     def _normalize_optional_text(self, value: str | None) -> str | None:
         if value is None:

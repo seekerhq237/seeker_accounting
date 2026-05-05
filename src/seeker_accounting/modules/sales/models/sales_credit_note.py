@@ -31,6 +31,7 @@ class SalesCreditNote(TimestampMixin, Base):
         nullable=False,
     )
     credit_date: Mapped[date] = mapped_column(Date(), nullable=False)
+    tax_point_date: Mapped[date | None] = mapped_column(Date(), nullable=True)
     currency_code: Mapped[str] = mapped_column(
         String(3),
         ForeignKey("currencies.code", ondelete="RESTRICT"),

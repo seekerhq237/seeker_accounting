@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -18,7 +16,7 @@ from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
     PayrollRunEmployeeDetailDTO,
 )
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _TYPE_LABELS = {
     "earning": "Earning",
@@ -77,14 +75,25 @@ class PayrollRunEmployeeDetailDialog(QDialog):
         layout.addWidget(self._bases_frame)
 
         # Lines table
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels([
-            "Component", "Type", "Basis", "Rate", "Amount"
-        ])
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._model = QStandardItemModel(0, 5, self)
+        self._model.setHorizontalHeaderLabels(
+            ["Payroll component", "Type", "Basis", "Rate", "Amount"]
+        )
+        self._table = DataTable(
+            columns=[
+                DataTableColumn(key="component", title="Payroll component"),
+                DataTableColumn(key="type", title="Type"),
+                DataTableColumn(key="basis", title="Basis", is_numeric=True),
+                DataTableColumn(key="rate", title="Rate", is_numeric=True),
+                DataTableColumn(key="amount", title="Amount", is_numeric=True),
+            ],
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
         layout.addWidget(self._table)
 
         # Summary
@@ -142,34 +151,40 @@ class PayrollRunEmployeeDetailDialog(QDialog):
         self._bases["Employer Cost"].setText(fmt(detail.employer_cost_base))
         self._bases["Net Payable"].setText(fmt(detail.net_payable))
 
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         for line in sorted(detail.lines, key=lambda l: l.component_type_code):
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(line.component_name))
-            self._table.setItem(
-                row, 1,
-                QTableWidgetItem(_TYPE_LABELS.get(line.component_type_code, line.component_type_code))
-            )
-            basis = QTableWidgetItem(f"{line.calculation_basis:,.2f}")
-            basis.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 2, basis)
+            def _item(text: str) -> QStandardItem:
+                it = QStandardItem(text)
+                it.setEditable(False)
+                return it
 
+            def _num(text: str, color: QColor | None = None) -> QStandardItem:
+                it = QStandardItem(text)
+                it.setEditable(False)
+                it.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if color is not None:
+                    it.setForeground(QBrush(color))
+                return it
+
+            basis_item = _num(f"{line.calculation_basis:,.2f}")
             rate_text = f"{float(line.rate_applied) * 100:.4f}%" if line.rate_applied else ""
-            rate_item = QTableWidgetItem(rate_text)
-            rate_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 3, rate_item)
+            rate_item = _num(rate_text)
 
-            amount = QTableWidgetItem(f"{line.component_amount:,.2f}")
-            amount.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            # Color-code: deductions and taxes in amber/red
+            # Color-code amounts: deductions/taxes in dark-red, employer in dark-blue
+            amt_color: QColor | None = None
             if line.component_type_code in ("deduction", "tax"):
-                amount.setForeground(Qt.GlobalColor.darkRed)
+                amt_color = QColor(Qt.GlobalColor.darkRed)
             elif line.component_type_code == "employer_contribution":
-                amount.setForeground(Qt.GlobalColor.darkBlue)
-            self._table.setItem(row, 4, amount)
+                amt_color = QColor(Qt.GlobalColor.darkBlue)
+            amount_item = _num(f"{line.component_amount:,.2f}", amt_color)
 
-        self._table.resizeColumnsToContents()
+            self._model.appendRow([
+                _item(line.component_name),
+                _item(_TYPE_LABELS.get(line.component_type_code, line.component_type_code)),
+                basis_item,
+                rate_item,
+                amount_item,
+            ])
 
         self._summary_label.setText(
             f"Total Earnings: {fmt(detail.total_earnings)}   "

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from datetime import date
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDateEdit,
     QFrame,
@@ -11,8 +14,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -42,10 +43,13 @@ from seeker_accounting.modules.reporting.ui.widgets.reporting_empty_state import
     ReportingEmptyState,
 )
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.platform.exceptions import ValidationError
 
 _ZERO = Decimal("0.00")
+
+
+_log = logging.getLogger(__name__)
 
 
 class ARAgingWindow(QFrame):
@@ -204,12 +208,26 @@ class ARAgingWindow(QFrame):
         panel = QWidget(self)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 0, 20, 20)
-        self._table = QTableWidget(panel)
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels(["Customer", "Current", "1-30", "31-60", "61-90", "91+", "Total"])
-        configure_compact_table(self._table)
-        self._table.setSortingEnabled(False)
-        self._table.cellDoubleClicked.connect(self._on_cell_double_clicked)
+        self._model = QStandardItemModel(0, 7, panel)
+        self._model.setHorizontalHeaderLabels(["Customer", "Current", "1-30", "31-60", "61-90", "91+", "Total"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="customer", title="Customer"),
+                DataTableColumn(key="current", title="Current"),
+                DataTableColumn(key="b1_30", title="1-30"),
+                DataTableColumn(key="b31_60", title="31-60"),
+                DataTableColumn(key="b61_90", title="61-90"),
+                DataTableColumn(key="b91_plus", title="91+"),
+                DataTableColumn(key="total", title="Total"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=panel,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_cell_double_clicked)
         layout.addWidget(self._table, 1)
         return panel
 
@@ -224,15 +242,19 @@ class ARAgingWindow(QFrame):
         except ValidationError as exc:
             show_error(self, "AR Aging", str(exc))
             return
-        except Exception as exc:  # pragma: no cover - defensive
+        except AppError as exc:
             show_error(self, "AR Aging", str(exc))
+            return
+        except Exception:
+            _log.exception("AR Aging")
+            show_error(self, "AR Aging", "An unexpected error occurred. See application log for details.")
             return
 
         self._current_report = report
         self._update_warning_band(report)
         self._update_summary(report)
         if not report.rows:
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentIndex(2)
             return
         self._bind_rows(report)
@@ -258,22 +280,30 @@ class ARAgingWindow(QFrame):
         self._summary_values["customers"].setText(str(report.customer_count))
 
     def _bind_rows(self, report: ARAgingReportDTO) -> None:
-        self._table.setRowCount(len(report.rows))
-        for row_index, row in enumerate(report.rows):
-            customer_item = QTableWidgetItem(f"{row.customer_code} - {row.customer_name}")
-            customer_item.setData(Qt.ItemDataRole.UserRole, row.customer_id)
-            self._table.setItem(row_index, 0, customer_item)
-            self._set_amount(row_index, 1, row.current_amount)
-            self._set_amount(row_index, 2, row.bucket_1_30_amount)
-            self._set_amount(row_index, 3, row.bucket_31_60_amount)
-            self._set_amount(row_index, 4, row.bucket_61_90_amount)
-            self._set_amount(row_index, 5, row.bucket_91_plus_amount)
-            self._set_amount(row_index, 6, row.total_amount)
+        self._model.removeRows(0, self._model.rowCount())
+        for row in report.rows:
+            self._model.appendRow([
+                self._make_item(f"{row.customer_code} - {row.customer_name}", user_data=row.customer_id),
+                self._set_amount(row.current_amount),
+                self._set_amount(row.bucket_1_30_amount),
+                self._set_amount(row.bucket_31_60_amount),
+                self._set_amount(row.bucket_61_90_amount),
+                self._set_amount(row.bucket_91_plus_amount),
+                self._set_amount(row.total_amount),
+            ])
 
-    def _set_amount(self, row_index: int, column_index: int, amount: Decimal) -> None:
-        item = QTableWidgetItem(self._fmt(amount))
+    def _set_amount(self, amount: Decimal) -> QStandardItem:
+        item = self._make_item(self._fmt(amount))
         item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row_index, column_index, item)
+        return item
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_refresh(self) -> None:
         qdate = self._as_of_edit.date()
@@ -293,11 +323,17 @@ class ARAgingWindow(QFrame):
         )
         ReportPrintPreviewDialog.show_preview(preview, parent=self)
 
-    def _on_cell_double_clicked(self, row: int, column: int) -> None:
-        customer_item = self._table.item(row, 0)
-        if customer_item is None:
+    def _on_cell_double_clicked(self, index) -> None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        customer_id = customer_item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        column = src.column()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        customer_id = id_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(customer_id, int):
             return
         if column == 0:

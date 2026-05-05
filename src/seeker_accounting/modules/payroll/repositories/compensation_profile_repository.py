@@ -85,6 +85,36 @@ class CompensationProfileRepository:
                 return profile
         return None
 
+    def map_active_for_period(
+        self,
+        company_id: int,
+        period_date: date,
+    ) -> dict[int, EmployeeCompensationProfile]:
+        """Bulk-load: return ``{employee_id: active_profile}`` for the period.
+
+        Single SQL round-trip across all employees of the company. Used by
+        the payroll run calculation engine to avoid N+1 queries.
+        """
+        stmt = (
+            select(EmployeeCompensationProfile)
+            .where(
+                EmployeeCompensationProfile.company_id == company_id,
+                EmployeeCompensationProfile.is_active == True,  # noqa: E712
+                EmployeeCompensationProfile.effective_from <= period_date,
+            )
+            .order_by(
+                EmployeeCompensationProfile.employee_id,
+                EmployeeCompensationProfile.effective_from.desc(),
+            )
+        )
+        result: dict[int, EmployeeCompensationProfile] = {}
+        for profile in self._session.scalars(stmt):
+            if profile.effective_to is not None and profile.effective_to < period_date:
+                continue
+            # First match per employee (highest effective_from) wins
+            result.setdefault(profile.employee_id, profile)
+        return result
+
     def check_duplicate(
         self,
         company_id: int,

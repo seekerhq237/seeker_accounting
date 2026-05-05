@@ -17,6 +17,8 @@ delivering the independent top-level window UX.
 
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
@@ -31,6 +33,9 @@ from seeker_accounting.modules.accounting.journals.ui.journal_entry_dialog impor
     JournalEntryDialog,
 )
 from seeker_accounting.shared.ui.icon_provider import IconProvider
+
+
+_log = logging.getLogger(__name__)
 
 
 class JournalEntryWindow(ChildWindowBase):
@@ -154,8 +159,12 @@ class JournalEntryWindow(ChildWindowBase):
                 self._dialog._company_id,
                 entry_id,
             )
-        except Exception as exc:  # surface clearly; service layer already guards
+        except AppError as exc:
             QMessageBox.warning(self, "Post Journal Entry", str(exc))
+            return
+        except Exception:
+            _log.exception("Post Journal Entry")
+            QMessageBox.warning(self, "Post Journal Entry", "An unexpected error occurred. See application log for details.")
             return
         QMessageBox.information(
             self, "Post Journal Entry", "Journal entry posted."
@@ -182,8 +191,12 @@ class JournalEntryWindow(ChildWindowBase):
                 self._dialog._company_id,
                 entry_id,
             )
-        except Exception as exc:
+        except AppError as exc:
             QMessageBox.warning(self, "Delete Draft", str(exc))
+            return
+        except Exception:
+            _log.exception("Delete Draft")
+            QMessageBox.warning(self, "Delete Draft", "An unexpected error occurred. See application log for details.")
             return
         self.set_dirty(False)
         self.close()

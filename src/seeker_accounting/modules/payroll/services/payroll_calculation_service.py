@@ -19,6 +19,7 @@ Engine call order:
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from decimal import Decimal
 
@@ -30,6 +31,7 @@ from seeker_accounting.modules.payroll.engines.employer_contribution_engine impo
 )
 from seeker_accounting.modules.payroll.engines.engine_types import (
     ComponentInput,
+    CalcStep,
     EmployeeCalculationResult,
     EngineContext,
     EngineLineResult,
@@ -199,28 +201,39 @@ class PayrollCalculationService:
     def _run_engines(self, ctx: EngineContext) -> EmployeeCalculationResult:
         result = EmployeeCalculationResult(employee_id=ctx.employee_id)
         all_lines: list[EngineLineResult] = []
+        calc_steps: list[CalcStep] = []
+        step_no = 1
 
         # 1. Earnings (base salary + allowances)
-        all_lines.extend(run_earnings_engine(ctx))
+        earnings_lines = run_earnings_engine(ctx)
+        all_lines.extend(earnings_lines)
+        step_no = self._append_line_steps(calc_steps, step_no, "earnings", earnings_lines, ctx)
 
         # 2. Overtime
-        all_lines.extend(run_overtime_engine(ctx))
+        overtime_lines = run_overtime_engine(ctx)
+        all_lines.extend(overtime_lines)
+        step_no = self._append_line_steps(calc_steps, step_no, "overtime", overtime_lines, ctx)
 
         # 3. Benefits-in-kind
-        all_lines.extend(run_benefits_in_kind_engine(ctx))
+        bik_lines = run_benefits_in_kind_engine(ctx)
+        all_lines.extend(bik_lines)
+        step_no = self._append_line_steps(calc_steps, step_no, "benefits_in_kind", bik_lines, ctx)
 
         # Derive gross earnings from earning lines so far
         gross_earnings = sum(
             (l.component_amount for l in all_lines if l.component_type_code == "earning"),
             Decimal("0"),
         )
+        step_no = self._append_base_step(calc_steps, step_no, "gross_earnings", None, "sum_earnings", {"earning_lines": len([l for l in all_lines if l.component_type_code == "earning"])}, {"gross_earnings": gross_earnings}, gross_earnings)
 
         # Determine CNPS contributory base: earnings from pensionable components
         cnps_base = self._compute_cnps_base(ctx, all_lines)
+        step_no = self._append_base_step(calc_steps, step_no, "cnps_base", None, "sum_pensionable_earnings", {}, {"cnps_contributory_base": cnps_base}, cnps_base)
 
         # 4. CNPS (employee deduction + employer contribution)
         cnps_lines = run_cnps_engine(ctx, cnps_contributory_base=cnps_base)
         all_lines.extend(cnps_lines)
+        step_no = self._append_line_steps(calc_steps, step_no, "cnps", cnps_lines, ctx)
 
         # Employee CNPS deduction reduces the IRPP taxable base
         employee_cnps = sum(
@@ -228,9 +241,25 @@ class PayrollCalculationService:
             Decimal("0"),
         )
 
+        # Derive taxable_gross here (before salary deductions) so CFC/FNE-Sal are levied
+        # on the correct base (taxable earnings only, per DGI methodology).
+        # taxable_gross = sum of earnings from is_taxable=True components only.
+        taxable_component_ids = {
+            comp.component_id for comp in ctx.components if comp.is_taxable
+        }
+        taxable_gross = sum(
+            (l.component_amount for l in all_lines
+             if l.component_type_code == "earning" and l.component_id in taxable_component_ids),
+            Decimal("0"),
+        )
+
         # 5. Salary deductions (CCF / CFC, FNE Employee)
-        salary_deduction_lines = run_salary_deductions_engine(ctx, gross_earnings=gross_earnings)
+        # Base = taxable_gross (not all-inclusive gross) per DGI methodology:
+        #   CFC and FNE salariale are levied on taxable earnings, not on
+        #   non-taxable allowances such as transport or housing indemnities.
+        salary_deduction_lines = run_salary_deductions_engine(ctx, taxable_gross=taxable_gross)
         all_lines.extend(salary_deduction_lines)
+        step_no = self._append_line_steps(calc_steps, step_no, "salary_deductions", salary_deduction_lines, ctx)
 
         # Sum CFC + FNE employee deduction amounts (they reduce the IRPP taxable base)
         # Explicit filter: only CFC_HLF and FNE_EMPLOYEE reduce the IRPP base per DGI methodology.
@@ -248,37 +277,55 @@ class PayrollCalculationService:
         tdl_base = gross_earnings
 
         # IRPP taxable base calculation per DGI methodology:
-        #   taxable_gross = sum of earnings from is_taxable=True components only
         #   salaire_taxable = taxable_gross - employee_CNPS - CFC - FNE_employee
         #   after_abattement = salaire_taxable × (1 - abattement_rate)   [CGI Art. 32]
         #   monthly_net_imposable = after_abattement - (annual_deduction / 12)  [CGI Art. 33]
-        taxable_component_ids = {
-            comp.component_id for comp in ctx.components if comp.is_taxable
-        }
-        taxable_gross = sum(
-            (l.component_amount for l in all_lines
-             if l.component_type_code == "earning" and l.component_id in taxable_component_ids),
-            Decimal("0"),
-        )
         abattement_rate, annual_deduction = self._resolve_abattement(ctx)
         salaire_taxable = max(taxable_gross - employee_cnps - cfc_fne_total, Decimal("0"))
         after_abattement = (salaire_taxable * (Decimal("1") - abattement_rate)).quantize(Decimal("0.0001"))
         monthly_deduction = (annual_deduction / Decimal("12")).quantize(Decimal("0.0001"))
         taxable_salary_base = max(after_abattement - monthly_deduction, Decimal("0"))
-
-        # 6. TDL
-        all_lines.extend(run_tdl_engine(ctx, tdl_base=tdl_base))
-
-        # 7. IRPP + CAC + CRTV
-        all_lines.extend(
-            run_irpp_engine(ctx, taxable_salary_base=taxable_salary_base, gross_earnings=gross_earnings)
+        step_no = self._append_base_step(
+            calc_steps,
+            step_no,
+            "taxable_salary_base",
+            None,
+            "taxable_gross_minus_cnps_cfc_fne_abattement_minimum_vital",
+            {
+                "taxable_gross": taxable_gross,
+                "employee_cnps": employee_cnps,
+                "cfc_fne_total": cfc_fne_total,
+                "abattement_rate": abattement_rate,
+                "annual_deduction": annual_deduction,
+            },
+            {"taxable_salary_base": taxable_salary_base},
+            taxable_salary_base,
         )
 
+        # 6. TDL
+        tdl_lines = run_tdl_engine(ctx, tdl_base=tdl_base)
+        all_lines.extend(tdl_lines)
+        step_no = self._append_line_steps(calc_steps, step_no, "tdl", tdl_lines, ctx)
+
+        # 7. IRPP + CAC + CRTV
+        irpp_lines = run_irpp_engine(ctx, taxable_salary_base=taxable_salary_base, gross_earnings=gross_earnings)
+        all_lines.extend(irpp_lines)
+        step_no = self._append_line_steps(calc_steps, step_no, "irpp", irpp_lines, ctx)
+
         # 8. Employer contributions (FNE employer, Family Allowances, Accident Risk, etc.)
-        all_lines.extend(run_employer_contribution_engine(ctx, gross_earnings=gross_earnings))
+        # AF and Accident Risk are levied on the pensionable (CNPS) base per Décret N° 2014/2377.
+        # FNE patronale is levied on gross earnings (salaire brut).
+        employer_lines = run_employer_contribution_engine(
+            ctx,
+            gross_earnings=gross_earnings,
+            cnps_contributory_base=cnps_base,
+        )
+        all_lines.extend(employer_lines)
+        self._append_line_steps(calc_steps, step_no, "employer_contributions", employer_lines, ctx)
 
         # Aggregate all lines
         result.lines = all_lines
+        result.calc_steps = calc_steps
         result.gross_earnings = gross_earnings
         result.taxable_salary_base = taxable_salary_base
         result.tdl_base = tdl_base
@@ -308,6 +355,87 @@ class PayrollCalculationService:
         result.employer_cost_base = gross_earnings + result.total_employer_contributions
 
         return result
+
+    def _append_line_steps(
+        self,
+        steps: list[CalcStep],
+        sequence: int,
+        stage_code: str,
+        lines: list[EngineLineResult],
+        ctx: EngineContext,
+    ) -> int:
+        component_by_id = {component.component_id: component for component in ctx.components}
+        for line in lines:
+            component = component_by_id.get(line.component_id)
+            input_payload = {
+                "calculation_basis": line.calculation_basis,
+                "rate_applied": line.rate_applied,
+            }
+            if component is not None:
+                input_payload.update(
+                    {
+                        "component_code": component.component_code,
+                        "component_type_code": component.component_type_code,
+                        "calculation_method_code": component.calculation_method_code,
+                        "base_amount": component.base_amount,
+                        "base_rate": component.base_rate,
+                        "input_amount": component.input_amount,
+                        "input_quantity": component.input_quantity,
+                    }
+                )
+            steps.append(
+                CalcStep(
+                    sequence_number=sequence,
+                    stage_code=stage_code,
+                    component_id=line.component_id,
+                    component_code=component.component_code if component else None,
+                    formula_code=self._formula_code(stage_code, component),
+                    input_json=self._json_payload(input_payload),
+                    output_json=self._json_payload({"component_amount": line.component_amount}),
+                    amount=line.component_amount,
+                )
+            )
+            sequence += 1
+        return sequence
+
+    def _append_base_step(
+        self,
+        steps: list[CalcStep],
+        sequence: int,
+        stage_code: str,
+        component_id: int | None,
+        formula_code: str,
+        input_payload: dict[str, object],
+        output_payload: dict[str, object],
+        amount: Decimal,
+    ) -> int:
+        steps.append(
+            CalcStep(
+                sequence_number=sequence,
+                stage_code=stage_code,
+                component_id=component_id,
+                component_code=None,
+                formula_code=formula_code,
+                input_json=self._json_payload(input_payload),
+                output_json=self._json_payload(output_payload),
+                amount=amount,
+            )
+        )
+        return sequence + 1
+
+    @staticmethod
+    def _formula_code(stage_code: str, component: ComponentInput | None) -> str:
+        if component is None:
+            return stage_code
+        return f"{stage_code}.{component.component_code}.{component.calculation_method_code}"
+
+    @staticmethod
+    def _json_payload(payload: dict[str, object]) -> str:
+        def _default(value: object) -> str:
+            if isinstance(value, Decimal):
+                return str(value)
+            return str(value)
+        return json.dumps(payload, default=_default, sort_keys=True)
 
     def _resolve_abattement(self, ctx: EngineContext) -> tuple[Decimal, Decimal]:
         """Read abattement rate and annual minimum vital deduction from DGI_IRPP_ABATTEMENT rule set.

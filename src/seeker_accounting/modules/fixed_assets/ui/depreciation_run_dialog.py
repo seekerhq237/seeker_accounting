@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+import logging
+
 from datetime import date
+from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDateEdit,
     QDialog,
     QDialogButtonBox,
@@ -13,8 +17,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -26,9 +28,21 @@ from seeker_accounting.modules.fixed_assets.dto.depreciation_dto import AssetDep
 from seeker_accounting.platform.exceptions import ConflictError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.exceptions.error_resolution_resolver import ErrorResolutionResolver
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.guided_resolution_coordinator import GuidedResolutionCoordinator
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+
+
+_RUN_LINE_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="asset_number", title="Asset Number"),
+    DataTableColumn(key="asset_name", title="Asset Name"),
+    DataTableColumn(key="depreciation", title="Depreciation"),
+    DataTableColumn(key="accum_after", title="Accum. Depr. After"),
+    DataTableColumn(key="nbv_after", title="NBV After"),
+)
+
+
+_log = logging.getLogger(__name__)
 
 
 class DepreciationRunDialog(QDialog):
@@ -57,7 +71,7 @@ class DepreciationRunDialog(QDialog):
         is_new = run_id is None
         self.setWindowTitle(f"{'New Depreciation Run' if is_new else 'Depreciation Run'} — {company_name}")
         self.setModal(True)
-        self.resize(720, 560)
+        apply_window_size(self, "modules.fixed.assets.ui.depreciation.run.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -131,15 +145,19 @@ class DepreciationRunDialog(QDialog):
         lines_hdr.setObjectName("CardTitle")
         lines_layout.addWidget(lines_hdr)
 
-        self._table = QTableWidget(lines_card)
-        self._table.setColumnCount(5)
-        self._table.setHorizontalHeaderLabels((
-            "Asset Number", "Asset Name",
-            "Depreciation", "Accum. Depr. After", "NBV After",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._lines_model = QStandardItemModel(0, len(_RUN_LINE_COLUMNS), lines_card)
+        self._lines_model.setHorizontalHeaderLabels([c.title for c in _RUN_LINE_COLUMNS])
+        self._table = DataTable(
+            columns=_RUN_LINE_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=False,
+            selection_mode="single",
+            empty_state_text="No asset lines.",
+            parent=lines_card,
+        )
+        self._table.set_model(self._lines_model)
         lines_layout.addWidget(self._table)
         layout.addWidget(lines_card, 1)
 
@@ -219,8 +237,12 @@ class DepreciationRunDialog(QDialog):
             dto = self._service_registry.depreciation_run_service.get_depreciation_run(
                 self._company_id, self._run_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Depreciation Run", str(exc))
+            return
+        except Exception:
+            _log.exception("Depreciation Run")
+            show_error(self, "Depreciation Run", "An unexpected error occurred. See application log for details.")
             return
         self._run_dto = dto
         self._refresh_summary(dto)
@@ -235,26 +257,32 @@ class DepreciationRunDialog(QDialog):
         self._set_kv(self._lbl_assets, str(dto.asset_count))
         self._set_kv(self._lbl_total, f"{dto.total_depreciation:,.2f}")
 
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
     def _populate_lines(self, dto: AssetDepreciationRunDetailDTO) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._lines_model.removeRows(0, self._lines_model.rowCount())
         for line in dto.lines:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            self._table.setItem(ri, 0, QTableWidgetItem(line.asset_number))
-            self._table.setItem(ri, 1, QTableWidgetItem(line.asset_name))
-            for col, val in enumerate((
-                line.depreciation_amount,
-                line.accumulated_depreciation_after,
-                line.net_book_value_after,
-            ), start=2):
-                item = QTableWidgetItem(f"{val:,.2f}")
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self._table.setItem(ri, col, item)
-        self._table.resizeColumnsToContents()
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(1, hdr.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
+            self._lines_model.appendRow([
+                self._make_item(line.asset_number),
+                self._make_item(line.asset_name),
+                self._make_numeric(line.depreciation_amount),
+                self._make_numeric(line.accumulated_depreciation_after),
+                self._make_numeric(line.net_book_value_after),
+            ])
 
     def _sync_buttons(self, dto: AssetDepreciationRunDetailDTO) -> None:
         if not hasattr(self, "_post_btn"):

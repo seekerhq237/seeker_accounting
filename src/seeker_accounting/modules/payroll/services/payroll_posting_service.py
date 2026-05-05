@@ -52,6 +52,8 @@ from seeker_accounting.modules.payroll.dto.payroll_posting_dto import (
     PostPayrollRunCommand,
     PostingJournalLineDTO,
     PayrollPostingResultDTO,
+    PayrollReversalResultDTO,
+    ReversePayrollRunCommand,
 )
 from seeker_accounting.modules.payroll.payroll_permissions import PAYROLL_RUN_POST
 from seeker_accounting.modules.payroll.models.payroll_component import PayrollComponent
@@ -321,10 +323,25 @@ class PayrollPostingService:
             journal_entry.posted_by_user_id = actor_id
 
             # Mark payroll run as posted
+            previous_run_status = run.status_code
             run.status_code = "posted"
             run.posted_at = now
             run.posted_by_user_id = actor_id
             run.posted_journal_entry_id = journal_entry.id
+
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=previous_run_status,
+                to_state="posted",
+                description=f"Posted payroll run '{run.run_reference}' to journal '{entry_number}'.",
+                context={
+                    "journal_entry_id": journal_entry.id,
+                    "entry_number": entry_number,
+                    "posting_date": cmd.posting_date.isoformat(),
+                },
+            )
 
             self._audit_service.record_event_in_session(
                 uow.session,
@@ -396,3 +413,264 @@ class PayrollPostingService:
             )
         )
         return list(session.scalars(stmt).all())
+
+    # ── Reversal ──────────────────────────────────────────────────────────────
+
+    def reverse_run(
+        self,
+        company_id: int,
+        cmd: ReversePayrollRunCommand,
+        actor_user_id: int | None = None,
+    ) -> PayrollReversalResultDTO:
+        """Create an offsetting journal entry against a posted payroll run.
+
+        After reversal the run's GL effect is fully neutralised. The run
+        moves to the terminal ``reversed`` status. Settlement records
+        (payments, remittances) remain visible for audit but should not be
+        treated as live obligations.
+        """
+        self._permission_service.require_permission(PAYROLL_RUN_POST)
+        actor_id = actor_user_id or self._app_context.current_user_id
+        reason = (cmd.reason or "").strip()
+        if not reason:
+            raise ValidationError("A reason is required to reverse a posted payroll run.")
+
+        with self._uow_factory() as uow:
+            run_repo = self._run_repo_factory(uow.session)
+            run = run_repo.get_by_id(company_id, cmd.run_id)
+            if run is None:
+                raise NotFoundError("Payroll run not found.")
+            if run.status_code != "posted":
+                raise ValidationError(
+                    f"Only posted runs can be reversed (current status: '{run.status_code}')."
+                )
+            if run.posted_journal_entry_id is None:
+                raise ValidationError(
+                    "Posted run is missing its source journal entry; cannot reverse."
+                )
+            if run.reversal_journal_entry_id is not None:
+                raise ValidationError("This payroll run has already been reversed.")
+
+            # Period covering reversal date must be open
+            period_repo = self._period_repo_factory(uow.session)
+            fiscal_period = period_repo.get_covering_date(company_id, cmd.reversal_date)
+            if fiscal_period is None:
+                raise ValidationError(
+                    f"No fiscal period covers the reversal date {cmd.reversal_date}."
+                )
+            if fiscal_period.status_code == "LOCKED":
+                raise PeriodLockedError(
+                    f"Fiscal period '{fiscal_period.period_code}' is locked."
+                )
+            if fiscal_period.status_code != "OPEN":
+                raise ValidationError(
+                    f"Fiscal period '{fiscal_period.period_code}' is not open for posting."
+                )
+
+            # Load original journal entry lines
+            from seeker_accounting.modules.accounting.journals.models.journal_entry import (
+                JournalEntry as _JE,
+            )
+            from seeker_accounting.modules.accounting.journals.models.journal_entry_line import (
+                JournalEntryLine as _JEL,
+            )
+            original = uow.session.get(_JE, run.posted_journal_entry_id)
+            if original is None:
+                raise ValidationError("Original posted journal entry not found.")
+            original_lines = list(
+                uow.session.scalars(
+                    select(_JEL)
+                    .where(_JEL.journal_entry_id == original.id)
+                    .order_by(_JEL.line_number)
+                )
+            )
+            if not original_lines:
+                raise ValidationError("Original posted journal entry has no lines to reverse.")
+
+            # Verify accounts on the offsetting entry are still postable
+            acct_repo = self._account_repo_factory(uow.session)
+            account_ids = {ln.account_id for ln in original_lines}
+            accounts_by_id = {}
+            for aid in account_ids:
+                acct = acct_repo.get_by_id(company_id, aid)
+                if acct is None:
+                    raise ValidationError(f"Account id={aid} not found.")
+                if not acct.is_active:
+                    raise ValidationError(
+                        f"Account '{acct.account_code}' is inactive — cannot post reversal."
+                    )
+                if not acct.allow_manual_posting:
+                    raise ValidationError(
+                        f"Account '{acct.account_code}' does not allow posting."
+                    )
+                accounts_by_id[aid] = acct
+
+            period_label = f"{_CALENDAR_MONTHS[run.period_month]} {run.period_year}"
+            narration = cmd.narration or (
+                f"REVERSAL — Payroll {period_label} ({run.run_reference}): {reason}"
+            )
+
+            # Build reversal journal entry — debits and credits swapped
+            journal_repo = self._journal_repo_factory(uow.session)
+            reversal_entry = JournalEntry(
+                company_id=company_id,
+                fiscal_period_id=fiscal_period.id,
+                entry_date=cmd.reversal_date,
+                journal_type_code="PAYROLL",
+                reference_text=f"REV-{run.run_reference}",
+                description=narration,
+                source_module_code="PAYROLL",
+                source_document_type="PAYROLL_RUN_REVERSAL",
+                source_document_id=run.id,
+                status_code="DRAFT",
+                created_by_user_id=actor_id,
+            )
+            journal_repo.add(reversal_entry)
+            uow.session.flush()
+
+            built_lines: list[JournalEntryLine] = []
+            total_debit = Decimal("0")
+            total_credit = Decimal("0")
+            for idx, src in enumerate(original_lines, start=1):
+                acct = accounts_by_id[src.account_id]
+                # Swap debit/credit to neutralise the original entry
+                new_debit = Decimal(str(src.credit_amount)).quantize(Decimal("0.01"))
+                new_credit = Decimal(str(src.debit_amount)).quantize(Decimal("0.01"))
+                total_debit += new_debit
+                total_credit += new_credit
+                built_lines.append(
+                    JournalEntryLine(
+                        journal_entry_id=reversal_entry.id,
+                        line_number=idx,
+                        account_id=src.account_id,
+                        line_description=f"{narration} — {acct.account_name}",
+                        debit_amount=new_debit,
+                        credit_amount=new_credit,
+                    )
+                )
+            for ln in built_lines:
+                uow.session.add(ln)
+            uow.session.flush()
+
+            if abs(total_debit - total_credit) > Decimal("0.01"):
+                raise ValidationError(
+                    f"Reversal journal does not balance: "
+                    f"Dr={total_debit:.2f} Cr={total_credit:.2f}."
+                )
+
+            entry_number = self._numbering_service.issue_next_number(
+                uow.session, company_id, _JOURNAL_DOC_TYPE
+            )
+            reversal_entry.entry_number = entry_number
+            now = datetime.now(timezone.utc)
+            reversal_entry.status_code = "POSTED"
+            reversal_entry.posted_at = now
+            reversal_entry.posted_by_user_id = actor_id
+
+            previous_run_status = run.status_code
+            run.status_code = "reversed"
+            run.reversed_at = now
+            run.reversed_by_user_id = actor_id
+            run.reversal_journal_entry_id = reversal_entry.id
+            run.reversal_reason = reason
+
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=previous_run_status,
+                to_state="reversed",
+                description=f"Reversed payroll run '{run.run_reference}' via journal '{entry_number}'.",
+                reason=reason,
+                context={
+                    "original_journal_entry_id": original.id,
+                    "reversal_journal_entry_id": reversal_entry.id,
+                    "reversal_entry_number": entry_number,
+                    "reversal_date": cmd.reversal_date.isoformat(),
+                },
+            )
+
+            self._audit_service.record_event_in_session(
+                uow.session,
+                company_id,
+                RecordAuditEventCommand(
+                    event_type_code="PAYROLL_RUN_REVERSED",
+                    module_code="payroll",
+                    entity_type="payroll_run",
+                    entity_id=run.id,
+                    description=(
+                        f"Reversed payroll run '{run.run_reference}' via journal '{entry_number}'."
+                    ),
+                    detail_json=json.dumps(
+                        {
+                            "run_reference": run.run_reference,
+                            "original_journal_entry_id": original.id,
+                            "reversal_journal_entry_id": reversal_entry.id,
+                            "reversal_entry_number": entry_number,
+                            "reversal_date": cmd.reversal_date.isoformat(),
+                            "reason": reason,
+                            "total_debit": str(total_debit.quantize(Decimal("0.01"))),
+                            "total_credit": str(total_credit.quantize(Decimal("0.01"))),
+                        }
+                    ),
+                ),
+            )
+
+            try:
+                uow.commit()
+            except IntegrityError as exc:
+                raise ValidationError(
+                    "Reversal journal could not be saved. Check for duplicate journal numbers."
+                ) from exc
+
+            journal_line_dtos = tuple(
+                PostingJournalLineDTO(
+                    account_id=ln.account_id,
+                    account_code=accounts_by_id[ln.account_id].account_code,
+                    account_name=accounts_by_id[ln.account_id].account_name,
+                    line_description=ln.line_description or "",
+                    debit_amount=ln.debit_amount,
+                    credit_amount=ln.credit_amount,
+                )
+                for ln in sorted(built_lines, key=lambda x: x.line_number)
+            )
+            return PayrollReversalResultDTO(
+                run_id=run.id,
+                run_reference=run.run_reference,
+                original_journal_entry_id=original.id,
+                reversal_journal_entry_id=reversal_entry.id,
+                reversal_entry_number=entry_number,
+                reversal_date=cmd.reversal_date,
+                total_debit=total_debit.quantize(Decimal("0.01")),
+                total_credit=total_credit.quantize(Decimal("0.01")),
+                reversed_at=now,
+                journal_lines=journal_line_dtos,
+            )
+
+    def _record_state_transition_in_session(
+        self,
+        session: Session,
+        company_id: int,
+        run: PayrollRun,
+        *,
+        from_state: str | None,
+        to_state: str,
+        description: str,
+        reason: str | None = None,
+        context: dict[str, object] | None = None,
+    ) -> None:
+        recorder = getattr(self._audit_service, "record_state_transition_in_session", None)
+        if recorder is None:
+            return
+        recorder(
+            session,
+            company_id,
+            module_code="payroll",
+            entity_type="payroll_run",
+            entity_id=run.id,
+            from_state=from_state,
+            to_state=to_state,
+            description=description,
+            reason=reason,
+            context={"run_reference": run.run_reference, **(context or {})},
+        )

@@ -1,7 +1,10 @@
 """AdministrationPage — manage users and access controls for the active company."""
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -10,8 +13,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -25,7 +26,7 @@ from seeker_accounting.modules.administration.ui.user_edit_dialog import UserEdi
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.platform.exceptions import ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 
 _COL_DISPLAY_NAME = 0
 _COL_USERNAME = 1
@@ -37,6 +38,9 @@ _COL_COUNT = 6
 
 _ROLE_USER_ID = Qt.ItemDataRole.UserRole
 _ROLE_IS_ACTIVE = Qt.ItemDataRole.UserRole + 1
+
+
+_log = logging.getLogger(__name__)
 
 
 class AdministrationPage(QWidget):
@@ -58,7 +62,7 @@ class AdministrationPage(QWidget):
             self._handle_active_company_changed
         )
         self._search_edit.textChanged.connect(self._apply_search_filter)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
+        self._table.selection_changed.connect(lambda _rows: self._update_action_state())
 
         self.reload_users()
 
@@ -71,7 +75,7 @@ class AdministrationPage(QWidget):
 
         if active_company is None:
             self._users = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Select a company")
             self._stack.setCurrentWidget(self._no_active_company_state)
             self._update_action_state()
@@ -79,7 +83,7 @@ class AdministrationPage(QWidget):
 
         if not self._service_registry.permission_service.has_permission("administration.users.view"):
             self._users = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Access denied")
             self._stack.setCurrentWidget(self._access_denied_state)
             self._update_action_state()
@@ -89,8 +93,12 @@ class AdministrationPage(QWidget):
             self._users = self._service_registry.user_auth_service.list_users_for_company(
                 active_company.company_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Load Error", str(exc))
+
+        except Exception:
+            _log.exception("Load Error")
+            show_error(self, "Load Error", "An unexpected error occurred. See application log for details.")
             self._users = []
 
         self._populate_table()
@@ -180,11 +188,27 @@ class AdministrationPage(QWidget):
         ts_layout.setContentsMargins(0, 0, 0, 0)
         ts_layout.setSpacing(0)
 
-        self._table = QTableWidget(0, _COL_COUNT, self._table_surface)
-        self._table.setHorizontalHeaderLabels([
+        self._model = QStandardItemModel(0, _COL_COUNT, self._table_surface)
+        self._model.setHorizontalHeaderLabels([
             "Display Name", "Username", "Email", "Status", "Roles", "Last Login",
         ])
-        configure_compact_table(self._table)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="name", title="Display Name"),
+                DataTableColumn(key="username", title="Username"),
+                DataTableColumn(key="email", title="Email"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="roles", title="Roles"),
+                DataTableColumn(key="last_login", title="Last Login"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self._table_surface,
+        )
+        self._table.set_model(self._model)
+        apply_status_chip_to_column(self._table.view(), _COL_STATUS)
         ts_layout.addWidget(self._table)
         self._stack.addWidget(self._table_surface)
 
@@ -240,56 +264,68 @@ class AdministrationPage(QWidget):
     # ------------------------------------------------------------------ #
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for record in self._users:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
+            name_item = QStandardItem(record.user.display_name)
+            name_item.setEditable(False)
+            name_item.setData(record.user.id, _ROLE_USER_ID)
+            name_item.setData(record.user.is_active, _ROLE_IS_ACTIVE)
 
-            name_item = QTableWidgetItem(record.user.display_name)
-            name_item.setData(_ROLE_USER_ID, record.user.id)
-            name_item.setData(_ROLE_IS_ACTIVE, record.user.is_active)
-            self._table.setItem(row, _COL_DISPLAY_NAME, name_item)
+            def _mi(text):
+                i = QStandardItem("" if text is None else str(text))
+                i.setEditable(False)
+                return i
 
-            self._table.setItem(row, _COL_USERNAME, QTableWidgetItem(record.user.username))
-            self._table.setItem(row, _COL_EMAIL, QTableWidgetItem(record.user.email or ""))
-
-            status_text = "Active" if record.user.is_active else "Inactive"
-            status_item = QTableWidgetItem(status_text)
+            status_text = "active" if record.user.is_active else "inactive"
+            status_item = _mi(status_text)
             status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, _COL_STATUS, status_item)
 
             role_names = ", ".join(r.name for r in record.roles) if record.roles else "—"
-            self._table.setItem(row, _COL_ROLES, QTableWidgetItem(role_names))
-
             login_text = (
                 record.user.last_login_at.strftime("%Y-%m-%d %H:%M")
                 if record.user.last_login_at
                 else ""
             )
-            self._table.setItem(row, _COL_LAST_LOGIN, QTableWidgetItem(login_text))
+            self._model.appendRow([
+                name_item,
+                _mi(record.user.username),
+                _mi(record.user.email or ""),
+                status_item,
+                _mi(role_names),
+                _mi(login_text),
+            ])
 
-        self._table.setSortingEnabled(True)
-        self._table.resizeColumnsToContents()
-        self._table.horizontalHeader().setStretchLastSection(True)
+        view = self._table.view()
+        view.resizeColumnsToContents()
+        view.horizontalHeader().setStretchLastSection(True)
 
     def _apply_search_filter(self) -> None:
         query = self._search_edit.text().lower().strip()
-        for row in range(self._table.rowCount()):
-            name_item = self._table.item(row, _COL_DISPLAY_NAME)
-            username_item = self._table.item(row, _COL_USERNAME)
+        view = self._table.view()
+        for row in range(self._model.rowCount()):
+            name_item = self._model.item(row, _COL_DISPLAY_NAME)
+            username_item = self._model.item(row, _COL_USERNAME)
             if name_item is None:
                 continue
             name = name_item.text().lower()
             username = username_item.text().lower() if username_item else ""
-            self._table.setRowHidden(row, bool(query) and query not in name and query not in username)
+            view.setRowHidden(row, bool(query) and query not in name and query not in username)
 
     def _restore_selection(self, user_id: int) -> None:
-        for row in range(self._table.rowCount()):
-            item = self._table.item(row, _COL_DISPLAY_NAME)
+        for row in range(self._model.rowCount()):
+            item = self._model.item(row, _COL_DISPLAY_NAME)
             if item and item.data(_ROLE_USER_ID) == user_id:
-                self._table.selectRow(row)
+                proxy = self._table.view().model()
+                if proxy is None:
+                    return
+                src_index = self._model.index(row, 0)
+                proxy_index = proxy.mapFromSource(src_index)
+                if proxy_index.isValid():
+                    sm = self._table.view().selectionModel()
+                    if sm:
+                        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+                        self._table.view().scrollTo(proxy_index)
                 return
 
     # ------------------------------------------------------------------ #
@@ -297,21 +333,21 @@ class AdministrationPage(QWidget):
     # ------------------------------------------------------------------ #
 
     def _selected_row(self) -> int | None:
-        items = self._table.selectedItems()
-        return items[0].row() if items else None
+        rows = self._table.selected_rows()
+        return rows[0] if rows else None
 
     def _selected_user_id(self) -> int | None:
         row = self._selected_row()
         if row is None:
             return None
-        item = self._table.item(row, _COL_DISPLAY_NAME)
+        item = self._model.item(row, _COL_DISPLAY_NAME)
         return item.data(_ROLE_USER_ID) if item else None
 
     def _selected_is_active(self) -> bool | None:
         row = self._selected_row()
         if row is None:
             return None
-        item = self._table.item(row, _COL_DISPLAY_NAME)
+        item = self._model.item(row, _COL_DISPLAY_NAME)
         return item.data(_ROLE_IS_ACTIVE) if item else None
 
     def _selected_user_dto(self) -> UserDTO | None:
@@ -399,8 +435,12 @@ class AdministrationPage(QWidget):
             show_info(self, "Password Changed", f"Password updated for {user_dto.display_name}.")
         except ValidationError as exc:
             show_error(self, "Error", str(exc))
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Error", str(exc))
+
+        except Exception:
+            _log.exception("Error")
+            show_error(self, "Error", "An unexpected error occurred. See application log for details.")
 
     def _handle_toggle_active(self) -> None:
         user_dto = self._selected_user_dto()
@@ -424,8 +464,12 @@ class AdministrationPage(QWidget):
                 user_id=user_dto.id, is_active=new_state
             )
             self.reload_users(selected_user_id=user_dto.id)
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Error", str(exc))
+
+        except Exception:
+            _log.exception("Error")
+            show_error(self, "Error", "An unexpected error occurred. See application log for details.")
 
     def _handle_manage_roles(self) -> None:
         user_dto = self._selected_user_dto()

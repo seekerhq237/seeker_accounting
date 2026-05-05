@@ -3,14 +3,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -18,8 +16,8 @@ from PySide6.QtWidgets import (
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.companies.dto.company_dto import CompanyListItemDTO
 from seeker_accounting.modules.companies.ui.company_form_dialog import CompanyFormDialog
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
 class CompanyListPage(QWidget):
@@ -47,7 +45,7 @@ class CompanyListPage(QWidget):
             self._companies = self._service_registry.company_service.list_companies()
         except Exception as exc:
             self._companies = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._table_surface.hide()
             self._empty_state.show()
             self._update_action_state()
@@ -98,19 +96,30 @@ class CompanyListPage(QWidget):
         self._table_surface.setObjectName("PageCard")
 
         layout = QVBoxLayout(self._table_surface)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(12)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        self._table = QTableWidget(self._table_surface)
-        self._table.setObjectName("CompanyListTable")
-        self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(
-            ("Display Name", "Legal Name", "Country", "Base Currency", "Status", "Updated")
+        self._model = QStandardItemModel(0, 6, self._table_surface)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="display_name", title="Display Name"),
+                DataTableColumn(key="legal_name", title="Legal Name"),
+                DataTableColumn(key="country", title="Country"),
+                DataTableColumn(key="currency", title="Base Currency"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="updated", title="Updated"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            selection_mode="single",
+            parent=self._table_surface,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.itemSelectionChanged.connect(self._update_action_state)
-        self._table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 4)
+        self._table.selection_changed.connect(lambda _: self._update_action_state())
+        self._table.view().doubleClicked.connect(self._on_double_clicked)
         layout.addWidget(self._table)
         return self._table_surface
 
@@ -149,35 +158,19 @@ class CompanyListPage(QWidget):
         return self._empty_state
 
     def _populate_table(self) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
 
         for company in self._companies:
-            row_index = self._table.rowCount()
-            self._table.insertRow(row_index)
+            status_text = "active" if company.is_active else "inactive"
+            self._model.appendRow([
+                self._make_item(company.display_name, user_data=company.id),
+                self._make_item(company.legal_name),
+                self._make_item(company.country_code),
+                self._make_item(company.base_currency_code),
+                self._make_item(status_text),
+                self._make_item(self._format_timestamp(company.updated_at)),
+            ])
 
-            values = (
-                company.display_name,
-                company.legal_name,
-                company.country_code,
-                company.base_currency_code,
-                "Active" if company.is_active else "Inactive",
-                self._format_timestamp(company.updated_at),
-            )
-            for column_index, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column_index == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, company.id)
-                if column_index == 4:
-                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self._table.setItem(row_index, column_index, item)
-
-        self._table.resizeColumnsToContents()
-        header = self._table.horizontalHeader()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, header.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
         count = len(self._companies)
         self._record_count_label.setText(f"{count} company" if count == 1 else f"{count} companies")
 
@@ -194,29 +187,33 @@ class CompanyListPage(QWidget):
                 company_id = active_company.company_id
 
         if company_id is None:
-            if self._table.rowCount() > 0:
-                self._table.selectRow(0)
+            target_idx = 0
+        else:
+            target_idx = next(
+                (i for i, c in enumerate(self._companies) if c.id == company_id), 0
+            )
+
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-
-        for row_index in range(self._table.rowCount()):
-            item = self._table.item(row_index, 0)
-            if item is not None and item.data(Qt.ItemDataRole.UserRole) == company_id:
-                self._table.selectRow(row_index)
-                return
-
-        if self._table.rowCount() > 0:
-            self._table.selectRow(0)
+        src_index = self._model.index(target_idx, 0)
+        proxy_index = proxy.mapFromSource(src_index)
+        if not proxy_index.isValid():
+            return
+        sm = self._table.view().selectionModel()
+        if sm is None:
+            return
+        sm.select(proxy_index, sm.SelectionFlag.ClearAndSelect | sm.SelectionFlag.Rows)
+        self._table.view().scrollTo(proxy_index)
 
     def _selected_company(self) -> CompanyListItemDTO | None:
-        current_row = self._table.currentRow()
-        if current_row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-
-        item = self._table.item(current_row, 0)
-        if item is None:
+        id_item = self._model.item(rows[0], 0)
+        if id_item is None:
             return None
-
-        company_id = item.data(Qt.ItemDataRole.UserRole)
+        company_id = id_item.data(Qt.ItemDataRole.UserRole)
         for company in self._companies:
             if company.id == company_id:
                 return company
@@ -239,6 +236,14 @@ class CompanyListPage(QWidget):
 
     def _format_timestamp(self, value: datetime) -> str:
         return value.strftime("%Y-%m-%d %H:%M")
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _open_create_dialog(self) -> None:
         if not self._service_registry.permission_service.has_permission("companies.create"):
@@ -263,7 +268,7 @@ class CompanyListPage(QWidget):
             return
         self.reload_companies(selected_company_id=updated_company.id)
 
-    def _handle_item_double_clicked(self, *_args: object) -> None:
+    def _on_double_clicked(self, _index) -> None:
         self._open_edit_dialog()
 
     def _handle_active_company_changed(self, company_id: object, company_name: object) -> None:

@@ -15,18 +15,35 @@ and computes: hourly_rate × hours × (1 + premium/100).
 
 The legacy generic OVERTIME component with OVERTIME_STANDARD rule set is still
 supported for backward compatibility (single multiplier mode).
+
+Monthly hour caps per Code du Travail Art. 80 (8h × 52 / 12 for T1/T2,
+4h × 52 / 12 for T3):
+  T1: ≈ 34.67 hrs/month | T2: ≈ 34.67 hrs/month | T3: ≈ 17.33 hrs/month
+Hours beyond these caps are flagged as a warning but still computed (the
+company is responsible for compliance; some CBAs allow different limits).
 """
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from seeker_accounting.modules.payroll.engines.engine_types import (
     EngineContext,
     EngineLineResult,
+    quantize_xaf,
 )
 
-_STANDARD_HOURS_PER_MONTH = Decimal("173.33")  # ILO standard approximation
+logger = logging.getLogger(__name__)
+
+_STANDARD_HOURS_PER_MONTH = Decimal("173.33")  # 40 hrs/week × 52 weeks ÷ 12 months (Code du Travail Art. 80)
+
+# Monthly tier hour caps derived from Code du Travail Art. 80 weekly limits
+_MONTHLY_HOUR_CAPS: dict[str, Decimal] = {
+    "OVERTIME_DAY_T1": Decimal("34.67"),   # 8 hrs/week × 52 / 12
+    "OVERTIME_DAY_T2": Decimal("34.67"),   # 8 hrs/week × 52 / 12
+    "OVERTIME_DAY_T3": Decimal("17.33"),   # 4 hrs/week × 52 / 12
+}
 
 # Map component code → rule set code
 _OT_RULE_MAP: dict[str, str] = {
@@ -56,15 +73,27 @@ def run_overtime_engine(ctx: EngineContext) -> list[EngineLineResult]:
                     component_type_code="earning",
                     calculation_basis=comp.input_amount,
                     rate_applied=None,
-                    component_amount=comp.input_amount.quantize(Decimal("0.0001")),
+                    component_amount=quantize_xaf(comp.input_amount),
                 )
             )
         elif comp.input_quantity is not None and comp.input_quantity > 0:
             # Hours provided — compute: hourly_rate × hours × multiplier
+            # Warn if hours exceed the statutory monthly cap for this tier.
+            monthly_cap = _MONTHLY_HOUR_CAPS.get(comp.component_code)
+            if monthly_cap and comp.input_quantity > monthly_cap:
+                logger.warning(
+                    "Overtime tier %s for employee %s: %s hours submitted exceeds "
+                    "statutory monthly cap of %s hours (Code du Travail Art. 80). "
+                    "Computing on submitted hours; verify with HR before posting.",
+                    comp.component_code,
+                    ctx.employee_id,
+                    comp.input_quantity,
+                    monthly_cap,
+                )
             hourly_rate = ctx.basic_salary / _STANDARD_HOURS_PER_MONTH
             premium_rate = _resolve_premium_rate(comp.component_code, ctx)
             multiplier = Decimal("1") + premium_rate
-            ot_amount = (hourly_rate * comp.input_quantity * multiplier).quantize(Decimal("0.0001"))
+            ot_amount = quantize_xaf(hourly_rate * comp.input_quantity * multiplier)
             results.append(
                 EngineLineResult(
                     component_id=comp.component_id,

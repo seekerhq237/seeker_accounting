@@ -3,19 +3,18 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker_accounting.modules.reporting.dto.insight_card_dto import InsightDetailDTO
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 
 class InsightDetailDialog(QDialog):
@@ -94,18 +93,31 @@ class InsightDetailDialog(QDialog):
         title.setObjectName("InfoCardTitle")
         layout.addWidget(title)
 
-        table = QTableWidget(wrapper)
-        table.setColumnCount(2)
-        table.setHorizontalHeaderLabels(["Metric", "Value"])
-        configure_compact_table(table)
-        table.setRowCount(len(self._detail_dto.card.numeric_basis))
-        table.cellDoubleClicked.connect(self._on_basis_double_clicked)
-        for row_index, item in enumerate(self._detail_dto.card.numeric_basis):
-            label_item = QTableWidgetItem(item.label)
-            if item.detail_key:
-                label_item.setData(Qt.ItemDataRole.UserRole, item.detail_key)
-            table.setItem(row_index, 0, label_item)
-            table.setItem(row_index, 1, QTableWidgetItem(item.value_text))
+        self._basis_model = QStandardItemModel(0, 2, wrapper)
+        self._basis_model.setHorizontalHeaderLabels(["Metric", "Value"])
+        self._basis_model.setRowCount(len(self._detail_dto.card.numeric_basis))
+        for row_index, nb_item in enumerate(self._detail_dto.card.numeric_basis):
+            label_item = QStandardItem(nb_item.label)
+            label_item.setEditable(False)
+            if nb_item.detail_key:
+                label_item.setData(nb_item.detail_key, Qt.ItemDataRole.UserRole)
+            self._basis_model.setItem(row_index, 0, label_item)
+            val_item = QStandardItem(nb_item.value_text)
+            val_item.setEditable(False)
+            self._basis_model.setItem(row_index, 1, val_item)
+        table = DataTable(
+            columns=(
+                DataTableColumn(key="metric", title="Metric"),
+                DataTableColumn(key="value", title="Value"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=wrapper,
+        )
+        table.set_model(self._basis_model)
+        table.view().doubleClicked.connect(self._on_basis_double_clicked)
         layout.addWidget(table, 1)
         self._basis_table = table
         return wrapper
@@ -121,37 +133,61 @@ class InsightDetailDialog(QDialog):
         title.setObjectName("InfoCardTitle")
         layout.addWidget(title)
 
-        table = QTableWidget(wrapper)
-        table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["Ratio", "Current", "Prior"])
-        configure_compact_table(table)
-        table.setRowCount(len(self._detail_dto.related_ratios))
-        table.cellDoubleClicked.connect(self._on_ratio_double_clicked)
+        self._ratio_model = QStandardItemModel(0, 3, wrapper)
+        self._ratio_model.setHorizontalHeaderLabels(["Ratio", "Current", "Prior"])
+        self._ratio_model.setRowCount(len(self._detail_dto.related_ratios))
         for row_index, ratio in enumerate(self._detail_dto.related_ratios):
-            label_item = QTableWidgetItem(ratio.label)
+            label_item = QStandardItem(ratio.label)
+            label_item.setEditable(False)
             if ratio.detail_key:
-                label_item.setData(Qt.ItemDataRole.UserRole, ratio.detail_key)
-            table.setItem(row_index, 0, label_item)
-            table.setItem(row_index, 1, QTableWidgetItem(ratio.display_value))
-            table.setItem(row_index, 2, QTableWidgetItem(ratio.prior_display_value or ""))
+                label_item.setData(ratio.detail_key, Qt.ItemDataRole.UserRole)
+            self._ratio_model.setItem(row_index, 0, label_item)
+            cur_item = QStandardItem(ratio.display_value)
+            cur_item.setEditable(False)
+            self._ratio_model.setItem(row_index, 1, cur_item)
+            prior_item = QStandardItem(ratio.prior_display_value or "")
+            prior_item.setEditable(False)
+            self._ratio_model.setItem(row_index, 2, prior_item)
+        table = DataTable(
+            columns=(
+                DataTableColumn(key="ratio", title="Ratio"),
+                DataTableColumn(key="current", title="Current"),
+                DataTableColumn(key="prior", title="Prior"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=wrapper,
+        )
+        table.set_model(self._ratio_model)
+        table.view().doubleClicked.connect(self._on_ratio_double_clicked)
         layout.addWidget(table, 1)
         self._ratio_table = table
         return wrapper
 
-    def _on_basis_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        self._open_from_table(self._basis_table, row)
-
-    def _on_ratio_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
-        self._open_from_table(self._ratio_table, row)
-
-    def _open_from_table(self, table: QTableWidget, row: int) -> None:
-        if self._detail_opener is None:
+    def _on_basis_double_clicked(self, index) -> None:
+        proxy = self._basis_table.view().model()
+        if proxy is None:
             return
-        item = table.item(row, 0)
+        src = proxy.mapToSource(index)
+        item = self._basis_model.item(src.row(), 0)
         if item is None:
             return
         detail_key = item.data(Qt.ItemDataRole.UserRole)
-        if isinstance(detail_key, str) and detail_key:
+        if isinstance(detail_key, str) and detail_key and self._detail_opener is not None:
+            self._detail_opener(detail_key)
+
+    def _on_ratio_double_clicked(self, index) -> None:
+        proxy = self._ratio_table.view().model()
+        if proxy is None:
+            return
+        src = proxy.mapToSource(index)
+        item = self._ratio_model.item(src.row(), 0)
+        if item is None:
+            return
+        detail_key = item.data(Qt.ItemDataRole.UserRole)
+        if isinstance(detail_key, str) and detail_key and self._detail_opener is not None:
             self._detail_opener(detail_key)
 
     @classmethod

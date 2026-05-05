@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -43,7 +44,7 @@ class PaymentTermDialog(BaseDialog):
         title = "New Payment Term" if payment_term_id is None else "Edit Payment Term"
         super().__init__(title, parent, help_key="dialog.payment_term")
         self.setObjectName("PaymentTermDialog")
-        self.resize(480, 0)
+        apply_window_size(self, "modules.accounting.reference.data.ui.payment.term.dialog.0")
 
         self.body_layout.addWidget(create_label_value_row("Company", company_name, self))
 

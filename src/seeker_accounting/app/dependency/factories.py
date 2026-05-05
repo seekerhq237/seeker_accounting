@@ -1,6 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtWidgets import QApplication
+
+if TYPE_CHECKING:
+    from seeker_accounting.modules.administration.services.user_avatar_service import UserAvatarService
+    from seeker_accounting.modules.administration.services.user_session_service import UserSessionService
+    from seeker_accounting.modules.companies.services.company_purge_service import CompanyPurgeService
+    from seeker_accounting.modules.companies.services.system_admin_company_service import SystemAdminCompanyService
+    from seeker_accounting.modules.companies.services.system_admin_service import SystemAdminService
 
 from seeker_accounting.app.context.active_company_context import ActiveCompanyContext
 from seeker_accounting.app.context.app_context import AppContext
@@ -137,6 +146,36 @@ from seeker_accounting.modules.taxation.services.tax_audit_trail_service import 
 )
 from seeker_accounting.modules.taxation.services.tax_return_pdf_export_service import (
     TaxReturnPDFExportService,
+)
+from seeker_accounting.modules.taxation.repositories.vat_period_lock_repository import (
+    VatPeriodLockRepository,
+)
+from seeker_accounting.modules.taxation.services.vat_period_lock_service import (
+    VATPeriodLockService,
+)
+from seeker_accounting.modules.taxation.services.vat_reconciliation_service import (
+    VATReconciliationService,
+)
+from seeker_accounting.modules.taxation.services.vat_annex_export_service import (
+    VATAnnexExportService,
+)
+from seeker_accounting.modules.taxation.services.vat_efiling_payload_service import (
+    VATEFilingPayloadService,
+)
+from seeker_accounting.modules.taxation.services.pro_rata_service import (
+    ProRataService,
+)
+from seeker_accounting.modules.taxation.services.vat_capital_goods_service import (
+    VatCapitalGoodsService,
+)
+from seeker_accounting.modules.taxation.services.vat_exception_report_service import (
+    VATExceptionReportService,
+)
+from seeker_accounting.modules.taxation.repositories.company_pro_rata_history_repository import (
+    CompanyProRataHistoryRepository,
+)
+from seeker_accounting.modules.taxation.repositories.vat_capital_good_repository import (
+    VatCapitalGoodRepository,
 )
 from seeker_accounting.modules.companies.repositories.company_fiscal_default_repository import (
     CompanyFiscalDefaultRepository,
@@ -517,6 +556,9 @@ from seeker_accounting.modules.payroll.repositories.position_repository import P
 from seeker_accounting.modules.payroll.repositories.employee_repository import EmployeeRepository
 from seeker_accounting.modules.payroll.repositories.payroll_component_repository import PayrollComponentRepository
 from seeker_accounting.modules.payroll.repositories.payroll_rule_set_repository import PayrollRuleSetRepository
+from seeker_accounting.modules.payroll.repositories.payroll_calculation_trace_repository import (
+    PayrollCalculationTraceRepository,
+)
 from seeker_accounting.modules.payroll.services.payroll_setup_service import PayrollSetupService
 from seeker_accounting.modules.payroll.services.employee_service import EmployeeService
 from seeker_accounting.modules.payroll.services.payroll_component_service import PayrollComponentService
@@ -583,6 +625,28 @@ from seeker_accounting.modules.administration.repositories.password_history_repo
 from seeker_accounting.modules.inventory.services.inventory_posting_service import InventoryPostingService
 from seeker_accounting.modules.inventory.services.inventory_valuation_service import InventoryValuationService
 from seeker_accounting.modules.inventory.services.unit_of_measure_service import UnitOfMeasureService
+from seeker_accounting.modules.inventory.services.cogs_sync_service import CogsSyncService
+from seeker_accounting.modules.inventory.services.goods_receipt_service import GoodsReceiptService
+from seeker_accounting.modules.inventory.services.item_supplier_service import ItemSupplierService
+from seeker_accounting.modules.inventory.services.vat_into_cost_service import VatIntoCostService
+from seeker_accounting.modules.inventory.services.landed_cost_service import LandedCostService
+from seeker_accounting.modules.inventory.services.ohada_inventory_service import OhadaInventoryService
+from seeker_accounting.modules.inventory.services.price_list_service import PriceListService
+from seeker_accounting.modules.inventory.services.reorder_planning_service import ReorderPlanningService
+from seeker_accounting.modules.inventory.services.inventory_dashboard_service import InventoryDashboardService
+from seeker_accounting.modules.inventory.services.item_barcode_service import ItemBarcodeService
+from seeker_accounting.modules.inventory.repositories.item_supplier_repository import ItemSupplierRepository
+from seeker_accounting.modules.inventory.repositories.purchase_receipt_link_repository import PurchaseReceiptLinkRepository
+from seeker_accounting.modules.inventory.repositories.landed_cost_voucher_repository import LandedCostVoucherRepository
+from seeker_accounting.modules.inventory.repositories.price_list_repository import PriceListRepository
+from seeker_accounting.modules.inventory.repositories.item_reorder_profile_repository import ItemReorderProfileRepository
+from seeker_accounting.modules.inventory.repositories.item_barcode_repository import ItemBarcodeRepository
+from seeker_accounting.modules.reporting.services.inventory_kardex_report_service import InventoryKardexReportService
+from seeker_accounting.modules.reporting.services.inventory_aging_report_service import InventoryAgeingReportService
+from seeker_accounting.modules.reporting.services.inventory_abc_analysis_service import InventoryAbcAnalysisService
+from seeker_accounting.modules.reporting.services.inventory_item_profitability_service import InventoryItemProfitabilityService
+from seeker_accounting.modules.reporting.services.grni_accrual_report_service import GrniAccrualReportService
+from seeker_accounting.modules.reporting.services.inventory_reconciliation_report_service import InventoryReconciliationReportService
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
 from seeker_accounting.platform.printing.print_engine import PrintEngine
 from seeker_accounting.platform.session.session_idle_watcher_service import SessionIdleWatcherService
@@ -1324,8 +1388,12 @@ def create_tax_return_service(
         tax_return_repository_factory=TaxReturnRepository,
         tax_obligation_repository_factory=TaxObligationRepository,
         company_repository_factory=CompanyRepository,
+        posted_tax_line_repository_factory=PostedTaxLineRepository,
+        fiscal_period_repository_factory=FiscalPeriodRepository,
         permission_service=permission_service,
         audit_service=audit_service,
+        company_tax_profile_repository_factory=CompanyTaxProfileRepository,
+        vat_period_lock_repository_factory=VatPeriodLockRepository,
     )
 
 
@@ -1372,6 +1440,8 @@ def create_tax_settlement_service(
         numbering_service=numbering_service,
         permission_service=permission_service,
         audit_service=audit_service,
+        setting_repository_factory=CompanyPayrollSettingRepository,
+        trace_repository_factory=PayrollCalculationTraceRepository,
     )
 
 
@@ -1474,6 +1544,101 @@ def create_tax_return_pdf_export_service(
         permission_service=permission_service,
         print_engine=print_engine,
         audit_service=audit_service,
+        company_tax_profile_repository_factory=CompanyTaxProfileRepository,
+    )
+
+
+def create_vat_period_lock_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+) -> VATPeriodLockService:
+    return VATPeriodLockService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        company_repository_factory=CompanyRepository,
+        vat_period_lock_repository_factory=VatPeriodLockRepository,
+        permission_service=permission_service,
+    )
+
+
+def create_vat_reconciliation_service(
+    session_context: SessionContext,
+    permission_service: PermissionService,
+) -> VATReconciliationService:
+    return VATReconciliationService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        company_repository_factory=CompanyRepository,
+        account_repository_factory=AccountRepository,
+        tax_code_account_mapping_repository_factory=TaxCodeAccountMappingRepository,
+        posted_tax_line_repository_factory=PostedTaxLineRepository,
+        tax_return_repository_factory=TaxReturnRepository,
+        permission_service=permission_service,
+    )
+
+
+def create_vat_annex_export_service(
+    session_context: SessionContext,
+    permission_service: PermissionService,
+    app_context: AppContext | None = None,
+) -> VATAnnexExportService:
+    return VATAnnexExportService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
+        app_context=app_context,
+    )
+
+
+def create_vat_efiling_payload_service(
+    session_context: SessionContext,
+    permission_service: PermissionService,
+    app_context: AppContext | None = None,
+) -> VATEFilingPayloadService:
+    return VATEFilingPayloadService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        company_repository_factory=CompanyRepository,
+        tax_return_repository_factory=TaxReturnRepository,
+        permission_service=permission_service,
+        company_tax_profile_repository_factory=CompanyTaxProfileRepository,
+        app_context=app_context,
+    )
+
+
+def create_pro_rata_service(
+    session_context: SessionContext,
+    permission_service: PermissionService,
+) -> ProRataService:
+    """T34: provisional and final pro-rata % management."""
+    return ProRataService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        company_repository_factory=CompanyRepository,
+        company_tax_profile_repository_factory=CompanyTaxProfileRepository,
+        pro_rata_history_repository_factory=CompanyProRataHistoryRepository,
+        permission_service=permission_service,
+    )
+
+
+def create_vat_capital_goods_service(
+    session_context: SessionContext,
+    permission_service: PermissionService | None = None,
+) -> VatCapitalGoodsService:
+    """T38: capital-goods VAT adjustment register."""
+    return VatCapitalGoodsService(
+        uow_factory=session_context.unit_of_work_factory,
+        capital_good_repo_factory=VatCapitalGoodRepository,
+        tax_profile_repo_factory=CompanyTaxProfileRepository,
+    )
+
+
+def create_vat_exception_report_service(
+    session_context: SessionContext,
+    permission_service: PermissionService,
+) -> VATExceptionReportService:
+    """T41: VAT exception / exclusion report."""
+    return VATExceptionReportService(
+        uow_factory=session_context.unit_of_work_factory,
+        permission_service=permission_service,
     )
 
 
@@ -1756,6 +1921,7 @@ def create_sales_invoice_posting_service(
         permission_service=permission_service,
         tax_fact_service=tax_fact_service,
         audit_service=audit_service,
+        vat_period_lock_repository_factory=VatPeriodLockRepository,
     )
 
 
@@ -1822,6 +1988,7 @@ def create_sales_credit_note_posting_service(
         permission_service=permission_service,
         tax_fact_service=tax_fact_service,
         audit_service=audit_service,
+        vat_period_lock_repository_factory=VatPeriodLockRepository,
     )
 
 
@@ -2208,6 +2375,7 @@ def create_purchase_credit_note_posting_service(
         permission_service=permission_service,
         tax_fact_service=tax_fact_service,
         audit_service=audit_service,
+        vat_period_lock_repository_factory=VatPeriodLockRepository,
     )
 
 
@@ -2234,6 +2402,7 @@ def create_purchase_bill_posting_service(
         permission_service=permission_service,
         tax_fact_service=tax_fact_service,
         audit_service=audit_service,
+        vat_period_lock_repository_factory=VatPeriodLockRepository,
     )
 
 
@@ -2489,6 +2658,167 @@ def create_inventory_valuation_service(session_context: SessionContext) -> Inven
         item_repository_factory=ItemRepository,
         inventory_cost_layer_repository_factory=InventoryCostLayerRepository,
     )
+
+
+def create_cogs_sync_service(session_context: SessionContext) -> CogsSyncService:
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_balance_repository import (
+        StockLedgerBalanceRepository,
+    )
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_entry_repository import (
+        StockLedgerEntryRepository,
+    )
+    from seeker_accounting.modules.inventory.services.stock_ledger_service import StockLedgerService
+    stock_ledger_svc = StockLedgerService(
+        entry_repository_factory=StockLedgerEntryRepository,
+        balance_repository_factory=StockLedgerBalanceRepository,
+    )
+    return CogsSyncService(stock_ledger_service=stock_ledger_svc)
+
+
+def create_goods_receipt_service(
+    session_context: SessionContext,
+    numbering_service: NumberingService | None = None,
+) -> GoodsReceiptService:
+    from seeker_accounting.modules.inventory.repositories.inventory_document_repository import (
+        InventoryDocumentRepository,
+    )
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_balance_repository import (
+        StockLedgerBalanceRepository,
+    )
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_entry_repository import (
+        StockLedgerEntryRepository,
+    )
+    from seeker_accounting.modules.inventory.services.stock_ledger_service import StockLedgerService
+    from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import JournalEntryRepository
+    from seeker_accounting.modules.accounting.reference_data.repositories.account_role_mapping_repository import AccountRoleMappingRepository
+    from seeker_accounting.modules.purchases.repositories.purchase_order_repository import PurchaseOrderRepository
+    stock_ledger_svc = StockLedgerService(
+        entry_repository_factory=StockLedgerEntryRepository,
+        balance_repository_factory=StockLedgerBalanceRepository,
+    )
+    return GoodsReceiptService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        stock_ledger_service=stock_ledger_svc,
+        journal_entry_repository_factory=JournalEntryRepository,
+        account_role_mapping_repository_factory=AccountRoleMappingRepository,
+        inventory_document_repository_factory=InventoryDocumentRepository,
+        purchase_order_repository_factory=PurchaseOrderRepository,
+        purchase_receipt_link_repository_factory=PurchaseReceiptLinkRepository,
+    )
+
+
+def create_item_supplier_service(session_context: SessionContext) -> ItemSupplierService:
+    return ItemSupplierService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        item_supplier_repository_factory=ItemSupplierRepository,
+    )
+
+
+def create_vat_into_cost_service() -> VatIntoCostService:
+    return VatIntoCostService()
+
+
+def create_landed_cost_service(
+    session_context: SessionContext,
+    numbering_service: NumberingService | None = None,
+) -> LandedCostService:
+    from seeker_accounting.modules.inventory.repositories.inventory_document_repository import (
+        InventoryDocumentRepository,
+    )
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_balance_repository import (
+        StockLedgerBalanceRepository,
+    )
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_entry_repository import (
+        StockLedgerEntryRepository,
+    )
+    from seeker_accounting.modules.inventory.services.stock_ledger_service import StockLedgerService
+    from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import JournalEntryRepository
+    from seeker_accounting.modules.accounting.reference_data.repositories.account_role_mapping_repository import AccountRoleMappingRepository
+    stock_ledger_svc = StockLedgerService(
+        entry_repository_factory=StockLedgerEntryRepository,
+        balance_repository_factory=StockLedgerBalanceRepository,
+    )
+    return LandedCostService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        stock_ledger_service=stock_ledger_svc,
+        journal_entry_repository_factory=JournalEntryRepository,
+        account_role_mapping_repository_factory=AccountRoleMappingRepository,
+        landed_cost_voucher_repository_factory=LandedCostVoucherRepository,
+        inventory_document_repository_factory=InventoryDocumentRepository,
+    )
+
+
+def create_ohada_inventory_service(session_context: SessionContext) -> OhadaInventoryService:
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_balance_repository import (
+        StockLedgerBalanceRepository,
+    )
+    from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import (
+        JournalEntryRepository,
+    )
+    return OhadaInventoryService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        journal_entry_repository_factory=JournalEntryRepository,
+        stock_ledger_balance_repository_factory=StockLedgerBalanceRepository,
+    )
+
+
+def create_price_list_service(session_context: SessionContext) -> PriceListService:
+    return PriceListService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        price_list_repository_factory=PriceListRepository,
+    )
+
+
+def create_reorder_planning_service(session_context: SessionContext) -> ReorderPlanningService:
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_balance_repository import (
+        StockLedgerBalanceRepository,
+    )
+    return ReorderPlanningService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        reorder_profile_repository_factory=ItemReorderProfileRepository,
+        stock_ledger_balance_repository_factory=StockLedgerBalanceRepository,
+    )
+
+
+def create_inventory_dashboard_service(session_context: SessionContext) -> InventoryDashboardService:
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_balance_repository import (
+        StockLedgerBalanceRepository,
+    )
+    return InventoryDashboardService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        stock_ledger_balance_repository_factory=StockLedgerBalanceRepository,
+    )
+
+
+def create_item_barcode_service(session_context: SessionContext) -> ItemBarcodeService:
+    return ItemBarcodeService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        item_barcode_repository_factory=ItemBarcodeRepository,
+    )
+
+
+def create_inventory_kardex_report_service(session_context: SessionContext) -> InventoryKardexReportService:
+    return InventoryKardexReportService(unit_of_work_factory=session_context.unit_of_work_factory)
+
+
+def create_inventory_aging_report_service(session_context: SessionContext) -> InventoryAgeingReportService:
+    return InventoryAgeingReportService(unit_of_work_factory=session_context.unit_of_work_factory)
+
+
+def create_inventory_abc_analysis_service(session_context: SessionContext) -> InventoryAbcAnalysisService:
+    return InventoryAbcAnalysisService(unit_of_work_factory=session_context.unit_of_work_factory)
+
+
+def create_inventory_item_profitability_service(session_context: SessionContext) -> InventoryItemProfitabilityService:
+    return InventoryItemProfitabilityService(unit_of_work_factory=session_context.unit_of_work_factory)
+
+
+def create_grni_accrual_report_service(session_context: SessionContext) -> GrniAccrualReportService:
+    return GrniAccrualReportService(unit_of_work_factory=session_context.unit_of_work_factory)
+
+
+def create_inventory_reconciliation_report_service(session_context: SessionContext) -> InventoryReconciliationReportService:
+    return InventoryReconciliationReportService(unit_of_work_factory=session_context.unit_of_work_factory)
 
 
 def create_asset_category_service(
@@ -3461,6 +3791,28 @@ def create_service_registry(
         audit_service=audit_service,
     )
     inventory_valuation_service = create_inventory_valuation_service(session_context=session_context)
+    cogs_sync_service = create_cogs_sync_service(session_context=session_context)
+    goods_receipt_service = create_goods_receipt_service(
+        session_context=session_context,
+        numbering_service=numbering_service,
+    )
+    item_supplier_service = create_item_supplier_service(session_context=session_context)
+    vat_into_cost_service = create_vat_into_cost_service()
+    landed_cost_service = create_landed_cost_service(
+        session_context=session_context,
+        numbering_service=numbering_service,
+    )
+    ohada_inventory_service = create_ohada_inventory_service(session_context=session_context)
+    price_list_service = create_price_list_service(session_context=session_context)
+    reorder_planning_service = create_reorder_planning_service(session_context=session_context)
+    inventory_dashboard_service = create_inventory_dashboard_service(session_context=session_context)
+    item_barcode_service = create_item_barcode_service(session_context=session_context)
+    inventory_kardex_report_service = create_inventory_kardex_report_service(session_context=session_context)
+    inventory_aging_report_service = create_inventory_aging_report_service(session_context=session_context)
+    inventory_abc_analysis_service = create_inventory_abc_analysis_service(session_context=session_context)
+    inventory_item_profitability_service = create_inventory_item_profitability_service(session_context=session_context)
+    grni_accrual_report_service = create_grni_accrual_report_service(session_context=session_context)
+    inventory_reconciliation_report_service = create_inventory_reconciliation_report_service(session_context=session_context)
     asset_category_service =create_asset_category_service(
         session_context=session_context,
         audit_service=audit_service,
@@ -3712,6 +4064,37 @@ def create_service_registry(
         print_engine=print_engine,
         audit_service=audit_service,
     )
+    vat_period_lock_service = create_vat_period_lock_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+    )
+    vat_reconciliation_service = create_vat_reconciliation_service(
+        session_context=session_context,
+        permission_service=permission_service,
+    )
+    vat_annex_export_service = create_vat_annex_export_service(
+        session_context=session_context,
+        permission_service=permission_service,
+        app_context=app_context,
+    )
+    vat_efiling_payload_service = create_vat_efiling_payload_service(
+        session_context=session_context,
+        permission_service=permission_service,
+        app_context=app_context,
+    )
+    pro_rata_service = create_pro_rata_service(
+        session_context=session_context,
+        permission_service=permission_service,
+    )
+    vat_capital_goods_service = create_vat_capital_goods_service(
+        session_context=session_context,
+        permission_service=permission_service,
+    )
+    vat_exception_report_service = create_vat_exception_report_service(
+        session_context=session_context,
+        permission_service=permission_service,
+    )
     balance_sheet_export_service = BalanceSheetExportService(
         company_service=company_service,
         company_logo_service=company_logo_service,
@@ -3883,6 +4266,27 @@ def create_service_registry(
         repository_factory=lambda session: _WizardRunRepository(session),
     )
 
+    # Deferrals — prepaid expenses and unearned revenue
+    from seeker_accounting.modules.accounting.deferrals.repositories.deferral_repository import (
+        DeferralRepository as _DeferralRepository,
+    )
+    from seeker_accounting.modules.accounting.deferrals.services.deferral_service import (
+        DeferralService as _DeferralService,
+    )
+    from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import (
+        JournalEntryRepository as _JERepo,
+    )
+    from seeker_accounting.modules.accounting.fiscal_periods.repositories.fiscal_period_repository import (
+        FiscalPeriodRepository as _FPRepo,
+    )
+    deferral_service = _DeferralService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        deferral_repository_factory=lambda session: _DeferralRepository(session),
+        fiscal_period_repository_factory=lambda session: _FPRepo(session),
+        journal_entry_repository_factory=lambda session: _JERepo(session),
+        numbering_service=numbering_service,
+    )
+
     # Shell subsystems for the context-aware ribbon + top-level child windows.
     from seeker_accounting.app.shell.child_windows.child_window_manager import (
         ChildWindowManager,
@@ -3965,6 +4369,13 @@ def create_service_registry(
         tax_dashboard_service=tax_dashboard_service,
         tax_audit_trail_service=tax_audit_trail_service,
         tax_return_pdf_export_service=tax_return_pdf_export_service,
+        vat_period_lock_service=vat_period_lock_service,
+        vat_reconciliation_service=vat_reconciliation_service,
+        vat_annex_export_service=vat_annex_export_service,
+        vat_efiling_payload_service=vat_efiling_payload_service,
+        pro_rata_service=pro_rata_service,
+        vat_capital_goods_service=vat_capital_goods_service,
+        vat_exception_report_service=vat_exception_report_service,
         numbering_setup_service=numbering_setup_service,
         chart_of_accounts_service=chart_of_accounts_service,
         chart_seed_service=chart_seed_service,
@@ -4010,6 +4421,22 @@ def create_service_registry(
         inventory_document_service=inventory_document_service,
         inventory_posting_service=inventory_posting_service,
         inventory_valuation_service=inventory_valuation_service,
+        cogs_sync_service=cogs_sync_service,
+        goods_receipt_service=goods_receipt_service,
+        item_supplier_service=item_supplier_service,
+        vat_into_cost_service=vat_into_cost_service,
+        landed_cost_service=landed_cost_service,
+        ohada_inventory_service=ohada_inventory_service,
+        price_list_service=price_list_service,
+        reorder_planning_service=reorder_planning_service,
+        inventory_dashboard_service=inventory_dashboard_service,
+        item_barcode_service=item_barcode_service,
+        inventory_kardex_report_service=inventory_kardex_report_service,
+        inventory_aging_report_service=inventory_aging_report_service,
+        inventory_abc_analysis_service=inventory_abc_analysis_service,
+        inventory_item_profitability_service=inventory_item_profitability_service,
+        grni_accrual_report_service=grni_accrual_report_service,
+        inventory_reconciliation_report_service=inventory_reconciliation_report_service,
         asset_category_service=asset_category_service,
         asset_service=asset_service,
         depreciation_schedule_service=depreciation_schedule_service,
@@ -4075,6 +4502,7 @@ def create_service_registry(
         backup_merge_service=backup_merge_service,
         license_service=license_service,
         wizard_run_service=wizard_run_service,
+        deferral_service=deferral_service,
         ribbon_registry=ribbon_registry,
         child_window_manager=child_window_manager,
     )

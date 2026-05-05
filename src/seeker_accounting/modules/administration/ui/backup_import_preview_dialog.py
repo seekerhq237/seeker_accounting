@@ -3,6 +3,7 @@ resolve names before confirming the merge import.
 """
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from pathlib import Path
 from typing import Callable
 
@@ -92,7 +93,7 @@ class BackupImportPreviewDialog(QDialog):
             | Qt.WindowType.WindowTitleHint
             | Qt.WindowType.WindowCloseButtonHint
         )
-        self.resize(820, 620)
+        apply_window_size(self, "modules.administration.ui.backup.import.preview.dialog.0")
         self.setMinimumSize(640, 480)
         self.setModal(True)
         self._build_ui()

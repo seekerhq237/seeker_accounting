@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog,
@@ -32,7 +33,7 @@ class GuidedResolutionDialog(QDialog):
         self.setObjectName("GuidedResolutionDialog")
         self.setModal(True)
         self.setWindowTitle(resolution.title)
-        self.resize(560, 360)
+        apply_window_size(self, "shared.ui.guided.resolution.dialog.0")
 
         root_layout = QVBoxLayout(self)
         root_layout.setContentsMargins(20, 18, 20, 16)

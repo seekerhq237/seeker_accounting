@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -20,18 +20,27 @@ from seeker_accounting.app.navigation import nav_ids
 from seeker_accounting.app.navigation.workflow_resume_service import ResumeTokenPayload
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.fixed_assets.ui.depreciation_run_dialog import DepreciationRunDialog
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 from seeker_accounting.shared.workflow.document_sequence_preflight import (
     consume_resume_payload_for_workflows,
     run_document_sequence_preflight,
 )
 
-_STATUS_LABELS = {
-    "draft": "Draft",
-    "posted": "Posted",
-    "cancelled": "Cancelled",
-}
+
+RUN_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="run_number", title="Run Number"),
+    DataTableColumn(key="run_date", title="Run Date"),
+    DataTableColumn(key="period_end_date", title="Period End"),
+    DataTableColumn(key="status", title="Status"),
+    DataTableColumn(key="asset_count", title="Assets"),
+    DataTableColumn(key="total_depreciation", title="Total Depreciation"),
+    DataTableColumn(key="posted_at", title="Posted At"),
+)
 
 
 class DepreciationRunsPage(QWidget):
@@ -57,7 +66,7 @@ class DepreciationRunsPage(QWidget):
         active_company = self._active_company()
         if active_company is None:
             self._rows = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("")
             self._stack.setCurrentWidget(self._no_company_state)
             return
@@ -67,12 +76,13 @@ class DepreciationRunsPage(QWidget):
             )
         except Exception as exc:
             self._rows = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentWidget(self._empty_state)
             show_error(self, "Depreciation Runs", f"Could not load data.\n\n{exc}")
             return
-        self._populate(self._rows)
+        self._populate()
         self._sync_stack(active_company, self._rows)
+        self._update_count_label()
 
     # ------------------------------------------------------------------
     # Build
@@ -127,16 +137,23 @@ class DepreciationRunsPage(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels((
-            "Run Number", "Run Date", "Period End",
-            "Status", "Assets", "Total Depreciation", "Posted At",
-        ))
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_open())
+
+        self._model = QStandardItemModel(0, len(RUN_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in RUN_COLUMNS])
+
+        self._table = DataTable(
+            columns=RUN_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No depreciation runs to display.",
+            parent=card,
+        )
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 3)
+        self._table.row_activated.connect(lambda _r: self._on_open())
         layout.addWidget(self._table)
         return card
 
@@ -184,37 +201,54 @@ class DepreciationRunsPage(QWidget):
     # Populate
     # ------------------------------------------------------------------
 
-    def _populate(self, rows: list) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-        for row in rows:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            num_item = QTableWidgetItem(row.run_number or "(draft)")
-            num_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._table.setItem(ri, 0, num_item)
-            self._table.setItem(ri, 1, QTableWidgetItem(str(row.run_date)))
-            self._table.setItem(ri, 2, QTableWidgetItem(str(row.period_end_date)))
-            self._table.setItem(ri, 3, QTableWidgetItem(
-                _STATUS_LABELS.get(row.status_code, row.status_code)
-            ))
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
-            assets_item = QTableWidgetItem(str(row.asset_count))
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
+    def _populate(self) -> None:
+        self._model.removeRows(0, self._model.rowCount())
+        for row in self._rows:
+            assets_item = QStandardItem(str(row.asset_count))
+            assets_item.setEditable(False)
             assets_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(ri, 4, assets_item)
-
-            total_item = QTableWidgetItem(f"{row.total_depreciation:,.2f}")
-            total_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(ri, 5, total_item)
-
             posted_text = str(row.posted_at.date()) if row.posted_at else "—"
-            self._table.setItem(ri, 6, QTableWidgetItem(posted_text))
-        self._table.resizeColumnsToContents()
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(0, hdr.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
-        count = len(rows)
-        self._count_label.setText(f"{count} record" if count == 1 else f"{count} records")
+            items = [
+                self._make_item(row.run_number or "(draft)", user_data=row.id),
+                self._make_item(row.run_date),
+                self._make_item(row.period_end_date),
+                self._make_item(row.status_code),
+                assets_item,
+                self._make_numeric(row.total_depreciation),
+                self._make_item(posted_text),
+            ]
+            self._model.appendRow(items)
+
+    def _update_count_label(self) -> None:
+        total = len(self._rows)
+        self._count_label.setText(
+            f"{total} record" if total == 1 else f"{total} records"
+        )
+
+    def _selected_row(self):
+        rows = self._table.selected_rows()
+        if not rows:
+            return None
+        idx = rows[0]
+        if 0 <= idx < len(self._rows):
+            return self._rows[idx]
+        return None
 
     # ------------------------------------------------------------------
     # Actions
@@ -245,14 +279,10 @@ class DepreciationRunsPage(QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        row = self._selected_row()
+        if row is None:
             return
-        item = self._table.item(row, 0)
-        if item is None:
-            return
-        run_id = item.data(Qt.ItemDataRole.UserRole)
-        self._open_run(company, run_id)
+        self._open_run(company, row.id)
 
     def _open_run(self, company: ActiveCompanyDTO, run_id: int) -> None:
         dialog = DepreciationRunDialog(

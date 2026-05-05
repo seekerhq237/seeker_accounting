@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
+from seeker_accounting.modules.administration.services.permission_service import PermissionService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.modules.inventory.dto.item_commands import CreateItemCommand, UpdateItemCommand
 from seeker_accounting.modules.inventory.dto.item_dto import ItemDetailDTO, ItemListItemDTO
@@ -24,7 +25,8 @@ UnitOfMeasureRepositoryFactory = Callable[[Session], UnitOfMeasureRepository]
 ItemCategoryRepositoryFactory = Callable[[Session], ItemCategoryRepository]
 
 _ALLOWED_ITEM_TYPES = {"stock", "non_stock", "service"}
-_ALLOWED_COST_METHODS = {"weighted_average"}
+_ALLOWED_COST_METHODS = {"weighted_average", "fifo", "fefo", "standard_cost"}
+_ALLOWED_TRACKING_MODES = {"none", "batch", "serial"}
 
 
 class ItemService:
@@ -35,6 +37,7 @@ class ItemService:
         item_repository_factory: ItemRepositoryFactory,
         unit_of_measure_repository_factory: UnitOfMeasureRepositoryFactory,
         item_category_repository_factory: ItemCategoryRepositoryFactory,
+        permission_service: PermissionService,
         audit_service: AuditService | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -42,6 +45,7 @@ class ItemService:
         self._item_repository_factory = item_repository_factory
         self._uom_repository_factory = unit_of_measure_repository_factory
         self._category_repository_factory = item_category_repository_factory
+        self._permission_service = permission_service
         self._audit_service = audit_service
 
     def list_items(
@@ -66,7 +70,9 @@ class ItemService:
             return self._to_detail_dto(item)
 
     def create_item(self, company_id: int, command: CreateItemCommand) -> ItemDetailDTO:
+        self._permission_service.require_permission("inventory.items.create")
         self._validate_item_fields(command.item_code, command.item_name, command.item_type_code)
+        self._validate_tracking_mode(command.tracking_mode_code, command.item_type_code)
         self._validate_stock_config(
             command.item_type_code,
             command.inventory_cost_method_code,
@@ -93,15 +99,33 @@ class ItemService:
             if existing is not None:
                 raise ConflictError(f"Item code '{command.item_code}' already exists for this company.")
 
+            self._validate_lifecycle_and_classifiers(
+                command.lifecycle_status_code,
+                command.ohada_stock_class_code,
+                command.inventory_cost_method_code,
+                command.standard_cost,
+                command.is_stockable,
+                command.item_type_code,
+            )
+
             item = Item(
                 company_id=company_id,
                 item_code=command.item_code.strip(),
                 item_name=command.item_name.strip(),
                 item_type_code=command.item_type_code,
                 unit_of_measure_id=command.unit_of_measure_id,
-                unit_of_measure_code=uom.code,
                 item_category_id=command.item_category_id,
+                parent_item_id=command.parent_item_id,
                 inventory_cost_method_code=command.inventory_cost_method_code,
+                standard_cost=command.standard_cost,
+                lifecycle_status_code=command.lifecycle_status_code,
+                tracking_mode_code=command.tracking_mode_code,
+                is_variant=command.is_variant,
+                attribute_values_json=command.attribute_values_json,
+                is_sellable=command.is_sellable,
+                is_purchasable=command.is_purchasable,
+                is_stockable=command.is_stockable,
+                ohada_stock_class_code=command.ohada_stock_class_code,
                 inventory_account_id=command.inventory_account_id,
                 cogs_account_id=command.cogs_account_id,
                 expense_account_id=command.expense_account_id,
@@ -123,7 +147,9 @@ class ItemService:
             return self._to_detail_dto(item)
 
     def update_item(self, company_id: int, item_id: int, command: UpdateItemCommand) -> ItemDetailDTO:
+        self._permission_service.require_permission("inventory.items.edit")
         self._validate_item_fields(command.item_code, command.item_name, command.item_type_code)
+        self._validate_tracking_mode(command.tracking_mode_code, command.item_type_code)
         self._validate_stock_config(
             command.item_type_code,
             command.inventory_cost_method_code,
@@ -155,13 +181,31 @@ class ItemService:
                 if existing is not None:
                     raise ConflictError(f"Item code '{command.item_code}' already exists for this company.")
 
+            self._validate_lifecycle_and_classifiers(
+                command.lifecycle_status_code,
+                command.ohada_stock_class_code,
+                command.inventory_cost_method_code,
+                command.standard_cost,
+                command.is_stockable,
+                command.item_type_code,
+            )
+
             item.item_code = command.item_code.strip()
             item.item_name = command.item_name.strip()
             item.item_type_code = command.item_type_code
             item.unit_of_measure_id = command.unit_of_measure_id
-            item.unit_of_measure_code = uom.code
             item.item_category_id = command.item_category_id
+            item.parent_item_id = command.parent_item_id
             item.inventory_cost_method_code = command.inventory_cost_method_code
+            item.standard_cost = command.standard_cost
+            item.lifecycle_status_code = command.lifecycle_status_code
+            item.tracking_mode_code = command.tracking_mode_code
+            item.is_variant = command.is_variant
+            item.attribute_values_json = command.attribute_values_json
+            item.is_sellable = command.is_sellable
+            item.is_purchasable = command.is_purchasable
+            item.is_stockable = command.is_stockable
+            item.ohada_stock_class_code = command.ohada_stock_class_code
             item.inventory_account_id = command.inventory_account_id
             item.cogs_account_id = command.cogs_account_id
             item.expense_account_id = command.expense_account_id
@@ -183,6 +227,7 @@ class ItemService:
             return self._to_detail_dto(item)
 
     def deactivate_item(self, company_id: int, item_id: int) -> None:
+        self._permission_service.require_permission("inventory.items.deactivate")
         with self._unit_of_work_factory() as uow:
             self._require_company_exists(uow.session, company_id)
             repo = self._item_repository_factory(uow.session)
@@ -222,6 +267,48 @@ class ItemService:
             if inventory_account_id is None:
                 raise ValidationError("Inventory account is required for stock items.")
 
+    def _validate_lifecycle_and_classifiers(
+        self,
+        lifecycle_status_code: str,
+        ohada_stock_class_code: str | None,
+        cost_method: str | None,
+        standard_cost,
+        is_stockable: bool,
+        item_type_code: str,
+    ) -> None:
+        from seeker_accounting.modules.inventory.models.item import (
+            ITEM_LIFECYCLE_STATUSES,
+            OHADA_STOCK_CLASS_CODES,
+        )
+
+        if lifecycle_status_code not in ITEM_LIFECYCLE_STATUSES:
+            raise ValidationError(
+                "Lifecycle status must be one of: "
+                + ", ".join(sorted(ITEM_LIFECYCLE_STATUSES))
+            )
+        if ohada_stock_class_code is not None and ohada_stock_class_code not in OHADA_STOCK_CLASS_CODES:
+            raise ValidationError(
+                "OHADA stock class must be one of: "
+                + ", ".join(sorted(OHADA_STOCK_CLASS_CODES))
+            )
+        if item_type_code == "stock" and not is_stockable:
+            raise ValidationError("Stock items must be marked stockable.")
+        if cost_method == "standard_cost":
+            if standard_cost is None:
+                raise ValidationError(
+                    "Standard cost is required when costing method is 'standard_cost'."
+                )
+            if standard_cost < 0:
+                raise ValidationError("Standard cost cannot be negative.")
+
+    def _validate_tracking_mode(self, tracking_mode_code: str, item_type_code: str) -> None:
+        if tracking_mode_code not in _ALLOWED_TRACKING_MODES:
+            raise ValidationError(
+                "Tracking mode must be one of: " + ", ".join(sorted(_ALLOWED_TRACKING_MODES))
+            )
+        if tracking_mode_code != "none" and item_type_code != "stock":
+            raise ValidationError("Only stock items can use batch or serial tracking.")
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -249,7 +336,15 @@ class ItemService:
             unit_of_measure_code=item.unit_of_measure_code,
             unit_of_measure_id=item.unit_of_measure_id,
             item_category_id=item.item_category_id,
+            parent_item_id=item.parent_item_id,
             inventory_cost_method_code=item.inventory_cost_method_code,
+            lifecycle_status_code=item.lifecycle_status_code,
+            tracking_mode_code=item.tracking_mode_code,
+            is_variant=item.is_variant,
+            is_sellable=item.is_sellable,
+            is_purchasable=item.is_purchasable,
+            is_stockable=item.is_stockable,
+            ohada_stock_class_code=item.ohada_stock_class_code,
             reorder_level_quantity=item.reorder_level_quantity,
             is_active=item.is_active,
             updated_at=item.updated_at,
@@ -265,7 +360,17 @@ class ItemService:
             unit_of_measure_code=item.unit_of_measure_code,
             unit_of_measure_id=item.unit_of_measure_id,
             item_category_id=item.item_category_id,
+            parent_item_id=item.parent_item_id,
             inventory_cost_method_code=item.inventory_cost_method_code,
+            standard_cost=item.standard_cost,
+            lifecycle_status_code=item.lifecycle_status_code,
+            tracking_mode_code=item.tracking_mode_code,
+            is_variant=item.is_variant,
+            attribute_values_json=item.attribute_values_json,
+            is_sellable=item.is_sellable,
+            is_purchasable=item.is_purchasable,
+            is_stockable=item.is_stockable,
+            ohada_stock_class_code=item.ohada_stock_class_code,
             inventory_account_id=item.inventory_account_id,
             cogs_account_id=item.cogs_account_id,
             expense_account_id=item.expense_account_id,

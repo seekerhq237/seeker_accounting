@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from decimal import Decimal
 
 from PySide6.QtCore import QDate, Qt, Signal
@@ -76,7 +77,7 @@ class JournalEntryDialog(BaseDialog):
         title = "New Journal Entry" if journal_entry_id is None else "Journal Entry"
         super().__init__(title, parent, help_key="dialog.journal_entry")
         self.setObjectName("JournalEntryDialog")
-        self.resize(960, 680)
+        apply_window_size(self, "modules.accounting.journals.ui.journal.entry.dialog.0")
 
         self._error_label = QLabel(self)
         self._error_label.setObjectName("DialogErrorLabel")

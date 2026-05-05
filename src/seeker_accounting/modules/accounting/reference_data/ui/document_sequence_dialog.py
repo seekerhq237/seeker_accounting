@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
@@ -58,7 +59,7 @@ class DocumentSequenceDialog(BaseDialog):
         title = "New Document Sequence" if sequence_id is None else "Edit Document Sequence"
         super().__init__(title, parent, help_key="dialog.document_sequence")
         self.setObjectName("DocumentSequenceDialog")
-        self.resize(520, 0)
+        apply_window_size(self, "modules.accounting.reference.data.ui.document.sequence.dialog.0")
 
         self.body_layout.addWidget(create_label_value_row("Company", company_name, self))
 

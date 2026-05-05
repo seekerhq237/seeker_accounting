@@ -55,7 +55,7 @@ class PayrollOutputWarningService:
             warnings.append(PayrollOutputWarningDTO(
                 code="NO_PACK_APPLIED",
                 severity="warning",
-                title="No Statutory Pack",
+                title="No statutory pack",
                 message="No statutory pack has been applied. Outputs may use fallback rates.",
             ))
             return

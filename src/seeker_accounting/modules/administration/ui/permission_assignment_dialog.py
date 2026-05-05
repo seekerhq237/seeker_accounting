@@ -1,6 +1,7 @@
 """Permission assignment dialog with cascading module-grouped checkboxes."""
 from __future__ import annotations
 
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 from collections import defaultdict
 
@@ -68,7 +69,7 @@ class PermissionAssignmentDialog(BaseDialog):
     ) -> None:
         super().__init__(f"Permissions — {role_dto.name}", parent, help_key="dialog.permission_assignment")
         self.setObjectName("PermissionAssignmentDialog")
-        self.resize(408, 448)
+        apply_window_size(self, "modules.administration.ui.permission.assignment.dialog.0")
 
         self._role_service = role_service
         self._role_dto = role_dto

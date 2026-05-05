@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from collections import defaultdict
 
 from PySide6.QtCore import Qt
@@ -44,6 +46,9 @@ from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, 
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.print_export_dialog import PrintExportDialog
 from seeker_accounting.shared.ui.register import RegisterPage
+
+
+_log = logging.getLogger(__name__)
 
 
 class ChartOfAccountsPage(RibbonHostMixin, QWidget):
@@ -804,5 +809,9 @@ class ChartOfAccountsPage(RibbonHostMixin, QWidget):
                 active_company.company_id, self._accounts, result,
             )
             result.open_file()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Chart of Accounts", f"Export failed.\n\n{exc}")
+
+        except Exception:
+            _log.exception("Chart of Accounts")
+            show_error(self, "Chart of Accounts", "An unexpected error occurred. See application log for details.")

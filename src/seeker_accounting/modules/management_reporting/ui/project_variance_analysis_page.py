@@ -10,9 +10,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -20,11 +19,11 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
@@ -43,8 +42,8 @@ from seeker_accounting.modules.management_reporting.ui.variance_chart_widgets im
     WaterfallSegment,
 )
 from seeker_accounting.platform.exceptions import NotFoundError
+from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _ZERO = Decimal(0)
 
@@ -193,35 +192,12 @@ class ProjectVarianceAnalysisPage(QWidget):
     def _build_content_stack(self) -> QWidget:
         self._stack = QStackedWidget(self)
         self._analysis_surface = self._build_analysis_surface()
-        self._empty_state = self._build_empty_state("Select a project to begin analysis.")
-        self._no_company_state = self._build_empty_state(
-            "Select an active company first.",
-            title="No Active Company",
-        )
+        self._empty_state = build_empty_state("management_reporting.project_variance.no_selection", parent=self)
+        self._no_company_state = build_empty_state("management_reporting.no_company", parent=self)
         self._stack.addWidget(self._analysis_surface)
         self._stack.addWidget(self._empty_state)
         self._stack.addWidget(self._no_company_state)
         return self._stack
-
-    def _build_empty_state(self, msg: str, title: str = "No Data") -> QWidget:
-        card = QFrame(self)
-        card.setObjectName("PageCard")
-
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(28, 26, 28, 26)
-        layout.setSpacing(10)
-
-        t = QLabel(title, card)
-        t.setObjectName("EmptyStateTitle")
-        layout.addWidget(t)
-
-        s = QLabel(msg, card)
-        s.setObjectName("PageSummary")
-        s.setWordWrap(True)
-        layout.addWidget(s)
-
-        layout.addStretch(1)
-        return card
 
     # ------------------------------------------------------------------
     # Analysis surface (scrollable)
@@ -391,21 +367,26 @@ class ProjectVarianceAnalysisPage(QWidget):
 
         layout.addWidget(top_row)
 
-        self._variance_table = QTableWidget(card)
-        self._variance_table.setObjectName("VarianceTable")
-        self._variance_table.setColumnCount(8)
-        self._variance_table.setHorizontalHeaderLabels((
-            "Dimension",
-            "Budget",
-            "Actual Cost",
-            "Commitments",
-            "Exposure",
-            "Remaining",
-            "Variance",
-            "Status",
-        ))
-        configure_compact_table(self._variance_table)
-        self._variance_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._variance_model = QStandardItemModel(0, 8, card)
+        self._variance_model.setHorizontalHeaderLabels([
+            "Dimension", "Budget", "Actual Cost", "Commitments",
+            "Exposure", "Remaining", "Variance", "Status",
+        ])
+        self._variance_table = DataTable(
+            columns=(
+                DataTableColumn(key="dimension", title="Dimension"),
+                DataTableColumn(key="budget", title="Budget"),
+                DataTableColumn(key="actual_cost", title="Actual Cost"),
+                DataTableColumn(key="commitments", title="Commitments"),
+                DataTableColumn(key="exposure", title="Exposure"),
+                DataTableColumn(key="remaining", title="Remaining"),
+                DataTableColumn(key="variance", title="Variance"),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            parent=card,
+        )
+        self._variance_table.set_model(self._variance_model)
         layout.addWidget(self._variance_table)
         return card
 
@@ -603,61 +584,56 @@ class ProjectVarianceAnalysisPage(QWidget):
         self._populate_breakdown_table(by_job)
         self._populate_hbar_chart(by_job)
 
+    @staticmethod
+    def _make_item(text: str, *, right_align: bool = False) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if right_align:
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
     def _populate_breakdown_table(self, by_job: bool) -> None:
-        self._variance_table.setSortingEnabled(False)
-        self._variance_table.setRowCount(0)
+        self._variance_model.removeRows(0, self._variance_model.rowCount())
 
         palette = self._service_registry.theme_manager.current_palette
 
         for item in self._breakdown_items:
-            row = self._variance_table.rowCount()
-            self._variance_table.insertRow(row)
-
             if by_job:
                 dim_label = f"{item.project_job_code or '—'} — {item.project_job_name or '—'}"
             else:
                 dim_label = f"{item.project_cost_code or '—'} — {item.project_cost_code_name or '—'}"
 
             status = _variance_status(item.variance_amount, item.variance_percent)
-            values = (
-                dim_label,
-                _fmt(item.approved_budget_amount),
-                _fmt(item.actual_cost_amount),
-                _fmt(item.approved_commitment_amount),
-                _fmt(item.total_exposure_amount),
-                _fmt(item.remaining_budget_amount),
+
+            variance_item = self._make_item(
                 f"{_fmt(item.variance_amount)}  ({_fmt_pct(item.variance_percent)})",
-                status,
+                right_align=True,
             )
+            if item.variance_amount >= 0:
+                variance_item.setForeground(QBrush(QColor(palette.success)))
+            else:
+                variance_item.setForeground(QBrush(QColor(palette.danger)))
 
-            for col, val in enumerate(values):
-                cell = QTableWidgetItem(val)
-                if col in {1, 2, 3, 4, 5, 6}:
-                    cell.setTextAlignment(
-                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                    )
-                if col == 7:
-                    cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                    color_name = _status_color_name(status)
-                    if color_name == "success":
-                        cell.setForeground(QColor(palette.success))
-                    elif color_name == "warning":
-                        cell.setForeground(QColor(palette.warning))
-                    elif color_name == "danger":
-                        cell.setForeground(QColor(palette.danger))
-                if col == 6:
-                    if item.variance_amount >= 0:
-                        cell.setForeground(QColor(palette.success))
-                    else:
-                        cell.setForeground(QColor(palette.danger))
-                self._variance_table.setItem(row, col, cell)
+            status_item = self._make_item(status)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            color_name = _status_color_name(status)
+            if color_name == "success":
+                status_item.setForeground(QBrush(QColor(palette.success)))
+            elif color_name == "warning":
+                status_item.setForeground(QBrush(QColor(palette.warning)))
+            elif color_name == "danger":
+                status_item.setForeground(QBrush(QColor(palette.danger)))
 
-        self._variance_table.resizeColumnsToContents()
-        header = self._variance_table.horizontalHeader()
-        header.setSectionResizeMode(0, header.ResizeMode.Stretch)
-        for c in range(1, 8):
-            header.setSectionResizeMode(c, header.ResizeMode.ResizeToContents)
-        self._variance_table.setSortingEnabled(True)
+            self._variance_model.appendRow([
+                self._make_item(dim_label),
+                self._make_item(_fmt(item.approved_budget_amount), right_align=True),
+                self._make_item(_fmt(item.actual_cost_amount), right_align=True),
+                self._make_item(_fmt(item.approved_commitment_amount), right_align=True),
+                self._make_item(_fmt(item.total_exposure_amount), right_align=True),
+                self._make_item(_fmt(item.remaining_budget_amount), right_align=True),
+                variance_item,
+                status_item,
+            ])
 
         n = len(self._breakdown_items)
         self._table_count_label.setText(f"{n} item{'s' if n != 1 else ''}")
@@ -745,5 +721,5 @@ class ProjectVarianceAnalysisPage(QWidget):
         self._waterfall_chart.set_data([])
         self._hbar_chart.set_data([])
         self._trend_chart.set_data([])
-        self._variance_table.setRowCount(0)
+        self._variance_model.removeRows(0, self._variance_model.rowCount())
         self._table_count_label.setText("")

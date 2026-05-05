@@ -23,6 +23,7 @@ from seeker_accounting.modules.payroll.dto.payroll_setup_commands import (
     UpsertCompanyPayrollSettingsCommand,
 )
 from seeker_accounting.platform.exceptions import ValidationError
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from seeker_accounting.shared.ui.message_boxes import show_error
 
 _log = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class CompanyPayrollSettingsDialog(QDialog):
 
         self.setWindowTitle(f"Company Payroll Settings — {company_name}")
         self.setModal(True)
-        self.resize(520, 560)
+        apply_window_size(self, "modules.payroll.ui.dialogs.company.payroll.settings.dialog.0")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -114,7 +115,7 @@ class CompanyPayrollSettingsDialog(QDialog):
 
         self._pack_input = QLineEdit(stat_card)
         self._pack_input.setPlaceholderText("e.g. CMR_2024_V1")
-        stat_form.addRow("Statutory Pack Version", self._pack_input)
+        stat_form.addRow("Statutory pack version", self._pack_input)
 
         self._cnps_combo = QComboBox(stat_card)
         for code, label in _CNPS_REGIMES:

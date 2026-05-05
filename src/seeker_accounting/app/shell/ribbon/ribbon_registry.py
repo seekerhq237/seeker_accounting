@@ -2160,6 +2160,13 @@ class RibbonRegistry:
                     ),
                     RibbonDividerDef(key="after_returns"),
                     RibbonButtonDef(
+                        command_id="tax_compliance.view_return",
+                        label="View Return",
+                        icon_name="file_text",
+                        tooltip="Open the selected return in DGI VAT-form layout",
+                        default_enabled=False,
+                    ),
+                    RibbonButtonDef(
                         command_id="tax_compliance.export_pdf",
                         label="Export PDF",
                         icon_name="printer",

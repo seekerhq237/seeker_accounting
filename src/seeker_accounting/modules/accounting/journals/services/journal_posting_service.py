@@ -22,6 +22,7 @@ from seeker_accounting.modules.accounting.journals.models.journal_entry import J
 from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import (
     JournalEntryRepository,
 )
+from seeker_accounting.modules.budgeting.services.budget_control_service import BudgetControlService
 from seeker_accounting.modules.companies.repositories.company_repository import CompanyRepository
 from seeker_accounting.platform.exceptions import (
     ConflictError,
@@ -55,6 +56,7 @@ class JournalPostingService:
         company_repository_factory: CompanyRepositoryFactory,
         numbering_service: NumberingService,
         permission_service: PermissionService,
+        budget_control_service: BudgetControlService | None = None,
         audit_service: "AuditService | None" = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
@@ -65,6 +67,7 @@ class JournalPostingService:
         self._company_repository_factory = company_repository_factory
         self._numbering_service = numbering_service
         self._permission_service = permission_service
+        self._budget_control_service = budget_control_service
         self._audit_service = audit_service
 
     def post_journal(
@@ -107,6 +110,7 @@ class JournalPostingService:
 
             if total_debit != total_credit:
                 raise ValidationError("Journal entry cannot be posted until total debits equal total credits.")
+            self._enforce_budget_for_manual_journal(entry)
 
             fiscal_period = fiscal_period_repository.get_covering_date(company_id, entry.entry_date)
             if fiscal_period is None:
@@ -187,6 +191,30 @@ class JournalPostingService:
         company_repository = self._company_repository_factory(session)
         if company_repository.get_by_id(company_id) is None:
             raise NotFoundError(f"Company with id {company_id} was not found.")
+
+    def _enforce_budget_for_manual_journal(self, entry: JournalEntry) -> None:
+        if self._budget_control_service is None or entry.source_module_code is not None:
+            return
+        requests: dict[tuple[int, int | None, int | None], Decimal] = {}
+        for line in entry.lines:
+            if line.project_id is None:
+                continue
+            account_type = getattr(line.account, "account_type", None)
+            if account_type is None or account_type.financial_statement_section_code != "EXPENSE":
+                continue
+            amount = Decimal(line.debit_amount) - Decimal(line.credit_amount)
+            if amount <= Decimal("0.00"):
+                continue
+            key = (line.project_id, line.project_job_id, line.project_cost_code_id)
+            requests[key] = requests.get(key, Decimal("0.00")) + amount
+        for (project_id, project_job_id, project_cost_code_id), amount in requests.items():
+            self._budget_control_service.enforce_budget(
+                project_id,
+                amount,
+                project_job_id=project_job_id,
+                project_cost_code_id=project_cost_code_id,
+                context_label=f"Journal entry {entry.entry_number or entry.id}",
+            )
 
     def _translate_posting_integrity_error(self, exc: IntegrityError) -> ValidationError | ConflictError:
         message = str(exc.orig).lower() if exc.orig is not None else str(exc).lower()

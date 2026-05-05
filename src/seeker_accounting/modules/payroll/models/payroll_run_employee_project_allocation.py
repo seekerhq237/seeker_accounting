@@ -22,9 +22,19 @@ class PayrollRunEmployeeProjectAllocation(Base):
         UniqueConstraint("payroll_run_employee_id", "line_number"),
         Index("ix_payroll_run_employee_project_allocations_run_employee_id", "payroll_run_employee_id"),
         Index("ix_payroll_run_employee_project_allocations_project_job", "project_id", "project_job_id"),
+        Index(
+            "ix_payroll_run_employee_project_allocations_company_project",
+            "company_id",
+            "project_id",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("companies.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     payroll_run_employee_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("payroll_run_employees.id", ondelete="CASCADE"),

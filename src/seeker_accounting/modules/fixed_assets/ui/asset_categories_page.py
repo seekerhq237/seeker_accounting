@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -10,8 +12,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -19,15 +19,31 @@ from PySide6.QtWidgets import (
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.fixed_assets.ui.asset_category_dialog import AssetCategoryDialog
-from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
-from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from seeker_accounting.shared.ui.components import (
+    DataTable,
+    DataTableColumn,
+    apply_status_chip_to_column,
+)
+from seeker_accounting.shared.ui.message_boxes import show_error
 
 _METHOD_LABELS = {
     "straight_line": "Straight Line",
     "reducing_balance": "Reducing Balance",
     "sum_of_years_digits": "Sum of Years Digits",
 }
+
+
+CATEGORY_COLUMNS: tuple[DataTableColumn, ...] = (
+    DataTableColumn(key="code", title="Code"),
+    DataTableColumn(key="name", title="Name"),
+    DataTableColumn(key="asset_account", title="Asset Account"),
+    DataTableColumn(key="accum_account", title="Accum. Depr. Account"),
+    DataTableColumn(key="expense_account", title="Depr. Expense Account"),
+    DataTableColumn(key="default_life", title="Default Life"),
+    DataTableColumn(key="default_method", title="Default Method"),
+    DataTableColumn(key="status", title="Status"),
+)
 
 
 class AssetCategoriesPage(QWidget):
@@ -52,9 +68,10 @@ class AssetCategoriesPage(QWidget):
         active_company = self._active_company()
         if active_company is None:
             self._rows = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._count_label.setText("")
             self._stack.setCurrentWidget(self._no_company_state)
+            self._update_action_state()
             return
         try:
             self._rows = self._service_registry.asset_category_service.list_asset_categories(
@@ -62,12 +79,35 @@ class AssetCategoriesPage(QWidget):
             )
         except Exception as exc:
             self._rows = []
-            self._table.setRowCount(0)
+            self._model.removeRows(0, self._model.rowCount())
             self._stack.setCurrentWidget(self._empty_state)
+            self._update_action_state()
             show_error(self, "Asset Categories", f"Could not load data.\n\n{exc}")
             return
-        self._populate(self._rows)
+        self._populate()
         self._sync_stack(active_company, self._rows)
+        self._update_count_label()
+        self._update_action_state()
+
+    def _show_permission_denied(self, permission_code: str) -> None:
+        show_error(
+            self,
+            "Asset Categories",
+            self._service_registry.permission_service.build_denied_message(permission_code),
+        )
+
+    def _update_action_state(self) -> None:
+        company = self._active_company()
+        has_company = company is not None
+        has_selection = self._selected_row() is not None
+        perm = self._service_registry.permission_service
+        self._new_btn.setEnabled(has_company and perm.has_permission("assets.categories.create"))
+        self._edit_btn.setEnabled(
+            has_company and has_selection and perm.has_permission("assets.categories.edit")
+        )
+        self._deactivate_btn.setEnabled(
+            has_company and has_selection and perm.has_permission("assets.categories.deactivate")
+        )
 
     # ------------------------------------------------------------------
     # Build
@@ -134,16 +174,23 @@ class AssetCategoriesPage(QWidget):
         tl.addWidget(self._count_label)
         layout.addWidget(top)
 
-        self._table = QTableWidget(card)
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels(
-            ("Code", "Name", "Asset Account", "Accum. Depr. Account",
-             "Depr. Expense Account", "Default Life", "Default Method", "Status")
+        self._model = QStandardItemModel(0, len(CATEGORY_COLUMNS), self)
+        self._model.setHorizontalHeaderLabels([c.title for c in CATEGORY_COLUMNS])
+
+        self._table = DataTable(
+            columns=CATEGORY_COLUMNS,
+            show_search=False,
+            show_count=False,
+            show_density_toggle=True,
+            show_column_chooser=True,
+            selection_mode="single",
+            empty_state_text="No asset categories to display.",
+            parent=card,
         )
-        configure_compact_table(self._table)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(lambda _: self._on_edit())
+        self._table.set_model(self._model)
+        self._status_delegate = apply_status_chip_to_column(self._table.view(), 7)
+        self._table.selection_changed.connect(lambda _r: self._update_action_state())
+        self._table.row_activated.connect(lambda _r: self._on_edit())
         layout.addWidget(self._table)
         return card
 
@@ -190,38 +237,62 @@ class AssetCategoriesPage(QWidget):
     # Populate
     # ------------------------------------------------------------------
 
-    def _populate(self, rows: list) -> None:
-        self._table.setSortingEnabled(False)
-        self._table.setRowCount(0)
-        for row in rows:
-            ri = self._table.rowCount()
-            self._table.insertRow(ri)
-            code_item = QTableWidgetItem(row.code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._table.setItem(ri, 0, code_item)
-            self._table.setItem(ri, 1, QTableWidgetItem(row.name))
-            self._table.setItem(ri, 2, QTableWidgetItem(
-                f"{row.asset_account_code} — {row.asset_account_name}"
-            ))
-            self._table.setItem(ri, 3, QTableWidgetItem(
-                f"{row.accumulated_depreciation_account_code} — {row.accumulated_depreciation_account_name}"
-            ))
-            self._table.setItem(ri, 4, QTableWidgetItem(
-                f"{row.depreciation_expense_account_code} — {row.depreciation_expense_account_name}"
-            ))
-            self._table.setItem(ri, 5, QTableWidgetItem(f"{row.default_useful_life_months} mo"))
-            self._table.setItem(ri, 6, QTableWidgetItem(
-                _METHOD_LABELS.get(row.default_depreciation_method_code, row.default_depreciation_method_code)
-            ))
-            status_item = QTableWidgetItem("Active" if row.is_active else "Inactive")
-            status_item.setData(Qt.ItemDataRole.UserRole + 1, row.is_active)
-            self._table.setItem(ri, 7, status_item)
-        self._table.resizeColumnsToContents()
-        hdr = self._table.horizontalHeader()
-        hdr.setSectionResizeMode(1, hdr.ResizeMode.Stretch)
-        self._table.setSortingEnabled(True)
-        count = len(rows)
-        self._count_label.setText(f"{count} record" if count == 1 else f"{count} records")
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    @staticmethod
+    def _make_numeric(value) -> QStandardItem:
+        text = "" if value is None else f"{Decimal(str(value)):,.2f}"
+        item = QStandardItem(text)
+        item.setEditable(False)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        return item
+
+    def _populate(self) -> None:
+        self._model.removeRows(0, self._model.rowCount())
+        for row in self._rows:
+            life_item = QStandardItem(f"{row.default_useful_life_months} mo")
+            life_item.setEditable(False)
+            life_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            items = [
+                self._make_item(row.code, user_data=row.id),
+                self._make_item(row.name),
+                self._make_item(f"{row.asset_account_code} — {row.asset_account_name}"),
+                self._make_item(
+                    f"{row.accumulated_depreciation_account_code} — {row.accumulated_depreciation_account_name}"
+                ),
+                self._make_item(
+                    f"{row.depreciation_expense_account_code} — {row.depreciation_expense_account_name}"
+                ),
+                life_item,
+                self._make_item(
+                    _METHOD_LABELS.get(
+                        row.default_depreciation_method_code, row.default_depreciation_method_code
+                    )
+                ),
+                self._make_item("active" if row.is_active else "inactive"),
+            ]
+            self._model.appendRow(items)
+
+    def _update_count_label(self) -> None:
+        total = len(self._rows)
+        self._count_label.setText(
+            f"{total} record" if total == 1 else f"{total} records"
+        )
+
+    def _selected_row(self):
+        rows = self._table.selected_rows()
+        if not rows:
+            return None
+        idx = rows[0]
+        if 0 <= idx < len(self._rows):
+            return self._rows[idx]
+        return None
 
     # ------------------------------------------------------------------
     # Actions
@@ -231,6 +302,9 @@ class AssetCategoriesPage(QWidget):
         company = self._active_company()
         if company is None:
             show_error(self, "Asset Categories", "Select an active company first.")
+            return
+        if not self._service_registry.permission_service.has_permission("assets.categories.create"):
+            self._show_permission_denied("assets.categories.create")
             return
         dialog = AssetCategoryDialog(
             self._service_registry, company.company_id, company.company_name, parent=self
@@ -242,16 +316,15 @@ class AssetCategoriesPage(QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        row = self._selected_row()
+        if row is None:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        if not self._service_registry.permission_service.has_permission("assets.categories.edit"):
+            self._show_permission_denied("assets.categories.edit")
             return
-        cat_id = item.data(Qt.ItemDataRole.UserRole)
         dialog = AssetCategoryDialog(
             self._service_registry, company.company_id, company.company_name,
-            category_id=cat_id, parent=self
+            category_id=row.id, parent=self
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.reload()
@@ -260,25 +333,26 @@ class AssetCategoriesPage(QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._table.currentRow()
-        if row < 0:
+        row = self._selected_row()
+        if row is None:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        if not self._service_registry.permission_service.has_permission("assets.categories.deactivate"):
+            self._show_permission_denied("assets.categories.deactivate")
             return
-        cat_id = item.data(Qt.ItemDataRole.UserRole)
-        cat_code = item.text()
         reply = QMessageBox.question(
             self, "Deactivate Category",
-            f"Deactivate asset category '{cat_code}'?",
+            f"Deactivate asset category '{row.code}'?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
         try:
             self._service_registry.asset_category_service.deactivate_asset_category(
-                company.company_id, cat_id
+                company.company_id, row.id
             )
+        except PermissionDeniedError:
+            self._show_permission_denied("assets.categories.deactivate")
+            return
         except (ValidationError, NotFoundError) as exc:
             show_error(self, "Asset Categories", str(exc))
             return

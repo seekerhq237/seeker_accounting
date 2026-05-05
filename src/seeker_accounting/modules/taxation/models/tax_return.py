@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from seeker_accounting.db.base import Base, TimestampMixin
@@ -65,6 +65,39 @@ class TaxReturn(TimestampMixin, Base):
         Integer,
         ForeignKey("journal_entries.id", ondelete="RESTRICT"),
         nullable=True,
+    )
+    # Slice T35: amendment support
+    is_amended: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, default=False
+    )
+    amends_return_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("tax_returns.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Slice T36: credit brought forward from previous period
+    credit_brought_forward: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )
+    # Slice T37: withholding VAT deducted at source
+    withholding_vat_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(18, 2), nullable=True
+    )
+
+    # Slice T50: e-filing scaffold columns.
+    # SHA-256 hex digest of the serialised payload — stored for
+    # non-repudiation so the operator can prove which payload was sent.
+    submission_payload_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    # Acknowledgement ID returned by the DGI e-filing portal after
+    # submission.  NULL until the operator records a portal response.
+    submission_acknowledgement_id: Mapped[str | None] = mapped_column(
+        String(120), nullable=True
+    )
+    # Timestamp of the authority's acknowledgement.
+    submission_authority_timestamp: Mapped[datetime | None] = mapped_column(
+        DateTime(), nullable=True
     )
 
     obligation: Mapped["TaxObligation"] = relationship(

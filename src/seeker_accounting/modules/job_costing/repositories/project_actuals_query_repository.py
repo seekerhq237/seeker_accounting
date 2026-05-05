@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from seeker_accounting.modules.accounting.chart_of_accounts.models.account import Account
 from seeker_accounting.modules.accounting.journals.models.journal_entry import JournalEntry
 from seeker_accounting.modules.accounting.journals.models.journal_entry_line import JournalEntryLine
+from seeker_accounting.modules.accounting.reference_data.models.tax_code import TaxCode
 from seeker_accounting.modules.accounting.reference_data.models.account_type import AccountType
 from seeker_accounting.modules.contracts_projects.models.project_cost_code import ProjectCostCode
 from seeker_accounting.modules.contracts_projects.models.project_job import ProjectJob
@@ -108,6 +109,22 @@ class ProjectActualsQueryRepository:
             ),
         )
 
+    def sum_actual_by_project_dimension(
+        self,
+        company_id: int,
+        project_id: int,
+        project_job_id: int | None = None,
+        project_cost_code_id: int | None = None,
+    ) -> Decimal:
+        total = Decimal("0.00")
+        for row in self.list_actual_cost_by_dimension(company_id, project_id):
+            if project_job_id is not None and row.project_job_id != project_job_id:
+                continue
+            if project_cost_code_id is not None and row.project_cost_code_id != project_cost_code_id:
+                continue
+            total += row.amount
+        return total.quantize(Decimal("0.01"))
+
     def _list_purchase_bill_costs(
         self,
         company_id: int,
@@ -122,9 +139,19 @@ class ProjectActualsQueryRepository:
                 PurchaseBillLine.project_cost_code_id.label("project_cost_code_id"),
                 ProjectCostCode.code.label("project_cost_code"),
                 ProjectCostCode.name.label("project_cost_code_name"),
-                func.coalesce(func.sum(PurchaseBillLine.line_subtotal_amount), 0).label("amount"),
+                func.coalesce(
+                    func.sum(
+                        PurchaseBillLine.line_subtotal_amount
+                        + case(
+                            (TaxCode.is_recoverable.is_(False), PurchaseBillLine.line_tax_amount),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("amount"),
             )
             .join(PurchaseBill, PurchaseBill.id == PurchaseBillLine.purchase_bill_id)
+            .outerjoin(TaxCode, TaxCode.id == PurchaseBillLine.tax_code_id)
             .outerjoin(ProjectJob, ProjectJob.id == PurchaseBillLine.project_job_id)
             .outerjoin(ProjectCostCode, ProjectCostCode.id == PurchaseBillLine.project_cost_code_id)
             .where(
@@ -246,7 +273,7 @@ class ProjectActualsQueryRepository:
             .where(
                 PayrollRun.company_id == company_id,
                 PayrollRunEmployeeProjectAllocation.project_id == project_id,
-                PayrollRun.status_code.in_(("approved", "posted")),
+                PayrollRun.status_code == "posted",
                 PayrollRunEmployee.status_code == "included",
             )
             .group_by(

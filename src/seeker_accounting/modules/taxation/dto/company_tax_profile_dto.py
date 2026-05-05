@@ -26,6 +26,11 @@ class CompanyTaxProfileDTO:
 
     is_vat_liable: bool
     vat_effective_from: date | None
+    vat_uses_tax_point: bool
+    # T32: ACCRUAL (default) or CASH accounting basis for VAT.
+    vat_accounting_basis: str
+    # T34: pro-rata percentage; None means 100% recovery (no mixed-supply).
+    vat_pro_rata_percent: float | None
 
     cit_rate_profile_code: str | None
     cit_installment_profile_code: str | None
@@ -58,6 +63,10 @@ class UpsertCompanyTaxProfileCommand:
 
     is_vat_liable: bool = False
     vat_effective_from: date | None = None
+    vat_uses_tax_point: bool = False
+    # T32 / T34
+    vat_accounting_basis: str = "ACCRUAL"
+    vat_pro_rata_percent: float | None = None
 
     cit_rate_profile_code: str | None = None
     cit_installment_profile_code: str | None = None

@@ -15,12 +15,11 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.app.navigation import nav_ids
@@ -33,7 +32,7 @@ from seeker_accounting.platform.exceptions import NotFoundError
 from seeker_accounting.shared.ui.entity_detail.entity_detail_page import EntityDetailPage
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBarItem
 from seeker_accounting.shared.ui.message_boxes import show_error
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 _log = logging.getLogger(__name__)
 
@@ -155,15 +154,28 @@ class AccountDetailPage(EntityDetailPage):
         layout.addWidget(summary_row)
 
         # Ledger lines table
-        self._ledger_table = QTableWidget(container)
-        self._ledger_table.setObjectName("DashboardActivityTable")
-        self._ledger_table.setColumnCount(6)
-        self._ledger_table.setHorizontalHeaderLabels(
-            ("Date", "Entry #", "Description", "Debit", "Credit", "Balance")
+        self._ledger_model = QStandardItemModel(0, 6, container)
+        self._ledger_model.setHorizontalHeaderLabels(
+            ["Date", "Entry #", "Description", "Debit", "Credit", "Balance"]
         )
-        configure_compact_table(self._ledger_table)
+        self._ledger_table = DataTable(
+            columns=(
+                DataTableColumn(key="date", title="Date"),
+                DataTableColumn(key="entry", title="Entry #"),
+                DataTableColumn(key="desc", title="Description"),
+                DataTableColumn(key="debit", title="Debit"),
+                DataTableColumn(key="credit", title="Credit"),
+                DataTableColumn(key="balance", title="Balance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=container,
+        )
+        self._ledger_table.set_model(self._ledger_model)
 
-        hdr = self._ledger_table.horizontalHeader()
+        hdr = self._ledger_table.view().horizontalHeader()
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -171,7 +183,7 @@ class AccountDetailPage(EntityDetailPage):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
 
-        self._ledger_table.itemDoubleClicked.connect(self._on_ledger_line_double_clicked)
+        self._ledger_table.view().doubleClicked.connect(self._on_ledger_line_double_clicked)
 
         self._ledger_empty = QLabel("No posted journal lines for this account in the last 180 days.", container)
         self._ledger_empty.setObjectName("DashboardEmptyLabel")
@@ -210,8 +222,12 @@ class AccountDetailPage(EntityDetailPage):
             show_error(self, "Account Detail", "Account not found.")
             self._navigate_back()
             return
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Account Detail", f"Failed to load account: {exc}")
+            return
+        except Exception:
+            _log.exception("Account Detail")
+            show_error(self, "Account Detail", "An unexpected error occurred. See application log for details.")
             return
 
         # Load ledger (best-effort — don't fail the whole page if ledger unavailable)
@@ -323,20 +339,18 @@ class AccountDetailPage(EntityDetailPage):
             f"{date_from.strftime('%d %b %Y')}  –  {today.strftime('%d %b %Y')}"
         )
 
-        table = self._ledger_table
-        table.setSortingEnabled(False)
-        table.setRowCount(0)
+        self._ledger_model.removeRows(0, self._ledger_model.rowCount())
 
         if ledger is None or not ledger.lines:
             self._ledger_opening.setText("—")
             self._ledger_period_debit.setText("—")
             self._ledger_period_credit.setText("—")
             self._ledger_closing.setText("—")
-            table.setVisible(False)
+            self._ledger_table.setVisible(False)
             self._ledger_empty.setVisible(True)
             return
 
-        table.setVisible(True)
+        self._ledger_table.setVisible(True)
         self._ledger_empty.setVisible(False)
 
         self._ledger_opening.setText(f"{ledger.opening_balance:,.2f}")
@@ -344,48 +358,52 @@ class AccountDetailPage(EntityDetailPage):
         self._ledger_period_credit.setText(f"{ledger.period_credit:,.2f}")
         self._ledger_closing.setText(f"{ledger.closing_balance:,.2f}")
 
-        for row_idx, line in enumerate(ledger.lines):
-            table.insertRow(row_idx)
+        for line in ledger.lines:
+            date_item = self._make_item(line.entry_date.strftime("%d %b %Y"))
+            date_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
 
-            date_cell = QTableWidgetItem(line.entry_date.strftime("%d %b %Y"))
-            date_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            table.setItem(row_idx, 0, date_cell)
-
-            entry_cell = QTableWidgetItem(line.entry_number or "—")
-            entry_cell.setData(Qt.ItemDataRole.UserRole, line.journal_entry_id)
-            table.setItem(row_idx, 1, entry_cell)
+            entry_item = self._make_item(line.entry_number or "—", user_data=line.journal_entry_id)
 
             desc_parts = [p for p in (line.line_description, line.journal_description, line.reference_text) if p]
             desc = desc_parts[0] if desc_parts else "—"
-            table.setItem(row_idx, 2, QTableWidgetItem(desc))
+            desc_item = self._make_item(desc)
 
             debit_text = f"{line.debit_amount:,.2f}" if line.debit_amount else "—"
-            debit_cell = QTableWidgetItem(debit_text)
-            debit_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 3, debit_cell)
+            debit_item = self._make_item(debit_text)
+            debit_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
             credit_text = f"{line.credit_amount:,.2f}" if line.credit_amount else "—"
-            credit_cell = QTableWidgetItem(credit_text)
-            credit_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 4, credit_cell)
+            credit_item = self._make_item(credit_text)
+            credit_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-            balance_cell = QTableWidgetItem(f"{line.running_balance:,.2f}")
-            balance_cell.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            table.setItem(row_idx, 5, balance_cell)
+            balance_item = self._make_item(f"{line.running_balance:,.2f}")
+            balance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
-        table.setSortingEnabled(True)
+            self._ledger_model.appendRow([date_item, entry_item, desc_item, debit_item, credit_item, balance_item])
 
-    def _on_ledger_line_double_clicked(self, item: QTableWidgetItem) -> None:
-        row = item.row()
-        entry_cell = self._ledger_table.item(row, 1)
-        if entry_cell is None:
+    def _on_ledger_line_double_clicked(self, index) -> None:
+        proxy = self._ledger_table.view().model()
+        if proxy is None:
             return
-        journal_entry_id = entry_cell.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        entry_item = self._ledger_model.item(row, 1)
+        if entry_item is None:
+            return
+        journal_entry_id = entry_item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(journal_entry_id, int):
             return
         self._service_registry.navigation_service.navigate(
             nav_ids.JOURNALS, context={"journal_entry_id": journal_entry_id}
         )
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     # ── Actions ───────────────────────────────────────────────────────
 

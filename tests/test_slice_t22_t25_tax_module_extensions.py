@@ -472,14 +472,14 @@ class PDFExportTests(unittest.TestCase):
             lines=[
                 SimpleNamespace(
                     id=1,
-                    box_code="A1",
-                    label="Sales subject to VAT",
+                    box_code="TAXABLE_SALES",
+                    label="Taxable sales (HT)",
                     amount=Decimal("700000.00"),
                     sort_order=1,
                 ),
                 SimpleNamespace(
                     id=2,
-                    box_code="B2",
+                    box_code="VAT_OUTPUT",
                     label="Output VAT",
                     amount=Decimal("133000.00"),
                     sort_order=2,
@@ -502,7 +502,13 @@ class PDFExportTests(unittest.TestCase):
         engine.render_pdf.assert_called_once()
         html_arg = engine.render_pdf.call_args.args[0]
         self.assertIn("Acme Test Co", html_arg)
-        self.assertIn("Sales subject to VAT", html_arg)
+        # DGI form structure must be present
+        self.assertIn("Section 4", html_arg)
+        self.assertIn("Turnover Realised", html_arg)
+        self.assertIn("L17", html_arg)
+        self.assertIn("L40", html_arg)
+        # Aggregated values rendered into the form
+        self.assertIn("700,000.00", html_arg)
         self.assertIn("133,000.00", html_arg)
 
     def test_rejects_non_pdf_extension(self) -> None:
@@ -561,7 +567,11 @@ class PDFExportTests(unittest.TestCase):
                 ),
             )
         html = engine.render_pdf.call_args.args[0]
-        self.assertIn("No breakdown lines", html)
+        # Even with no aggregated lines, the DGI form structure is
+        # still rendered (empty zeros under each section).
+        self.assertIn("Section 4", html)
+        self.assertIn("L17", html)
+        self.assertIn("L40", html)
 
 
 # ─── T25 DSF expanded sheets ──────────────────────────────────────────

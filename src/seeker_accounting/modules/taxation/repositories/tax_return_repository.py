@@ -24,12 +24,16 @@ class TaxReturnRepository:
         return self._session.scalar(stmt)
 
     def get_by_obligation(
-        self, company_id: int, obligation_id: int
+        self, company_id: int, obligation_id: int,
+        *,
+        status_code: str | None = None,
     ) -> TaxReturn | None:
         stmt = select(TaxReturn).where(
             TaxReturn.company_id == company_id,
             TaxReturn.obligation_id == obligation_id,
         )
+        if status_code is not None:
+            stmt = stmt.where(TaxReturn.status_code == status_code)
         return self._session.scalar(stmt)
 
     def list_by_company(
@@ -37,10 +41,13 @@ class TaxReturnRepository:
         company_id: int,
         *,
         status_code: str | None = None,
+        tax_type_code: str | None = None,
     ) -> list[TaxReturn]:
         stmt = select(TaxReturn).where(TaxReturn.company_id == company_id)
         if status_code is not None:
             stmt = stmt.where(TaxReturn.status_code == status_code)
+        if tax_type_code is not None:
+            stmt = stmt.where(TaxReturn.tax_type_code == tax_type_code)
         stmt = stmt.order_by(TaxReturn.period_end.desc(), TaxReturn.id.desc())
         return list(self._session.scalars(stmt))
 

@@ -1,9 +1,7 @@
 """CompensationChangeWizardDialog — guided compensation change flow.
 
 Orchestrates the salary/profile + recurring-component change lifecycle
-for a single employee. Expert controls (`Edit Compensation`,
-`Assign Component`) remain available on the ribbon as fast-path
-alternatives.
+for a single employee.  Built on top of P1.S6 WizardShell (P4.S5).
 
 Steps:
 
@@ -15,11 +13,7 @@ Steps:
                    recurring assignments for context.
 4. **Review**    — confirm changes + optional approval note, then save.
 
-First-pass scope:
-- A live retro / next-run preview is **not** included. The blueprint
-  flags this as a future service addition (see plan P7a further
-  consideration #1). This wizard creates effective-dated records which
-  will be picked up naturally by the next payroll run for the period.
+Public API is unchanged: use the ``run()`` classmethod as before.
 """
 
 from __future__ import annotations
@@ -30,22 +24,21 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from PySide6.QtCore import QDate, Qt
+from PySide6.QtGui import QBrush, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDateEdit,
     QDialogButtonBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -61,8 +54,15 @@ from seeker_accounting.platform.exceptions import (
     PermissionDeniedError,
     ValidationError,
 )
-from seeker_accounting.shared.ui.dialogs import BaseDialog
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+from seeker_accounting.shared.ui.components.inline_issue_band import ValidationIssue
+from seeker_accounting.shared.ui.components.wizard_shell import (
+    WizardShell,
+    WizardStepDescriptor,
+)
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 
 
 _log = logging.getLogger(__name__)
@@ -82,7 +82,35 @@ class CompensationChangeWizardResult:
     summary: str = ""
 
 
-class CompensationChangeWizardDialog(BaseDialog):
+# ── Step IDs ─────────────────────────────────────────────────────────────────
+
+_STEP_EMPLOYEE = "employee"
+_STEP_COMP = "comp"
+_STEP_RECURRING = "recurring"
+_STEP_REVIEW = "review"
+
+_STEPS = [
+    WizardStepDescriptor(id=_STEP_EMPLOYEE, title="Employee"),
+    WizardStepDescriptor(id=_STEP_COMP, title="New Compensation"),
+    WizardStepDescriptor(id=_STEP_RECURRING, title="Recurring", optional=True),
+    WizardStepDescriptor(id=_STEP_REVIEW, title="Review"),
+]
+
+
+def _card(parent: QWidget, title: str) -> QFrame:
+    card = QFrame(parent)
+    card.setObjectName("DialogSectionCard")
+    card.setProperty("card", True)
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(18, 16, 18, 18)
+    layout.setSpacing(10)
+    tlabel = QLabel(title, card)
+    tlabel.setObjectName("DialogSectionTitle")
+    layout.addWidget(tlabel)
+    return card
+
+
+class CompensationChangeWizardDialog(WizardShell):
     """4-step guided compensation change dialog — see module docstring."""
 
     _STEP_LABELS = (
@@ -120,7 +148,7 @@ class CompensationChangeWizardDialog(BaseDialog):
             help_key="wizard.compensation_change",
         )
         self.setObjectName("CompensationChangeWizardDialog")
-        self.resize(820, 660)
+        apply_window_size(self, "modules.payroll.ui.wizards.compensation.change.wizard.0")
 
         intro = QLabel(
             "Record a salary / profile change and (optionally) add recurring "
@@ -210,7 +238,7 @@ class CompensationChangeWizardDialog(BaseDialog):
         grid.setVerticalSpacing(8)
 
         self._employee_combo = QComboBox(card)
-        self._employee_combo.setMinimumWidth(300)
+        self._employee_combo.setMinimumWidth(DEFAULT_TOKENS.sizes.form_combo_large_min_w)
         self._employee_combo.currentIndexChanged.connect(self._on_employee_changed)
         grid.addWidget(create_field_block("Employee *", self._employee_combo), 0, 0, 1, 2)
 
@@ -237,7 +265,7 @@ class CompensationChangeWizardDialog(BaseDialog):
         outer = QVBoxLayout(page)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(12)
-        card = self._card("New Compensation Profile")
+        card = self._card("New compensation")
 
         self._comp_current_label = QLabel(card)
         self._comp_current_label.setObjectName("DialogSectionSummary")
@@ -250,7 +278,7 @@ class CompensationChangeWizardDialog(BaseDialog):
 
         self._profile_name_edit = QLineEdit(card)
         self._profile_name_edit.setPlaceholderText("e.g. 2026 Salary Adjustment")
-        grid.addWidget(create_field_block("Profile Name *", self._profile_name_edit), 0, 0, 1, 2)
+        grid.addWidget(create_field_block("Compensation name *", self._profile_name_edit), 0, 0, 1, 2)
 
         self._salary_edit = QLineEdit(card)
         self._salary_edit.setPlaceholderText("0.00")
@@ -273,29 +301,30 @@ class CompensationChangeWizardDialog(BaseDialog):
         outer.setSpacing(12)
 
         card_current = self._card("Current Recurring Components")
-        self._recurring_table = QTableWidget(0, 4, card_current)
-        self._recurring_table.setHorizontalHeaderLabels(
-            ["Component", "Override Amount", "Override Rate", "Active"]
+        self._recurring_model = QStandardItemModel(0, 4, card_current)
+        self._recurring_table = DataTable(
+            columns=(
+                DataTableColumn(key="component", title="Payroll component"),
+                DataTableColumn(key="override_amount", title="Override Amount"),
+                DataTableColumn(key="override_rate", title="Override Rate"),
+                DataTableColumn(key="active", title="Active"),
+            ),
+            show_search=False,
+            parent=card_current,
         )
-        self._recurring_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._recurring_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._recurring_table.verticalHeader().setVisible(False)
-        self._recurring_table.horizontalHeader().setStretchLastSection(True)
-        self._recurring_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
+        self._recurring_table.set_model(self._recurring_model)
         card_current.layout().addWidget(self._recurring_table, 1)
         outer.addWidget(card_current, 1)
 
-        card_add = self._card("Add Recurring Component (Optional)")
+        card_add = self._card("Add recurring payroll component (optional)")
         grid = QGridLayout()
         grid.setHorizontalSpacing(12)
         grid.setVerticalSpacing(8)
 
         self._component_combo = QComboBox(card_add)
-        self._component_combo.setMinimumWidth(260)
+        self._component_combo.setMinimumWidth(DEFAULT_TOKENS.sizes.form_combo_min_w)
         self._component_combo.addItem("— Skip —", None)
-        grid.addWidget(create_field_block("Component", self._component_combo), 0, 0, 1, 2)
+        grid.addWidget(create_field_block("Payroll component", self._component_combo), 0, 0, 1, 2)
 
         self._override_amount_edit = QLineEdit(card_add)
         self._override_amount_edit.setPlaceholderText("blank = use component default")
@@ -308,8 +337,8 @@ class CompensationChangeWizardDialog(BaseDialog):
         card_add.layout().addLayout(grid)
 
         hint = QLabel(
-            "Only one component may be added from this wizard. For multiple "
-            "changes, run the wizard again or use the Component Assignment "
+            "Only one payroll component may be added from this wizard. For multiple "
+            "changes, run the wizard again or use the component assignment "
             "dialog.",
             card_add,
         )
@@ -336,7 +365,7 @@ class CompensationChangeWizardDialog(BaseDialog):
         self._notes_edit.setPlaceholderText(
             "Optional approval / change note (recorded with the new profile)."
         )
-        self._notes_edit.setFixedHeight(96)
+        self._notes_edit.setFixedHeight(DEFAULT_TOKENS.sizes.form_textarea_h_large)
         card.layout().addWidget(
             create_field_block("Approval Note", self._notes_edit)
         )
@@ -474,7 +503,7 @@ class CompensationChangeWizardDialog(BaseDialog):
 
         if self._current_profile:
             self._current_label.setText(
-                f"<b>Current profile:</b> {self._current_profile.profile_name} — "
+                f"<b>Current compensation:</b> {self._current_profile.profile_name} — "
                 f"{self._current_profile.basic_salary} "
                 f"{self._current_profile.currency_code} (from "
                 f"{self._current_profile.effective_from.isoformat()})"
@@ -483,7 +512,7 @@ class CompensationChangeWizardDialog(BaseDialog):
             self._currency_edit.setText(self._current_profile.currency_code)
         else:
             self._current_label.setText(
-                "<i>No active compensation profile on record.</i>"
+                "<i>No active compensation on record.</i>"
             )
             self._currency_edit.setText("XAF")
 
@@ -519,8 +548,8 @@ class CompensationChangeWizardDialog(BaseDialog):
         # Block going back past apply once the profile is saved.
         if self._created_profile is not None:
             self._set_error(
-                "Change already applied. Use Cancel to close; the new profile "
-                "is visible on the Compensation Profiles tab."
+                "Change already applied. Use Cancel to close; the new compensation "
+                "is visible on the Compensation tab."
             )
             return
         self._current_step -= 1
@@ -571,33 +600,29 @@ class CompensationChangeWizardDialog(BaseDialog):
             )
         else:
             self._comp_current_label.setText(
-                "<i>Creating a first compensation profile for this employee.</i>"
+                "<i>Creating first compensation for this employee.</i>"
             )
 
     def _refresh_recurring_page(self) -> None:
         rows = self._current_assignments
-        self._recurring_table.setRowCount(len(rows))
-        for i, a in enumerate(rows):
-            self._recurring_table.setItem(
-                i, 0, QTableWidgetItem(f"{a.component_code} · {a.component_name}")
-            )
-            self._recurring_table.setItem(
-                i, 1,
-                QTableWidgetItem(str(a.override_amount) if a.override_amount is not None else "—"),
-            )
-            self._recurring_table.setItem(
-                i, 2,
-                QTableWidgetItem(str(a.override_rate) if a.override_rate is not None else "—"),
-            )
-            self._recurring_table.setItem(
-                i, 3, QTableWidgetItem("Yes" if a.is_active else "No")
-            )
+        self._recurring_model.removeRows(0, self._recurring_model.rowCount())
+        for a in rows:
+            self._recurring_model.appendRow([
+                self._make_item(f"{a.component_code} · {a.component_name}"),
+                self._make_item(str(a.override_amount) if a.override_amount is not None else "—"),
+                self._make_item(str(a.override_rate) if a.override_rate is not None else "—"),
+                self._make_item("Yes" if a.is_active else "No"),
+            ])
         if not rows:
-            self._recurring_table.setRowCount(1)
-            placeholder = QTableWidgetItem("No recurring components on record.")
-            placeholder.setForeground(Qt.GlobalColor.gray)
-            self._recurring_table.setItem(0, 0, placeholder)
-            self._recurring_table.setSpan(0, 0, 1, 4)
+            ph = QStandardItem("No recurring components on record.")
+            ph.setEditable(False)
+            ph.setForeground(QBrush(Qt.GlobalColor.gray))
+            self._recurring_model.appendRow([
+                ph,
+                QStandardItem(""),
+                QStandardItem(""),
+                QStandardItem(""),
+            ])
 
     def _refresh_review(self) -> None:
         emp = self._selected_employee()
@@ -607,7 +632,7 @@ class CompensationChangeWizardDialog(BaseDialog):
         comp_id = self._component_combo.currentData()
         comp_label = self._component_combo.currentText() if comp_id else "— none —"
 
-        current_line = "No active profile"
+        current_line = "No active compensation"
         if self._current_profile:
             current_line = (
                 f"{self._current_profile.profile_name} — "
@@ -636,7 +661,7 @@ class CompensationChangeWizardDialog(BaseDialog):
 
     def _validate_comp(self) -> bool:
         if not self._profile_name_edit.text().strip():
-            self._set_error("Profile name is required.")
+            self._set_error("Compensation name is required.")
             return False
         try:
             salary = Decimal(self._salary_edit.text().strip())
@@ -733,12 +758,12 @@ class CompensationChangeWizardDialog(BaseDialog):
                 # Profile was created; surface the assignment error but
                 # still treat the profile change as applied.
                 self._set_error(
-                    f"Profile created but recurring component assignment failed: {exc}"
+                    f"Compensation created but recurring component assignment failed: {exc}"
                 )
 
         summary = (
             f"Compensation change applied for {emp.display_name}.\n"
-            f"New profile: {profile_dto.profile_name} — "
+            f"New compensation: {profile_dto.profile_name} — "
             f"{profile_dto.basic_salary} {profile_dto.currency_code} "
             f"(effective {effective_from.isoformat()})."
         )
@@ -769,3 +794,11 @@ class CompensationChangeWizardDialog(BaseDialog):
             return Decimal(text)
         except InvalidOperation:
             return None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item

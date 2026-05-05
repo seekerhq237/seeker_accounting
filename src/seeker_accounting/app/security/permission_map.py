@@ -60,6 +60,10 @@ NAVIGATION_REQUIRED_PERMISSIONS: dict[str, tuple[str, ...]] = {
     nav_ids.ITEMS: ("inventory.items.view",),
     nav_ids.INVENTORY_DOCUMENTS: ("inventory.documents.view",),
     nav_ids.STOCK_POSITION: ("inventory.stock.view",),
+    nav_ids.INVENTORY_DASHBOARD: ("inventory.dashboard.view",),
+    nav_ids.PRICE_LISTS: ("inventory.price_lists.view",),
+    nav_ids.REORDER_PLANNING: ("inventory.reorder.view",),
+    nav_ids.INVENTORY_REPORTS: ("inventory.reports.view",),
     nav_ids.ASSET_CATEGORIES: ("assets.categories.view",),
     nav_ids.ASSETS: ("assets.master.view",),
     nav_ids.DEPRECIATION_RUNS: ("assets.runs.view",),
@@ -108,6 +112,20 @@ NAVIGATION_REQUIRED_PERMISSIONS: dict[str, tuple[str, ...]] = {
     nav_ids.ROLES: ("administration.roles.view",),
     nav_ids.AUDIT_LOG: ("audit.view",),
     nav_ids.BACKUP_RESTORE: ("administration.backup.export", "administration.backup.import"),
+    # ── Taxation auxiliary pages (T22-T24) ─────────────────────────────
+    nav_ids.TAX_DASHBOARD: ("taxation.dashboard.view",),
+    nav_ids.TAX_AUDIT_TRAIL: ("taxation.audit.view",),
+    nav_ids.WITHHOLDING_CERTIFICATES: ("taxation.withholding.view",),
+    # ── Inventory auxiliary pages ──────────────────────────────────────
+    nav_ids.UOM_CATEGORIES: ("inventory.units.view",),
+    # ── Entity detail workspaces (mirror their list view) ──────────────
+    nav_ids.CUSTOMER_DETAIL: ("customers.view",),
+    nav_ids.SUPPLIER_DETAIL: ("suppliers.view",),
+    nav_ids.ACCOUNT_DETAIL: ("chart.accounts.view",),
+    nav_ids.ITEM_DETAIL: ("inventory.items.view",),
+    nav_ids.SALES_INVOICE_DETAIL: ("sales.invoices.view",),
+    nav_ids.PURCHASE_BILL_DETAIL: ("purchases.bills.view",),
+    # DASHBOARD remains ungated — every authenticated user lands here.
 }
 
 

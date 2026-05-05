@@ -3,21 +3,20 @@ from __future__ import annotations
 from typing import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
     QLabel,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from seeker_accounting.modules.reporting.dto.trend_analysis_dto import TrendDetailDTO
 from seeker_accounting.modules.reporting.ui.widgets.mini_trend_chart import MiniTrendChart
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.styles.theme_manager import ThemeManager
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
 class FinancialAnalysisDetailDialog(QDialog):
@@ -56,11 +55,23 @@ class FinancialAnalysisDetailDialog(QDialog):
             chart_layout.addWidget(chart)
         layout.addWidget(chart_card)
 
-        self._table = QTableWidget(self)
-        self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(["Metric", "Current", "Prior", "Variance"])
-        configure_compact_table(self._table)
-        self._table.cellDoubleClicked.connect(self._on_row_double_clicked)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="metric", title="Metric"),
+                DataTableColumn(key="current", title="Current"),
+                DataTableColumn(key="prior", title="Prior"),
+                DataTableColumn(key="variance", title="Variance"),
+            ),
+            show_search=False,
+            show_count=False,
+            show_density_toggle=False,
+            show_column_chooser=False,
+            parent=self,
+        )
+        self._model = QStandardItemModel(0, 4, self)
+        self._model.setHorizontalHeaderLabels(["Metric", "Current", "Prior", "Variance"])
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_row_double_clicked)
         layout.addWidget(self._table, 1)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
@@ -85,25 +96,38 @@ class FinancialAnalysisDetailDialog(QDialog):
         return card
 
     def _bind_rows(self) -> None:
-        self._table.setRowCount(len(self._detail_dto.variance_rows))
-        for row_index, row in enumerate(self._detail_dto.variance_rows):
-            label_item = QTableWidgetItem(row.label)
-            if row.detail_key:
-                label_item.setData(Qt.ItemDataRole.UserRole, row.detail_key)
-            self._table.setItem(row_index, 0, label_item)
-            self._table.setItem(row_index, 1, QTableWidgetItem(self._fmt(row.current_value)))
-            self._table.setItem(row_index, 2, QTableWidgetItem(self._fmt(row.prior_value)))
-            variance_item = QTableWidgetItem(self._fmt(row.variance_value))
+        self._model.removeRows(0, self._model.rowCount())
+        for row in self._detail_dto.variance_rows:
+            label_item = self._make_item(row.label, user_data=row.detail_key if row.detail_key else None)
+            variance_item = self._make_item(self._fmt(row.variance_value))
             variance_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row_index, 3, variance_item)
+            self._model.appendRow([
+                label_item,
+                self._make_item(self._fmt(row.current_value)),
+                self._make_item(self._fmt(row.prior_value)),
+                variance_item,
+            ])
 
-    def _on_row_double_clicked(self, row: int, column: int) -> None:  # noqa: ARG002
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
+
+    def _on_row_double_clicked(self, index) -> None:
         if self._detail_opener is None:
             return
-        item = self._table.item(row, 0)
-        if item is None:
+        proxy = self._table.view().model()
+        if proxy is None:
             return
-        detail_key = item.data(Qt.ItemDataRole.UserRole)
+        src = proxy.mapToSource(index)
+        row = src.row()
+        id_item = self._model.item(row, 0)
+        if id_item is None:
+            return
+        detail_key = id_item.data(Qt.ItemDataRole.UserRole)
         if isinstance(detail_key, str) and detail_key:
             self._detail_opener(detail_key)
 

@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Callable
+from typing import Callable, Iterable
 
 from sqlalchemy.orm import Session
 
@@ -31,9 +31,19 @@ from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
     PayrollRunLineDTO,
     PayrollRunListItemDTO,
 )
+from seeker_accounting.modules.payroll.engines.engine_types import (
+    EmployeeCalculationResult,
+    EngineLineResult,
+)
+from seeker_accounting.modules.payroll.models.payroll_calculation_trace import (
+    PayrollCalculationTrace,
+)
 from seeker_accounting.modules.payroll.models.payroll_run import PayrollRun
 from seeker_accounting.modules.payroll.models.payroll_run_employee import PayrollRunEmployee
 from seeker_accounting.modules.payroll.models.payroll_run_line import PayrollRunLine
+from seeker_accounting.modules.payroll.repositories.company_payroll_setting_repository import (
+    CompanyPayrollSettingRepository,
+)
 from seeker_accounting.modules.payroll.repositories.compensation_profile_repository import (
     CompensationProfileRepository,
 )
@@ -47,6 +57,12 @@ from seeker_accounting.modules.payroll.repositories.payroll_input_batch_reposito
 from seeker_accounting.modules.payroll.repositories.payroll_rule_set_repository import (
     PayrollRuleSetRepository,
 )
+from seeker_accounting.modules.payroll.repositories.employee_payroll_correction_repository import (
+    EmployeePayrollCorrectionRepository,
+)
+from seeker_accounting.modules.payroll.repositories.payroll_calculation_trace_repository import (
+    PayrollCalculationTraceRepository,
+)
 from seeker_accounting.modules.payroll.repositories.payroll_run_repository import (
     PayrollRunEmployeeRepository,
     PayrollRunRepository,
@@ -55,12 +71,15 @@ from seeker_accounting.modules.payroll.payroll_permissions import (
     PAYROLL_RUN_APPROVE,
     PAYROLL_RUN_CALCULATE,
     PAYROLL_RUN_CREATE,
+    PAYROLL_RUN_SEND_BACK,
+    PAYROLL_RUN_SUBMIT,
 )
 from seeker_accounting.modules.payroll.services.payroll_calculation_service import (
     PayrollCalculationService,
 )
 from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
+from seeker_accounting.shared.services.telemetry_service import TelemetryService
 
 PayrollRunRepositoryFactory = Callable[[Session], PayrollRunRepository]
 PayrollRunEmployeeRepositoryFactory = Callable[[Session], PayrollRunEmployeeRepository]
@@ -69,6 +88,9 @@ CompensationProfileRepositoryFactory = Callable[[Session], CompensationProfileRe
 ComponentAssignmentRepositoryFactory = Callable[[Session], ComponentAssignmentRepository]
 PayrollInputBatchRepositoryFactory = Callable[[Session], PayrollInputBatchRepository]
 PayrollRuleSetRepositoryFactory = Callable[[Session], PayrollRuleSetRepository]
+CompanyPayrollSettingRepositoryFactory = Callable[[Session], CompanyPayrollSettingRepository]
+PayrollCalculationTraceRepositoryFactory = Callable[[Session], PayrollCalculationTraceRepository]
+EmployeePayrollCorrectionRepositoryFactory = Callable[[Session], EmployeePayrollCorrectionRepository]
 
 _RUN_DOC_TYPE = "payroll_run"
 
@@ -94,6 +116,11 @@ class PayrollRunService:
         numbering_service: NumberingService,
         permission_service: PermissionService,
         audit_service: AuditService,
+        setting_repository_factory: CompanyPayrollSettingRepositoryFactory | None = None,
+        trace_repository_factory: PayrollCalculationTraceRepositoryFactory | None = None,
+        correction_repository_factory: EmployeePayrollCorrectionRepositoryFactory | None = None,
+        telemetry_service: TelemetryService | None = None,
+        app_context: object | None = None,
     ) -> None:
         self._uow_factory = unit_of_work_factory
         self._run_repo_factory = run_repository_factory
@@ -107,6 +134,11 @@ class PayrollRunService:
         self._numbering_service = numbering_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._setting_repo_factory = setting_repository_factory
+        self._trace_repo_factory = trace_repository_factory
+        self._correction_repo_factory = correction_repository_factory
+        self._telemetry = telemetry_service
+        self._app_context = app_context
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
@@ -205,6 +237,15 @@ class PayrollRunService:
             )
             repo.save(run)
             uow.session.flush()
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=None,
+                to_state="draft",
+                description=f"Created payroll run '{run.run_reference}'.",
+                context={"period_year": run.period_year, "period_month": run.period_month},
+            )
             self._audit_service.record_event_in_session(
                 uow.session,
                 company_id,
@@ -223,6 +264,17 @@ class PayrollRunService:
             )
             uow.commit()
             uow.session.refresh(run)
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_created",
+                    event_code="monthly_run.run_created",
+                    context={
+                        "company_id": company_id,
+                        "period_year": cmd.period_year,
+                        "period_month": cmd.period_month,
+                    },
+                )
             return self._to_run_dto(run)
 
     def calculate_run(self, company_id: int, run_id: int) -> PayrollRunDetailDTO:
@@ -253,6 +305,9 @@ class PayrollRunService:
             # Load all active employees
             emp_repo = self._employee_repo_factory(uow.session)
             employees = emp_repo.list_by_company(company_id, active_only=True)
+            employee_scope = self._employee_scope_for_run(run)
+            if employee_scope is not None:
+                employees = [emp for emp in employees if emp.id in employee_scope]
 
             # Load approved input batches for this period
             input_batch_repo = self._input_batch_repo_factory(uow.session)
@@ -266,13 +321,30 @@ class PayrollRunService:
 
             profile_repo = self._profile_repo_factory(uow.session)
             assignment_repo = self._assignment_repo_factory(uow.session)
+            # Bulk pre-load profiles and assignments to avoid N+1 queries when
+            # the run includes many employees. Single round-trip per repo.
+            profile_map = profile_repo.map_active_for_period(company_id, period_date)
+            assignment_map = assignment_repo.map_active_for_period(company_id, period_date)
+
+            # Pre-load pending corrections for the period (optional — only when
+            # correction_repository_factory is wired into this service).
+            correction_map: dict[int, list[object]] = {}
+            if self._correction_repo_factory is not None:
+                corr_repo = self._correction_repo_factory(uow.session)
+                raw_corrections = corr_repo.list_pending_for_period(
+                    company_id,
+                    run.period_year,
+                    run.period_month,
+                    employee_ids=tuple(emp.id for emp in employees) or None,
+                )
+                for corr in raw_corrections:
+                    correction_map.setdefault(corr.employee_id, []).append(corr)
+
             included_count = 0
             error_count = 0
 
             for emp in employees:
-                profile = profile_repo.get_active_for_period(
-                    company_id, emp.id, period_date
-                )
+                profile = profile_map.get(emp.id)
                 if profile is None:
                     # No profile — record as error row
                     err_row = PayrollRunEmployee(
@@ -280,15 +352,13 @@ class PayrollRunService:
                         run_id=run_id,
                         employee_id=emp.id,
                         status_code="error",
-                        calculation_notes="No active compensation profile for this period.",
+                        calculation_notes="No active compensation for this period.",
                     )
                     run_emp_repo.save(err_row)
                     error_count += 1
                     continue
 
-                assignments = assignment_repo.get_active_for_period(
-                    company_id, emp.id, period_date
-                )
+                assignments = assignment_map.get(emp.id, [])
 
                 calc_result = self._calc_service.calculate(
                     profile=profile,
@@ -311,6 +381,11 @@ class PayrollRunService:
                     error_count += 1
                     continue
 
+                # Apply any pending corrections for this employee.
+                emp_corrections = correction_map.get(emp.id, [])
+                if emp_corrections:
+                    self._apply_pending_corrections(calc_result, emp_corrections)
+
                 run_emp = PayrollRunEmployee(
                     company_id=company_id,
                     run_id=run_id,
@@ -331,6 +406,37 @@ class PayrollRunService:
                 uow.session.flush()
                 included_count += 1
 
+                # Mark pending corrections applied and emit audit events.
+                if emp_corrections:
+                    _applied_at = datetime.now(timezone.utc)
+                    self._mark_corrections_applied(
+                        emp_corrections,
+                        run_id=run_id,
+                        run_employee_id=run_emp.id,
+                        applied_at=_applied_at,
+                    )
+                    for _corr in emp_corrections:
+                        self._audit_service.record_event_in_session(
+                            uow.session,
+                            company_id,
+                            RecordAuditEventCommand(
+                                event_type_code="PAYROLL_CORRECTION_APPLIED",
+                                module_code="payroll",
+                                entity_type="employee_payroll_correction",
+                                entity_id=_corr.id,
+                                description=(
+                                    f"Applied correction {_corr.id} to run employee {run_emp.id}."
+                                ),
+                                detail_json=json.dumps({
+                                    "correction_id": _corr.id,
+                                    "run_id": run_id,
+                                    "run_employee_id": run_emp.id,
+                                    "employee_id": emp.id,
+                                    "amount": str(_corr.correction_amount),
+                                }),
+                            ),
+                        )
+
                 # Write individual lines
                 for line in calc_result.lines:
                     run_line = PayrollRunLine(
@@ -345,9 +451,30 @@ class PayrollRunService:
                         component_amount=line.component_amount,
                     )
                     uow.session.add(run_line)
+                self._persist_calc_steps(
+                    uow.session,
+                    company_id=company_id,
+                    run_id=run_id,
+                    run_employee_id=run_emp.id,
+                    employee_id=emp.id,
+                    calc_result=calc_result,
+                )
 
+            previous_status = run.status_code
             run.status_code = "calculated"
             run.calculated_at = datetime.now(timezone.utc)
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=previous_status,
+                to_state="calculated",
+                description=f"Calculated payroll run '{run.run_reference}'.",
+                context={
+                    "included_employee_count": included_count,
+                    "error_employee_count": error_count,
+                },
+            )
             self._audit_service.record_event_in_session(
                 uow.session,
                 company_id,
@@ -370,6 +497,18 @@ class PayrollRunService:
             )
             uow.commit()
             uow.session.refresh(run)
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_calculated",
+                    event_code="monthly_run.run_calculated",
+                    context={
+                        "company_id": company_id,
+                        "period_year": run.period_year,
+                        "period_month": run.period_month,
+                        "included_count": included_count,
+                    },
+                )
             return self._to_run_dto(run)
 
     def set_run_employee_inclusion(
@@ -450,17 +589,135 @@ class PayrollRunService:
             uow.session.refresh(row)
             return self._to_run_employee_list_dto(row)
 
-    def approve_run(self, company_id: int, run_id: int) -> None:
-        self._permission_service.require_permission(PAYROLL_RUN_APPROVE)
+    def submit_run_for_review(
+        self,
+        company_id: int,
+        run_id: int,
+        *,
+        actor_user_id: int | None = None,
+    ) -> None:
+        self._permission_service.require_permission(PAYROLL_RUN_SUBMIT)
         with self._uow_factory() as uow:
             run_repo = self._run_repo_factory(uow.session)
             run = run_repo.get_by_id(company_id, run_id)
             if run is None:
                 raise NotFoundError("Payroll run not found.")
             if run.status_code != "calculated":
-                raise ValidationError("Only calculated runs can be approved.")
+                raise ValidationError("Only calculated payroll runs can be submitted for review.")
+
+            previous_status = run.status_code
+            run.status_code = "submitted_for_review"
+            run.submitted_at = datetime.now(timezone.utc)
+            run.submitted_by_user_id = self._resolve_actor_user_id(actor_user_id)
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=previous_status,
+                to_state="submitted_for_review",
+                description=f"Submitted payroll run '{run.run_reference}' for review.",
+            )
+            self._audit_service.record_event_in_session(
+                uow.session,
+                company_id,
+                RecordAuditEventCommand(
+                    event_type_code="PAYROLL_RUN_SUBMITTED_FOR_REVIEW",
+                    module_code="payroll",
+                    entity_type="payroll_run",
+                    entity_id=run.id,
+                    description=f"Submitted payroll run '{run.run_reference}' for review.",
+                ),
+            )
+            uow.commit()
+
+    def send_back_run(
+        self,
+        company_id: int,
+        run_id: int,
+        reason: str,
+        *,
+        actor_user_id: int | None = None,
+    ) -> None:
+        self._permission_service.require_permission(PAYROLL_RUN_SEND_BACK)
+        cleaned_reason = reason.strip()
+        if not cleaned_reason:
+            raise ValidationError("A reason is required when sending back a payroll run.")
+
+        with self._uow_factory() as uow:
+            run_repo = self._run_repo_factory(uow.session)
+            run = run_repo.get_by_id(company_id, run_id)
+            if run is None:
+                raise NotFoundError("Payroll run not found.")
+            if run.status_code != "submitted_for_review":
+                raise ValidationError("Only submitted payroll runs can be sent back.")
+
+            previous_status = run.status_code
+            run.status_code = "calculated"
+            run.sent_back_at = datetime.now(timezone.utc)
+            run.sent_back_by_user_id = self._resolve_actor_user_id(actor_user_id)
+            run.sent_back_reason = cleaned_reason
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=previous_status,
+                to_state="calculated",
+                description=f"Sent back payroll run '{run.run_reference}' for correction.",
+                reason=cleaned_reason,
+            )
+            self._audit_service.record_event_in_session(
+                uow.session,
+                company_id,
+                RecordAuditEventCommand(
+                    event_type_code="PAYROLL_RUN_SENT_BACK",
+                    module_code="payroll",
+                    entity_type="payroll_run",
+                    entity_id=run.id,
+                    description=f"Sent back payroll run '{run.run_reference}' for correction.",
+                    detail_json=json.dumps({"reason": cleaned_reason}),
+                ),
+            )
+            uow.commit()
+
+    def approve_run(
+        self,
+        company_id: int,
+        run_id: int,
+        *,
+        actor_user_id: int | None = None,
+    ) -> None:
+        self._permission_service.require_permission(PAYROLL_RUN_APPROVE)
+        with self._uow_factory() as uow:
+            run_repo = self._run_repo_factory(uow.session)
+            run = run_repo.get_by_id(company_id, run_id)
+            if run is None:
+                raise NotFoundError("Payroll run not found.")
+            sod_strict = self._is_sod_strict(uow.session, company_id)
+            if run.status_code == "calculated":
+                if sod_strict:
+                    raise ValidationError(
+                        "Segregation of duties requires submission before approval."
+                    )
+            elif run.status_code != "submitted_for_review":
+                raise ValidationError("Only submitted or calculated payroll runs can be approved.")
+
+            actor_id = self._resolve_actor_user_id(actor_user_id)
+            if sod_strict and actor_id is not None and run.submitted_by_user_id == actor_id:
+                raise ValidationError(
+                    "Segregation of duties prevents approving your own submitted payroll run."
+                )
+            previous_status = run.status_code
             run.status_code = "approved"
             run.approved_at = datetime.now(timezone.utc)
+            run.approved_by_user_id = actor_id
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=previous_status,
+                to_state="approved",
+                description=f"Approved payroll run '{run.run_reference}'.",
+            )
             self._audit_service.record_event_in_session(
                 uow.session,
                 company_id,
@@ -488,11 +745,24 @@ class PayrollRunService:
                     "Posted payroll runs cannot be voided. "
                     "The payroll journal entry is the accounting record of this run."
                 )
+            if run.status_code == "submitted_for_review":
+                raise ValidationError(
+                    "Submitted payroll runs must be sent back before they can be voided."
+                )
             if run.status_code == "approved":
                 raise ValidationError(
                     "Approved runs cannot be voided. Contact your administrator."
                 )
+            previous_status = run.status_code
             run.status_code = "voided"
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=previous_status,
+                to_state="voided",
+                description=f"Voided payroll run '{run.run_reference}'.",
+            )
             self._audit_service.record_event_in_session(
                 uow.session,
                 company_id,
@@ -507,6 +777,139 @@ class PayrollRunService:
             uow.commit()
 
     # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _resolve_actor_user_id(self, actor_user_id: int | None = None) -> int | None:
+        if actor_user_id is not None:
+            return actor_user_id
+        return getattr(self._app_context, "current_user_id", None)
+
+    def _is_sod_strict(self, session: Session, company_id: int) -> bool:
+        if self._setting_repo_factory is None:
+            return False
+        setting = self._setting_repo_factory(session).get_by_company(company_id)
+        return bool(getattr(setting, "sod_strict", False))
+
+    def _record_state_transition_in_session(
+        self,
+        session: Session,
+        company_id: int,
+        run: PayrollRun,
+        *,
+        from_state: str | None,
+        to_state: str,
+        description: str,
+        reason: str | None = None,
+        context: dict[str, object] | None = None,
+    ) -> None:
+        recorder = getattr(self._audit_service, "record_state_transition_in_session", None)
+        if recorder is None:
+            return
+        recorder(
+            session,
+            company_id,
+            module_code="payroll",
+            entity_type="payroll_run",
+            entity_id=run.id,
+            from_state=from_state,
+            to_state=to_state,
+            description=description,
+            reason=reason,
+            context={"run_reference": run.run_reference, **(context or {})},
+        )
+
+    @staticmethod
+    def _employee_scope_for_run(run: object) -> set[int] | None:
+        if getattr(run, "run_type_code", None) != "off_cycle":
+            return None
+        raw_ids = getattr(run, "off_cycle_employee_ids", None)
+        if not raw_ids:
+            return set()
+        try:
+            parsed = json.loads(raw_ids)
+        except (TypeError, ValueError):
+            return set()
+        if not isinstance(parsed, list):
+            return set()
+        return {int(value) for value in parsed if value is not None}
+
+    @staticmethod
+    def _apply_pending_corrections(
+        calc_result: EmployeeCalculationResult,
+        corrections: Iterable[object],
+    ) -> None:
+        for correction in corrections:
+            if getattr(correction, "employee_id", None) != calc_result.employee_id:
+                continue
+            component = correction.component
+            amount = Decimal(str(correction.correction_amount))
+            component_type = component.component_type_code
+            calc_result.lines.append(
+                EngineLineResult(
+                    component_id=component.id,
+                    component_type_code=component_type,
+                    calculation_basis=amount,
+                    rate_applied=None,
+                    component_amount=amount,
+                )
+            )
+            if component_type == "earning":
+                calc_result.gross_earnings += amount
+                calc_result.total_earnings += amount
+                calc_result.net_payable += amount
+                calc_result.employer_cost_base += amount
+            elif component_type in {"deduction", "tax"}:
+                if component_type == "tax":
+                    calc_result.total_taxes += amount
+                else:
+                    calc_result.total_employee_deductions += amount
+                calc_result.net_payable -= amount
+            elif component_type == "employer_contribution":
+                calc_result.total_employer_contributions += amount
+                calc_result.employer_cost_base += amount
+
+    @staticmethod
+    def _mark_corrections_applied(
+        corrections: Iterable[object],
+        *,
+        run_id: int,
+        run_employee_id: int,
+        applied_at: object,
+    ) -> None:
+        for correction in corrections:
+            correction.status_code = "applied"
+            correction.applied_run_id = run_id
+            correction.applied_run_employee_id = run_employee_id
+            correction.applied_at = applied_at
+
+    def _persist_calc_steps(
+        self,
+        session: Session,
+        *,
+        company_id: int,
+        run_id: int,
+        run_employee_id: int,
+        employee_id: int,
+        calc_result: EmployeeCalculationResult,
+    ) -> None:
+        if self._trace_repo_factory is None or not calc_result.calc_steps:
+            return
+        traces = [
+            PayrollCalculationTrace(
+                company_id=company_id,
+                run_id=run_id,
+                run_employee_id=run_employee_id,
+                employee_id=employee_id,
+                sequence_number=step.sequence_number,
+                stage_code=step.stage_code,
+                component_id=step.component_id,
+                formula_code=step.formula_code,
+                input_json=step.input_json,
+                output_json=step.output_json,
+                amount=step.amount,
+            )
+            for step in calc_result.calc_steps
+        ]
+        self._trace_repo_factory(session).save_many(traces)
 
     def _assert_run_exists(self, session: Session, company_id: int, run_id: int) -> None:
         repo = self._run_repo_factory(session)

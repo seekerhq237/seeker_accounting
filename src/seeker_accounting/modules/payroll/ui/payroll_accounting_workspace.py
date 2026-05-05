@@ -14,8 +14,8 @@ import logging
 import datetime
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
     QDialog,
     QHBoxLayout,
@@ -25,8 +25,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStackedWidget,
     QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -52,14 +50,15 @@ from seeker_accounting.modules.payroll.ui.dialogs.payroll_run_posting_detail_dia
 from seeker_accounting.modules.payroll.ui.dialogs.payroll_summary_dialog import (
     PayrollSummaryDialog,
 )
-from seeker_accounting.modules.payroll.ui.wizards.remittance_wizard import (
-    RemittanceWizardDialog,
+from seeker_accounting.modules.payroll.ui.dialogs.remittance_editor_dialog import (
+    RemittanceEditorDialog,
 )
 from seeker_accounting.modules.payroll.services.payroll_remittance_deadline_service import (
     compute_filing_deadline,
 )
+from seeker_accounting.platform.exceptions import AppError
+from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
-from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
 
@@ -156,16 +155,16 @@ class PayrollAccountingWorkspace(RibbonHostMixin, QWidget):
         # Notify the shell whenever selection changes inside a tab so
         # the ribbon surface can swap between ``.none`` / ``.postable_run``
         # / ``.posted_run`` / ``.batch_selected`` variants.
-        self._posting_tab._table.selectionModel().selectionChanged.connect(
+        self._posting_tab._table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
-        self._payments_tab._table.selectionModel().selectionChanged.connect(
+        self._payments_tab._table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
         self._payments_tab._run_combo.currentIndexChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
-        self._remittances_tab._batch_table.selectionModel().selectionChanged.connect(
+        self._remittances_tab._batch_table.view().selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
         )
 
@@ -235,18 +234,18 @@ class PayrollAccountingWorkspace(RibbonHostMixin, QWidget):
 
     def _on_remittance_wizard(self) -> None:
         if self._company_id is None:
-            show_error(self, "Remittance Wizard", "Select an active company first.")
+            show_error(self, "Remittance Editor", "Select an active company first.")
             return
         ctx = self._registry.active_company_context
         company_name = ctx.company_name or self._company_label.text() or ""
-        result = RemittanceWizardDialog.run(
+        result = RemittanceEditorDialog.run(
             self._registry, self._company_id, company_name, parent=self,
         )
         if result is not None:
             self._tabs.setCurrentIndex(self._TAB_REMITTANCES)
             self._remittances_tab.refresh()
             self._notify_ribbon_context_changed()
-            show_info(self, "Remittance Wizard", result.summary)
+            show_info(self, "Remittance Editor", result.summary)
 
     def _ribbon_commands(self):
         return {
@@ -336,16 +335,27 @@ class _PostingTab(QWidget):
         toolbar.addStretch()
         layout.addLayout(toolbar)
 
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(8)
-        self._table.setHorizontalHeaderLabels([
+        self._model = QStandardItemModel(0, 8)
+        self._model.setHorizontalHeaderLabels([
             "Reference", "Label", "Period", "Status",
             "Gross", "Net Payable", "Employees", "Journal Entry",
         ])
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.doubleClicked.connect(self._on_detail)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="reference", title="Reference"),
+                DataTableColumn(key="label", title="Label"),
+                DataTableColumn(key="period", title="Period"),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="gross", title="Gross", is_numeric=True),
+                DataTableColumn(key="net_payable", title="Net Payable", is_numeric=True),
+                DataTableColumn(key="employees", title="Employees", is_numeric=True),
+                DataTableColumn(key="je", title="Journal Entry"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
+        self._table.view().doubleClicked.connect(self._on_detail)
         layout.addWidget(self._table)
 
     def set_company(self, company_id: int) -> None:
@@ -361,43 +371,40 @@ class _PostingTab(QWidget):
             _log.warning("Form data load error", exc_info=True)
             return
 
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         for r in runs:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(r.run_reference))
-            self._table.setItem(row, 1, QTableWidgetItem(r.run_label))
-            self._table.setItem(row, 2, QTableWidgetItem(
-                f"{_MONTHS.get(r.period_month, str(r.period_month))} {r.period_year}"
-            ))
-            status_lbl = QTableWidgetItem(r.status_code.upper())
-            color = _STATUS_COLORS.get(r.status_code, "#555")
-            status_lbl.setForeground(Qt.GlobalColor.black)
-            status_lbl.setData(Qt.ItemDataRole.ForegroundRole, None)
-            self._table.setItem(row, 3, status_lbl)
-            gross = QTableWidgetItem(_fmt(r.total_gross_earnings))
-            gross.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 4, gross)
-            net = QTableWidgetItem(_fmt(r.total_net_payable))
-            net.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 5, net)
-            emp = QTableWidgetItem(str(r.employee_count))
-            emp.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 6, emp)
-            je = QTableWidgetItem(
-                str(r.posted_journal_entry_id) if r.posted_journal_entry_id else "—"
-            )
-            self._table.setItem(row, 7, je)
-            self._table.item(row, 0).setData(Qt.ItemDataRole.UserRole, r)
+            id_item = self._make_item(r.run_reference, user_data=r)
+            self._model.appendRow([
+                id_item,
+                self._make_item(r.run_label),
+                self._make_item(
+                    f"{_MONTHS.get(r.period_month, str(r.period_month))} {r.period_year}"
+                ),
+                self._make_item(r.status_code.upper()),
+                self._make_item(_fmt(r.total_gross_earnings)),
+                self._make_item(_fmt(r.total_net_payable)),
+                self._make_item(str(r.employee_count)),
+                self._make_item(
+                    str(r.posted_journal_entry_id) if r.posted_journal_entry_id else "—"
+                ),
+            ])
 
         self._table.resizeColumnsToContents()
 
     def _selected_run(self):
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_post(self) -> None:
         run = self._selected_run()
@@ -463,14 +470,24 @@ class _EmployeePaymentsTab(QWidget):
         layout.addLayout(filter_row)
 
         # Payments table
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(7)
-        self._table.setHorizontalHeaderLabels([
+        self._model = QStandardItemModel(0, 7)
+        self._model.setHorizontalHeaderLabels([
             "Employee", "Net Payable", "Total Paid", "Outstanding", "Status", "Payment Date", "Records",
         ])
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="employee", title="Employee"),
+                DataTableColumn(key="net_payable", title="Net Payable", is_numeric=True),
+                DataTableColumn(key="total_paid", title="Total Paid", is_numeric=True),
+                DataTableColumn(key="outstanding", title="Outstanding", is_numeric=True),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="payment_date", title="Payment Date"),
+                DataTableColumn(key="records", title="Records", is_numeric=True),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._table.set_model(self._model)
         layout.addWidget(self._table)
 
     def set_company(self, company_id: int) -> None:
@@ -500,42 +517,50 @@ class _EmployeePaymentsTab(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
-        self._table.setRowCount(0)
+        self._model.removeRows(0, self._model.rowCount())
         if self._company_id is None or self._selected_run_id is None:
             return
         try:
             summaries = self._registry.payroll_payment_tracking_service.list_run_payment_summaries(
                 self._company_id, self._selected_run_id
             )
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Accounting", str(exc))
             return
+        except Exception:
+            _log.exception("Payroll Accounting")
+            show_error(self, "Payroll Accounting", "An unexpected error occurred. See application log for details.")
+            return
 
+        self._model.removeRows(0, self._model.rowCount())
         for s in summaries:
-            row = self._table.rowCount()
-            self._table.insertRow(row)
-            self._table.setItem(row, 0, QTableWidgetItem(s.employee_display_name))
-            for col, val in ((1, s.net_payable), (2, s.total_paid), (3, s.outstanding)):
-                item = QTableWidgetItem(_fmt(val))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self._table.setItem(row, col, item)
-            self._table.setItem(
-                row, 4, QTableWidgetItem(_PAY_STATUS_LABELS.get(s.payment_status_code, s.payment_status_code))
-            )
-            self._table.setItem(row, 5, QTableWidgetItem(str(s.payment_date) if s.payment_date else "—"))
-            rec_count = QTableWidgetItem(str(len(s.records)))
-            rec_count.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 6, rec_count)
-            self._table.item(row, 0).setData(Qt.ItemDataRole.UserRole, s)
+            id_item = self._make_item(s.employee_display_name, user_data=s)
+            self._model.appendRow([
+                id_item,
+                self._make_item(_fmt(s.net_payable)),
+                self._make_item(_fmt(s.total_paid)),
+                self._make_item(_fmt(s.outstanding)),
+                self._make_item(_PAY_STATUS_LABELS.get(s.payment_status_code, s.payment_status_code)),
+                self._make_item(str(s.payment_date) if s.payment_date else "—"),
+                self._make_item(str(len(s.records))),
+            ])
 
         self._table.resizeColumnsToContents()
 
     def _selected_summary(self):
-        row = self._table.currentRow()
-        if row < 0:
+        rows = self._table.selected_rows()
+        if not rows:
             return None
-        item = self._table.item(row, 0)
+        item = self._model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
+
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_record_payment(self) -> None:
         s = self._selected_summary()
@@ -595,16 +620,28 @@ class _RemittancesTab(QWidget):
         layout.addLayout(batch_toolbar)
 
         # Batch table
-        self._batch_table = QTableWidget()
-        configure_compact_table(self._batch_table)
-        self._batch_table.setColumnCount(9)
-        self._batch_table.setHorizontalHeaderLabels([
-            "Batch #", "Authority", "Period", "Amount Due", "Amount Paid", "Outstanding", "Status",
+        self._batch_model = QStandardItemModel(0, 9)
+        self._batch_model.setHorizontalHeaderLabels([
+            "Batch #", "Statutory authority", "Period", "Amount Due", "Amount Paid", "Outstanding", "Status",
             "Deadline", "Days Left",
         ])
-        self._batch_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._batch_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._batch_table.selectionModel().selectionChanged.connect(self._on_batch_selected)
+        self._batch_table = DataTable(
+            columns=(
+                DataTableColumn(key="batch_num", title="Batch #"),
+                DataTableColumn(key="authority", title="Statutory authority"),
+                DataTableColumn(key="period", title="Period"),
+                DataTableColumn(key="amount_due", title="Amount Due", is_numeric=True),
+                DataTableColumn(key="amount_paid", title="Amount Paid", is_numeric=True),
+                DataTableColumn(key="outstanding", title="Outstanding", is_numeric=True),
+                DataTableColumn(key="status", title="Status"),
+                DataTableColumn(key="deadline", title="Deadline"),
+                DataTableColumn(key="days_left", title="Days Left", is_numeric=True),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._batch_table.set_model(self._batch_model)
+        self._batch_table.view().selectionModel().selectionChanged.connect(self._on_batch_selected)
         layout.addWidget(self._batch_table, 2)
 
         # Lines sub-section
@@ -620,14 +657,22 @@ class _RemittancesTab(QWidget):
         lines_header.addWidget(self._btn_add_line)
         layout.addLayout(lines_header)
 
-        self._lines_table = QTableWidget()
-        configure_compact_table(self._lines_table)
-        self._lines_table.setColumnCount(5)
-        self._lines_table.setHorizontalHeaderLabels([
+        self._lines_model = QStandardItemModel(0, 5)
+        self._lines_model.setHorizontalHeaderLabels([
             "#", "Description", "Amount Due", "Amount Paid", "Status",
         ])
-        self._lines_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._lines_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._lines_table = DataTable(
+            columns=(
+                DataTableColumn(key="num", title="#", is_numeric=True),
+                DataTableColumn(key="description", title="Description"),
+                DataTableColumn(key="amount_due", title="Amount Due", is_numeric=True),
+                DataTableColumn(key="amount_paid", title="Amount Paid", is_numeric=True),
+                DataTableColumn(key="status", title="Status"),
+            ),
+            show_search=False,
+            parent=self,
+        )
+        self._lines_table.set_model(self._lines_model)
         layout.addWidget(self._lines_table, 1)
 
     def set_company(self, company_id: int) -> None:
@@ -644,59 +689,50 @@ class _RemittancesTab(QWidget):
             _log.warning("Form data load error", exc_info=True)
             return
 
-        self._batch_table.setRowCount(0)
+        self._batch_model.removeRows(0, self._batch_model.rowCount())
         today = datetime.date.today()
         for b in batches:
-            row = self._batch_table.rowCount()
-            self._batch_table.insertRow(row)
-            self._batch_table.setItem(row, 0, QTableWidgetItem(b.batch_number))
-            self._batch_table.setItem(
-                row, 1, QTableWidgetItem(_AUTHORITY_LABELS.get(b.remittance_authority_code, b.remittance_authority_code))
-            )
-            self._batch_table.setItem(
-                row, 2, QTableWidgetItem(f"{b.period_start_date}  →  {b.period_end_date}")
-            )
-            for col, val in ((3, b.amount_due), (4, b.amount_paid), (5, b.outstanding)):
-                item = QTableWidgetItem(_fmt(val))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self._batch_table.setItem(row, col, item)
-            self._batch_table.setItem(
-                row, 6, QTableWidgetItem(_REMIT_STATUS_LABELS.get(b.status_code, b.status_code))
-            )
-
+            id_item = self._make_item(b.batch_number, user_data=b)
+            auth_item = self._make_item(_AUTHORITY_LABELS.get(b.remittance_authority_code, b.remittance_authority_code))
+            period_item = self._make_item(f"{b.period_start_date}  →  {b.period_end_date}")
+            due_item = self._make_item(_fmt(b.amount_due))
+            paid_item = self._make_item(_fmt(b.amount_paid))
+            out_item = self._make_item(_fmt(b.outstanding))
+            status_item = self._make_item(_REMIT_STATUS_LABELS.get(b.status_code, b.status_code))
             # Deadline columns
             deadline = compute_filing_deadline(b.remittance_authority_code, b.period_end_date)
             if deadline and b.status_code not in ("cancelled", "paid"):
-                deadline_item = QTableWidgetItem(deadline.isoformat())
                 days_left = (deadline - today).days
-                days_item = QTableWidgetItem(str(days_left))
-                days_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                deadline_item = self._make_item(deadline.isoformat())
+                days_item = self._make_item(str(days_left))
                 if days_left < 0:
-                    deadline_item.setForeground(Qt.GlobalColor.red)
-                    days_item.setForeground(Qt.GlobalColor.red)
+                    deadline_item.setForeground(QBrush(Qt.GlobalColor.red))
+                    days_item.setForeground(QBrush(Qt.GlobalColor.red))
                 elif days_left <= 7:
-                    deadline_item.setForeground(Qt.GlobalColor.darkYellow)
-                    days_item.setForeground(Qt.GlobalColor.darkYellow)
-                self._batch_table.setItem(row, 7, deadline_item)
-                self._batch_table.setItem(row, 8, days_item)
+                    deadline_item.setForeground(QBrush(Qt.GlobalColor.darkYellow))
+                    days_item.setForeground(QBrush(Qt.GlobalColor.darkYellow))
             else:
-                self._batch_table.setItem(row, 7, QTableWidgetItem("—"))
-                self._batch_table.setItem(row, 8, QTableWidgetItem("—"))
+                deadline_item = self._make_item("—")
+                days_item = self._make_item("—")
 
-            self._batch_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, b)
+            self._batch_model.appendRow([
+                id_item, auth_item, period_item,
+                due_item, paid_item, out_item, status_item,
+                deadline_item, days_item,
+            ])
 
         self._batch_table.resizeColumnsToContents()
 
     def _selected_batch(self):
-        row = self._batch_table.currentRow()
-        if row < 0:
+        rows = self._batch_table.selected_rows()
+        if not rows:
             return None
-        item = self._batch_table.item(row, 0)
+        item = self._batch_model.item(rows[0], 0)
         return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def _on_batch_selected(self) -> None:
         batch = self._selected_batch()
-        self._lines_table.setRowCount(0)
+        self._lines_model.removeRows(0, self._lines_model.rowCount())
         if batch is None:
             return
         try:
@@ -708,22 +744,21 @@ class _RemittancesTab(QWidget):
             return
 
         for line in detail.lines:
-            row = self._lines_table.rowCount()
-            self._lines_table.insertRow(row)
-            num = QTableWidgetItem(str(line.line_number))
-            num.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._lines_table.setItem(row, 0, num)
-            self._lines_table.setItem(row, 1, QTableWidgetItem(line.description))
-            for col, val in ((2, line.amount_due), (3, line.amount_paid)):
-                item = QTableWidgetItem(_fmt(val))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-                self._lines_table.setItem(row, col, item)
-            self._lines_table.setItem(
-                row, 4, QTableWidgetItem(_REMIT_STATUS_LABELS.get(line.status_code, line.status_code))
-            )
-            self._lines_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, line)
+            self._lines_model.appendRow([
+                self._make_item(str(line.line_number)),
+                self._make_item(line.description),
+                self._make_item(_fmt(line.amount_due)),
+                self._make_item(_fmt(line.amount_paid)),
+                self._make_item(_REMIT_STATUS_LABELS.get(line.status_code, line.status_code)),
+            ])
 
-        self._lines_table.resizeColumnsToContents()
+    @staticmethod
+    def _make_item(text, *, user_data=None) -> QStandardItem:
+        item = QStandardItem("" if text is None else str(text))
+        item.setEditable(False)
+        if user_data is not None:
+            item.setData(user_data, Qt.ItemDataRole.UserRole)
+        return item
 
     def _on_new_batch(self) -> None:
         if self._company_id is None:
@@ -742,8 +777,11 @@ class _RemittancesTab(QWidget):
         try:
             self._registry.payroll_remittance_service.open_batch(self._company_id, batch.id)
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Accounting", str(exc))
+        except Exception:
+            _log.exception("Payroll Accounting")
+            show_error(self, "Payroll Accounting", "An unexpected error occurred. See application log for details.")
 
     def _on_cancel_batch(self) -> None:
         batch = self._selected_batch()
@@ -757,8 +795,11 @@ class _RemittancesTab(QWidget):
         try:
             self._registry.payroll_remittance_service.cancel_batch(self._company_id, batch.id)
             self.refresh()
-        except Exception as exc:
+        except AppError as exc:
             show_error(self, "Payroll Accounting", str(exc))
+        except Exception:
+            _log.exception("Payroll Accounting")
+            show_error(self, "Payroll Accounting", "An unexpected error occurred. See application log for details.")
 
     def _on_add_line(self) -> None:
         batch = self._selected_batch()
@@ -824,13 +865,22 @@ class _SummaryTab(QWidget):
         layout.addLayout(sel_row)
 
         # Summary table — single flat view
-        self._table = QTableWidget()
-        configure_compact_table(self._table)
-        self._table.setColumnCount(2)
-        self._table.setHorizontalHeaderLabels(["Metric", "Value"])
-        self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._summary_model = QStandardItemModel(0, 2)
+        self._summary_model.setHorizontalHeaderLabels(["Metric", "Value"])
+        self._table = DataTable(
+            columns=(
+                DataTableColumn(key="metric", title="Metric"),
+                DataTableColumn(
+                    key="value",
+                    title="Value",
+                    align=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                ),
+            ),
+            show_search=False,
+            selection_mode="none",
+            parent=self,
+        )
+        self._table.set_model(self._summary_model)
         layout.addWidget(self._table)
         layout.addStretch()
 
@@ -839,7 +889,7 @@ class _SummaryTab(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
-        self._table.setRowCount(0)
+        self._summary_model.removeRows(0, self._summary_model.rowCount())
         if self._company_id is None:
             return
 
@@ -886,30 +936,27 @@ class _SummaryTab(QWidget):
         self._table.resizeColumnsToContents()
 
     def _add_section(self, label: str) -> None:
-        row = self._table.rowCount()
-        self._table.insertRow(row)
-        item = QTableWidgetItem(label)
-        item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        item.setBackground(Qt.GlobalColor.lightGray)
-        font = item.font()
+        item0 = QStandardItem(label)
+        item0.setEditable(False)
+        item0.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        item0.setBackground(QBrush(Qt.GlobalColor.lightGray))
+        font = item0.font()
         font.setBold(True)
-        item.setFont(font)
-        self._table.setItem(row, 0, item)
-        blank = QTableWidgetItem("")
-        blank.setBackground(Qt.GlobalColor.lightGray)
-        blank.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        self._table.setItem(row, 1, blank)
+        item0.setFont(font)
+        item1 = QStandardItem("")
+        item1.setEditable(False)
+        item1.setFlags(Qt.ItemFlag.ItemIsEnabled)
+        item1.setBackground(QBrush(Qt.GlobalColor.lightGray))
+        self._summary_model.appendRow([item0, item1])
 
     def _add_row(self, label: str, value: str) -> None:
-        row = self._table.rowCount()
-        self._table.insertRow(row)
-        lbl_item = QTableWidgetItem(label)
+        lbl_item = QStandardItem(label)
+        lbl_item.setEditable(False)
         lbl_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        self._table.setItem(row, 0, lbl_item)
-        val_item = QTableWidgetItem(value)
+        val_item = QStandardItem(value)
+        val_item.setEditable(False)
         val_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        val_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._table.setItem(row, 1, val_item)
+        self._summary_model.appendRow([lbl_item, val_item])
 
     def _on_open_summary_dialog(self) -> None:
         if self._company_id is None:
