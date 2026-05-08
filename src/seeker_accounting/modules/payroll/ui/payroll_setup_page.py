@@ -32,6 +32,9 @@ from seeker_accounting.modules.payroll.ui.dialogs.employee_form_dialog import Em
 from seeker_accounting.modules.payroll.ui.dialogs.payroll_component_form_dialog import (
     PayrollComponentFormDialog,
 )
+from seeker_accounting.modules.payroll.ui.wizards.payroll_component_creation_wizard import (
+    PayrollComponentCreationWizardDialog,
+)
 from seeker_accounting.modules.payroll.ui.dialogs.apply_statutory_pack_dialog import (
     ApplyStatutoryPackDialog,
 )
@@ -950,10 +953,10 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         if company is None:
             show_error(self, "Payroll components", "Select an active company first.")
             return
-        dialog = PayrollComponentFormDialog(
+        result = PayrollComponentCreationWizardDialog.run(
             self._sr, company.company_id, company.company_name, parent=self
         )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        if result is not None:
             self._reload_components()
 
     def _on_edit_component(self) -> None:
