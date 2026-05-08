@@ -23,7 +23,7 @@ from seeker_accounting.shared.ui.message_boxes import show_error
 class _KpiTile(QFrame):
     def __init__(self, label: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setObjectName("KpiTile")
+        self.setObjectName("MetricTile")
         self.setProperty("card", True)
         self.setMinimumWidth(160)
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
@@ -33,12 +33,10 @@ class _KpiTile(QFrame):
         lay.setSpacing(4)
 
         self._lbl = QLabel(label, self)
-        self._lbl.setObjectName("KpiTileLabel")
-        self._lbl.setStyleSheet("font-size: 11px; color: #888;")
+        self._lbl.setObjectName("MetricCaption")
 
         self._val = QLabel("—", self)
-        self._val.setObjectName("KpiTileValue")
-        self._val.setStyleSheet("font-size: 22px; font-weight: 600;")
+        self._val.setObjectName("MetricValue")
         self._val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
         lay.addWidget(self._lbl)

@@ -54,10 +54,20 @@ from seeker_accounting.modules.treasury.services.treasury_transfer_posting_servi
 )
 from seeker_accounting.modules.treasury.services.treasury_transfer_service import TreasuryTransferService
 from seeker_accounting.platform.exceptions import PermissionDeniedError
+from seeker_accounting.platform.licensing.exceptions import LicenseLimitedError
 
 
 def _unused_factory(*_args, **_kwargs):  # noqa: ANN001, ANN002
     raise AssertionError("Repository access should not happen when permission is denied first.")
+
+
+class _ExpiredLicenseService:
+    def __init__(self) -> None:
+        self.write_checks = 0
+
+    def ensure_write_permitted(self) -> None:
+        self.write_checks += 1
+        raise LicenseLimitedError("License is read-only.")
 
 
 class PermissionGuardrailTests(unittest.TestCase):
@@ -81,6 +91,44 @@ class PermissionGuardrailTests(unittest.TestCase):
             self.permission_service.build_denied_message("customers.create"),
             "You do not have permission to create customer records.",
         )
+
+    def test_permission_service_blocks_write_permission_when_license_is_read_only(self) -> None:
+        license_service = _ExpiredLicenseService()
+        service = PermissionService(
+            AppContext(
+                current_user_id=7,
+                current_user_display_name="Test User",
+                active_company_id=None,
+                active_company_name=None,
+                theme_name="light",
+                permission_snapshot=("customers.create",),
+            ),
+            license_service=license_service,
+        )
+
+        with self.assertRaises(LicenseLimitedError):
+            service.require_permission("customers.create")
+
+        self.assertEqual(license_service.write_checks, 1)
+
+    def test_permission_service_allows_read_permission_when_license_is_read_only(self) -> None:
+        license_service = _ExpiredLicenseService()
+        service = PermissionService(
+            AppContext(
+                current_user_id=7,
+                current_user_display_name="Test User",
+                active_company_id=None,
+                active_company_name=None,
+                theme_name="light",
+                permission_snapshot=("customers.view", "reports.general_ledger.export"),
+            ),
+            license_service=license_service,
+        )
+
+        service.require_permission("customers.view")
+        service.require_permission("reports.general_ledger.export")
+
+        self.assertEqual(license_service.write_checks, 0)
 
     def test_navigation_policy_denies_inaccessible_routes(self) -> None:
         self.assertFalse(can_access_navigation(self.permission_service, nav_ids.CUSTOMERS))

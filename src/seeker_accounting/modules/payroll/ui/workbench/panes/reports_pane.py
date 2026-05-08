@@ -154,52 +154,16 @@ class _ReportsTab(QWidget):
                 pass
 
     def _open_payslip_report(self) -> None:
-        try:
-            from seeker_accounting.modules.payroll.ui.dialogs.payslip_batch_dialog import (
-                PayslipBatchDialog,
-            )
-            dlg = PayslipBatchDialog(self._sr, parent=self)
-            dlg.exec()
-        except ImportError:
-            self._navigate_reports()
-        except Exception:
-            logger.warning("PayslipBatchDialog failed", exc_info=True)
+        self._navigate_reports()
 
     def _open_run_summary(self) -> None:
-        try:
-            from seeker_accounting.modules.payroll.ui.dialogs.payroll_run_summary_dialog import (
-                PayrollRunSummaryDialog,
-            )
-            dlg = PayrollRunSummaryDialog(self._sr, parent=self)
-            dlg.exec()
-        except ImportError:
-            self._navigate_reports()
-        except Exception:
-            logger.warning("PayrollRunSummaryDialog failed", exc_info=True)
+        self._navigate_reports()
 
     def _open_variance_report(self) -> None:
-        try:
-            from seeker_accounting.modules.payroll.ui.dialogs.payroll_variance_report_dialog import (
-                PayrollVarianceReportDialog,
-            )
-            dlg = PayrollVarianceReportDialog(self._sr, parent=self)
-            dlg.exec()
-        except ImportError:
-            self._navigate_reports()
-        except Exception:
-            logger.warning("PayrollVarianceReportDialog failed", exc_info=True)
+        self._navigate_reports()
 
     def _open_component_summary(self) -> None:
-        try:
-            from seeker_accounting.modules.payroll.ui.dialogs.payroll_component_summary_dialog import (
-                PayrollComponentSummaryDialog,
-            )
-            dlg = PayrollComponentSummaryDialog(self._sr, parent=self)
-            dlg.exec()
-        except ImportError:
-            self._navigate_reports()
-        except Exception:
-            logger.warning("PayrollComponentSummaryDialog failed", exc_info=True)
+        self._navigate_reports()
 
 
 # ── Audit tab ─────────────────────────────────────────────────────────────────

@@ -31,6 +31,10 @@ class StatusChipTests(unittest.TestCase):
         self.assertEqual(resolve_status_family("CANCELLED"), "danger")
         self.assertEqual(resolve_status_family("on hold"), "warning")
         self.assertEqual(resolve_status_family("in-progress"), "accent")
+        self.assertEqual(resolve_status_family("submitted-for-review"), "accent")
+        self.assertEqual(resolve_status_family("calculated"), "info")
+        self.assertEqual(resolve_status_family("matched"), "success")
+        self.assertEqual(resolve_status_family("unmatched"), "warning")
 
     def test_resolve_family_unknown_and_empty(self) -> None:
         self.assertEqual(resolve_status_family(None), DEFAULT_FAMILY)

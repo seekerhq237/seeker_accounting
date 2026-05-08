@@ -8,12 +8,14 @@ employee from a payroll point of view:
 * Payroll readiness strip (Tax & CNPS, Payment, Compensation, Components)
   driven by the same gap scan used by
   :class:`EmployeePayrollSetupWizardDialog`.
-* Compensation profiles (compact table).
-* Recurring component assignments (compact table).
-* Recent payroll runs touching this employee (compact table).
+* Compensation profiles (compact table with profile name).
+* Recurring component assignments (compact table with friendly type labels).
+* YTD earnings summary (current-year totals from posted/approved runs).
+* Recent payroll runs (compact table with payment status; double-click to
+  open payslip preview). Uses a single JOIN query — no N+1 loading.
 
 Ribbon actions: Edit Employee · Payroll Setup Wizard · Compensation
-Change · Assign Component · Deactivate/Reactivate · Refresh · Close.
+Change · Assign Component · Queue Correction · Terminate/Rehire · Refresh · Close.
 
 Registered under the child-window key ``child:payroll_employee_hub``.
 """
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -30,10 +33,9 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
-    QMessageBox,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -43,13 +45,25 @@ from seeker_accounting.app.shell.child_windows.child_window_base import ChildWin
 from seeker_accounting.app.shell.ribbon.ribbon_registry import RibbonRegistry
 from seeker_accounting.modules.payroll.dto.employee_dto import (
     EmployeeDetailDTO,
-    UpdateEmployeeCommand,
+    EmployeeListItemDTO,
+)
+from seeker_accounting.modules.payroll.ui.bp.employee_termination_wizard import (
+    TerminateEmployeeWizardDialog,
+)
+from seeker_accounting.modules.payroll.ui.bp.employee_rehire_wizard import (
+    RehireEmployeeWizardDialog,
 )
 from seeker_accounting.modules.payroll.ui.dialogs.component_assignment_dialog import (
     ComponentAssignmentDialog,
 )
 from seeker_accounting.modules.payroll.ui.dialogs.employee_form_dialog import (
     EmployeeFormDialog,
+)
+from seeker_accounting.modules.payroll.ui.dialogs.payroll_correction_dialog import (
+    PayrollCorrectionDialog,
+)
+from seeker_accounting.modules.payroll.ui.dialogs.payslip_preview_dialog import (
+    PayslipPreviewDialog,
 )
 from seeker_accounting.modules.payroll.ui.wizards.compensation_change_wizard import (
     CompensationChangeWizardDialog,
@@ -59,13 +73,13 @@ from seeker_accounting.modules.payroll.ui.wizards.employee_payroll_setup_wizard 
 )
 from seeker_accounting.platform.exceptions import (
     AppError,
-    ConflictError,
     NotFoundError,
     PermissionDeniedError,
-    ValidationError,
 )
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.components.read_only_table_model import ReadOnlyTableModel
+from seeker_accounting.shared.ui.styles.inline_styles import status_chip_style, text_style
 from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
@@ -76,15 +90,34 @@ _log = logging.getLogger(__name__)
 _RUN_STATUS_LABELS = {
     "draft": "Draft",
     "calculated": "Calculated",
+    "submitted_for_review": "In Review",
     "approved": "Approved",
     "posted": "Posted",
+    "reversed": "Reversed",
     "voided": "Voided",
+}
+
+_PAYMENT_STATUS_LABELS = {
+    "unpaid": "Unpaid",
+    "partial": "Partial",
+    "paid": "Paid",
+}
+
+_COMPONENT_TYPE_LABELS = {
+    "earning": "Earning",
+    "deduction": "Deduction",
+    "employer_contribution": "Employer Contribution",
+    "tax": "Tax",
+    "informational": "Informational",
 }
 
 _MONTHS = (
     "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 )
+
+# Run statuses to include in YTD summary
+_YTD_STATUSES = {"calculated", "submitted_for_review", "approved", "posted"}
 
 
 class EmployeeHubWindow(ChildWindowBase):
@@ -117,7 +150,9 @@ class EmployeeHubWindow(ChildWindowBase):
         self._gaps: dict[str, bool] = {}
         self._profiles: list = []
         self._assignments: list = []
+        # List of (PayrollRunListItemDTO, PayrollRunEmployeeListItemDTO) tuples
         self._recent_runs: list[tuple] = []
+        self._pending_corrections_count: int = 0
 
         self.set_body(self._build_body())
         self._reload()
@@ -130,6 +165,25 @@ class EmployeeHubWindow(ChildWindowBase):
             return getattr(company, "company_name", "") or getattr(company, "name", "")
         except Exception:  # noqa: BLE001
             return ""
+
+    def _to_list_item_dto(self, emp: EmployeeDetailDTO) -> EmployeeListItemDTO:
+        """Convert EmployeeDetailDTO → EmployeeListItemDTO for wizard calls."""
+        return EmployeeListItemDTO(
+            id=emp.id,
+            company_id=emp.company_id,
+            employee_number=emp.employee_number,
+            display_name=emp.display_name,
+            first_name=emp.first_name,
+            last_name=emp.last_name,
+            department_id=emp.department_id,
+            department_name=emp.department_name,
+            position_id=emp.position_id,
+            position_name=emp.position_name,
+            hire_date=emp.hire_date,
+            termination_date=emp.termination_date,
+            base_currency_code=emp.base_currency_code,
+            is_active=emp.is_active,
+        )
 
     # ── Body layout ───────────────────────────────────────────────────
 
@@ -151,11 +205,13 @@ class EmployeeHubWindow(ChildWindowBase):
         grid.addWidget(self._build_identity_card(), 0, 0)
         grid.addWidget(self._build_profiles_card(), 0, 1)
         grid.addWidget(self._build_assignments_card(), 0, 2)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        grid.setColumnStretch(2, 1)
+        # Identity card doesn't need as much width as the tables.
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(1, 3)
+        grid.setColumnStretch(2, 4)
         root.addWidget(grid_host, 1)
 
+        root.addWidget(self._build_ytd_row())
         root.addWidget(self._build_recent_runs_card())
 
         return body
@@ -180,8 +236,7 @@ class EmployeeHubWindow(ChildWindowBase):
         self._number_chip = QLabel("", hero)
         self._number_chip.setObjectName("ChipNeutral")
         self._number_chip.setStyleSheet(
-            "padding: 2px 8px; border-radius: 8px; background: #eef1f5; "
-            "color: #374151; font-weight: 500;"
+            status_chip_style("neutral", padding="2px 8px", font_weight=500)
         )
         row.addWidget(self._number_chip)
 
@@ -231,54 +286,99 @@ class EmployeeHubWindow(ChildWindowBase):
 
     def _build_profiles_card(self) -> QWidget:
         card = self._card("Compensation")
-        self._profiles_table = QTableWidget(card)
+        self._profiles_model = ReadOnlyTableModel(
+            ["Name", "From", "Salary", "Currency", "Status"],
+            right_align_cols=frozenset({2}),
+        )
+        self._profiles_table = QTableView(card)
         configure_compact_table(self._profiles_table)
-        self._profiles_table.setColumnCount(4)
-        self._profiles_table.setHorizontalHeaderLabels(
-            ("From", "Salary", "Currency", "Status")
-        )
-        self._profiles_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self._profiles_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
+        self._profiles_table.setModel(self._profiles_model)
+        hdr = self._profiles_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         card.layout().addWidget(self._profiles_table, 1)
         return card
 
     def _build_assignments_card(self) -> QWidget:
         card = self._card("Component assignments")
-        self._assignments_table = QTableWidget(card)
+        self._assignments_model = ReadOnlyTableModel(
+            ["Payroll component", "Type", "From", "Status"]
+        )
+        self._assignments_table = QTableView(card)
         configure_compact_table(self._assignments_table)
-        self._assignments_table.setColumnCount(4)
-        self._assignments_table.setHorizontalHeaderLabels(
-            ("Payroll component", "Type", "From", "Status")
-        )
-        self._assignments_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self._assignments_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
+        self._assignments_table.setModel(self._assignments_model)
+        hdr = self._assignments_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         card.layout().addWidget(self._assignments_table, 1)
         return card
 
+    def _build_ytd_row(self) -> QWidget:
+        """Compact YTD summary bar shown above the runs table."""
+        frame = QFrame(self)
+        frame.setObjectName("DialogSectionCard")
+        frame.setProperty("card", True)
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(16, 8, 16, 8)
+        layout.setSpacing(24)
+
+        self._ytd_year_label = QLabel("YTD", frame)
+        self._ytd_year_label.setObjectName("DialogSectionTitle")
+        layout.addWidget(self._ytd_year_label)
+        layout.addStretch(1)
+
+        for attr, caption in (
+            ("_ytd_gross_label", "Gross"),
+            ("_ytd_net_label", "Net"),
+            ("_ytd_runs_label", "Runs"),
+        ):
+            col = QVBoxLayout()
+            col.setSpacing(1)
+            cap = QLabel(caption, frame)
+            cap.setStyleSheet(text_style("muted", font_size="10px"))
+            cap.setAlignment(Qt.AlignmentFlag.AlignRight)
+            val = QLabel("\u2014", frame)
+            val.setObjectName("DialogSectionTitle")
+            val.setAlignment(Qt.AlignmentFlag.AlignRight)
+            setattr(self, attr, val)
+            col.addWidget(cap)
+            col.addWidget(val)
+            layout.addLayout(col)
+
+        return frame
+
     def _build_recent_runs_card(self) -> QWidget:
         card = self._card("Recent payroll runs")
-        self._runs_table = QTableWidget(card)
+        # Count label on the right side of the card header
+        hrow = QHBoxLayout()
+        hrow.setContentsMargins(0, 0, 0, 0)
+        self._runs_count_label = QLabel("", card)
+        self._runs_count_label.setStyleSheet(text_style("muted", font_size="11px"))
+        hrow.addStretch(1)
+        hrow.addWidget(self._runs_count_label)
+        card.layout().addLayout(hrow)
+
+        self._runs_model = ReadOnlyTableModel(
+            ["Run", "Period", "Gross", "Net", "Payment", "Status"],
+            right_align_cols=frozenset({2, 3}),
+        )
+        self._runs_table = QTableView(card)
         configure_compact_table(self._runs_table)
-        self._runs_table.setColumnCount(5)
-        self._runs_table.setHorizontalHeaderLabels(
-            ("Run", "Period", "Gross", "Net", "Status")
-        )
-        self._runs_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self._runs_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-        self._runs_table.setMaximumHeight(180)
-        card.layout().addWidget(self._runs_table)
+        self._runs_table.setModel(self._runs_model)
+        hdr = self._runs_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self._runs_table.doubleClicked.connect(self._on_runs_table_double_clicked)
+        card.layout().addWidget(self._runs_table, 1)
         return card
 
     def _card(self, title: str) -> QFrame:
@@ -315,22 +415,31 @@ class EmployeeHubWindow(ChildWindowBase):
         self.setWindowTitle(f"Employee Hub — {emp.display_name}")
         self._name_label.setText(emp.display_name)
         self._number_chip.setText(emp.employee_number)
+        self._number_chip.setStyleSheet(
+            status_chip_style("neutral", padding="2px 8px", radius=8)
+        )
 
         active = emp.is_active
         self._status_chip.setText("Active" if active else "Inactive")
         self._status_chip.setStyleSheet(
-            "padding: 2px 10px; border-radius: 8px; font-weight: 600;"
-            + (" background: #e6f4ea; color: #1a7a2e;" if active
-               else " background: #fde8e8; color: #9b1c1c;")
+            status_chip_style(
+                "success" if active else "danger",
+                padding="2px 10px",
+                radius=8,
+            )
         )
+
         dept = emp.department_name or "—"
         pos = emp.position_name or "—"
+        company_hint = f" · {self._company_name}" if self._company_name else ""
         self._subtitle_label.setText(
             f"{dept}  ·  {pos}  ·  Hired {emp.hire_date.isoformat()}"
             + (f"  ·  Terminated {emp.termination_date.isoformat()}"
                if emp.termination_date else "")
+            + company_hint
         )
 
+        self._load_corrections_count()
         self._refresh_identity_grid()
         self._load_profiles_and_assignments()
         self._scan_gaps()
@@ -371,19 +480,29 @@ class EmployeeHubWindow(ChildWindowBase):
             except Exception:  # noqa: BLE001
                 acct_label = f"#{emp.default_payment_account_id}"
 
-        rows = [
-            ("Email",           emp.email or "—"),
-            ("Phone",           emp.phone or "—"),
-            ("Tax ID",          emp.tax_identifier or "—"),
-            ("CNPS",            emp.cnps_number or "—"),
-            ("Currency",        emp.base_currency_code),
-            ("Payment account", acct_label),
+        rows: list[tuple[str, str, str]] = [
+            ("Email",           emp.email or "—",           "primary"),
+            ("Phone",           emp.phone or "—",           "primary"),
+            ("Tax ID",          emp.tax_identifier or "—",  "primary"),
+            ("CNPS",            emp.cnps_number or "—",     "primary"),
+            ("Currency",        emp.base_currency_code,     "primary"),
+            ("Payment account", acct_label,                 "primary"),
         ]
-        for i, (label, value) in enumerate(rows):
+        if self._pending_corrections_count > 0:
+            rows.append((
+                "Pending corrections",
+                str(self._pending_corrections_count),
+                "warning",
+            ))
+
+        label_style = text_style("muted")
+        for i, (label, value, role) in enumerate(rows):
             lab = QLabel(label, self._identity_grid_host)
-            lab.setStyleSheet("color: #6b7280;")
+            lab.setStyleSheet(label_style)
             val = QLabel(value, self._identity_grid_host)
             val.setWordWrap(True)
+            if role != "primary":
+                val.setStyleSheet(text_style(role, font_weight=600))
             grid.addWidget(lab, i, 0)
             grid.addWidget(val, i, 1)
         grid.setColumnStretch(1, 1)
@@ -406,41 +525,32 @@ class EmployeeHubWindow(ChildWindowBase):
         except Exception:  # noqa: BLE001
             self._assignments = []
 
-        self._profiles_table.setRowCount(0)
-        for p in sorted(self._profiles, key=lambda x: x.effective_from, reverse=True):
-            row = self._profiles_table.rowCount()
-            self._profiles_table.insertRow(row)
-            self._profiles_table.setItem(
-                row, 0, QTableWidgetItem(p.effective_from.isoformat())
-            )
-            amt = QTableWidgetItem(f"{p.basic_salary:,.2f}")
-            amt.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            self._profiles_table.setItem(row, 1, amt)
-            self._profiles_table.setItem(row, 2, QTableWidgetItem(p.currency_code))
-            self._profiles_table.setItem(
-                row, 3, QTableWidgetItem("Active" if p.is_active else "Inactive")
-            )
-        self._profiles_table.resizeColumnsToContents()
+        profiles_sorted = sorted(self._profiles, key=lambda x: x.effective_from, reverse=True)
+        self._profiles_model.reset_data(
+            [
+                [
+                    p.profile_name,
+                    p.effective_from.isoformat(),
+                    f"{p.basic_salary:,.2f}",
+                    p.currency_code,
+                    "Active" if p.is_active else "Inactive",
+                ]
+                for p in profiles_sorted
+            ]
+        )
 
-        self._assignments_table.setRowCount(0)
-        for a in sorted(self._assignments, key=lambda x: x.effective_from, reverse=True):
-            row = self._assignments_table.rowCount()
-            self._assignments_table.insertRow(row)
-            self._assignments_table.setItem(
-                row, 0, QTableWidgetItem(a.component_name)
-            )
-            self._assignments_table.setItem(
-                row, 1, QTableWidgetItem(a.component_type_code)
-            )
-            self._assignments_table.setItem(
-                row, 2, QTableWidgetItem(a.effective_from.isoformat())
-            )
-            self._assignments_table.setItem(
-                row, 3, QTableWidgetItem("Active" if a.is_active else "Inactive")
-            )
-        self._assignments_table.resizeColumnsToContents()
+        assignments_sorted = sorted(self._assignments, key=lambda x: x.effective_from, reverse=True)
+        self._assignments_model.reset_data(
+            [
+                [
+                    a.component_name,
+                    _COMPONENT_TYPE_LABELS.get(a.component_type_code, a.component_type_code),
+                    a.effective_from.isoformat(),
+                    "Active" if a.is_active else "Inactive",
+                ]
+                for a in assignments_sorted
+            ]
+        )
 
     def _scan_gaps(self) -> None:
         emp = self._employee
@@ -465,23 +575,19 @@ class EmployeeHubWindow(ChildWindowBase):
             "components": not has_assignments,
         }
 
-    def _refresh_readiness(self) -> None:
-        for key, pill in self._readiness_pills.items():
-            missing = self._gaps.get(key, False)
-            if missing:
-                pill.setText(f"⚠ {pill.text().replace('⚠ ', '').replace('✓ ', '')}")
-                pill.setStyleSheet(
-                    "padding: 4px 10px; border-radius: 8px;"
-                    " background: #fff7e6; color: #b25503; font-weight: 600;"
-                )
-                # Normalize text back to label without badge repeat.
-            else:
-                pill.setStyleSheet(
-                    "padding: 4px 10px; border-radius: 8px;"
-                    " background: #e6f4ea; color: #1a7a2e; font-weight: 600;"
-                )
+    def _load_corrections_count(self) -> None:
+        """Load pending corrections count (best-effort; permission failure is silent)."""
+        try:
+            corrections = self._registry.payroll_correction_service.list_employee_corrections(
+                self._company_id, self._employee_id, status_code="pending"
+            )
+            self._pending_corrections_count = len(corrections)
+        except PermissionDeniedError:
+            self._pending_corrections_count = 0
+        except Exception:  # noqa: BLE001
+            self._pending_corrections_count = 0
 
-        # Reset pill text so repeat calls don't stack badges.
+    def _refresh_readiness(self) -> None:
         labels_map = {
             "tax_cnps":   "Tax & CNPS",
             "payment":    "Payment",
@@ -489,9 +595,16 @@ class EmployeeHubWindow(ChildWindowBase):
             "components": "Components",
         }
         for key, pill in self._readiness_pills.items():
-            base = labels_map[key]
-            badge = "⚠ " if self._gaps.get(key) else "✓ "
-            pill.setText(badge + base)
+            missing = self._gaps.get(key, False)
+            badge = "⚠ " if missing else "✓ "
+            pill.setText(badge + labels_map[key])
+            pill.setStyleSheet(
+                status_chip_style(
+                    "warning" if missing else "success",
+                    padding="4px 10px",
+                    radius=8,
+                )
+            )
 
         gap_count = sum(1 for v in self._gaps.values() if v)
         self._readiness_summary.setText(
@@ -501,54 +614,55 @@ class EmployeeHubWindow(ChildWindowBase):
         )
 
     def _load_recent_runs(self) -> None:
+        """Single-query JOIN to fetch run history for this employee (no N+1)."""
         self._recent_runs = []
         try:
-            runs = self._registry.payroll_run_service.list_runs(self._company_id)
+            pairs = self._registry.payroll_run_service.list_employee_run_history(
+                self._company_id, self._employee_id, limit=20,
+            )
+            self._recent_runs = pairs
         except Exception:  # noqa: BLE001
-            runs = []
-        runs = sorted(runs, key=lambda r: (r.period_year, r.period_month), reverse=True)
-        for run in runs:
-            try:
-                emps = self._registry.payroll_run_service.list_run_employees(
-                    self._company_id, run.id,
-                )
-            except Exception:  # noqa: BLE001
-                continue
-            hit = next((e for e in emps if e.employee_id == self._employee_id), None)
-            if hit is None:
-                continue
-            self._recent_runs.append((run, hit))
-            if len(self._recent_runs) >= 8:
-                break
+            _log.debug("Could not load run history for employee=%s", self._employee_id)
 
-        self._runs_table.setRowCount(0)
-        for run, hit in self._recent_runs:
-            row = self._runs_table.rowCount()
-            self._runs_table.insertRow(row)
-            self._runs_table.setItem(row, 0, QTableWidgetItem(run.run_reference))
-            period_name = (
-                _MONTHS[run.period_month] if 1 <= run.period_month <= 12 else ""
+        # YTD computation: sum for current year, only meaningful statuses
+        today = date.today()
+        ytd_gross = Decimal("0")
+        ytd_net = Decimal("0")
+        ytd_run_count = 0
+        for run_dto, emp_dto in self._recent_runs:
+            if (
+                run_dto.period_year == today.year
+                and run_dto.status_code in _YTD_STATUSES
+            ):
+                ytd_gross += emp_dto.gross_earnings
+                ytd_net += emp_dto.net_payable
+                ytd_run_count += 1
+
+        self._ytd_year_label.setText(f"YTD {today.year}")
+        self._ytd_gross_label.setText(f"{ytd_gross:,.0f}" if ytd_run_count else "\u2014")
+        self._ytd_net_label.setText(f"{ytd_net:,.0f}" if ytd_run_count else "\u2014")
+        self._ytd_runs_label.setText(str(ytd_run_count) if ytd_run_count else "\u2014")
+
+        rows_data = []
+        for run_dto, emp_dto in self._recent_runs:
+            period_name = _MONTHS[run_dto.period_month] if 1 <= run_dto.period_month <= 12 else ""
+            pay_status = _PAYMENT_STATUS_LABELS.get(
+                emp_dto.payment_status_code, emp_dto.payment_status_code
             )
-            self._runs_table.setItem(
-                row, 1, QTableWidgetItem(f"{period_name} {run.period_year}")
-            )
-            gross = QTableWidgetItem(f"{hit.gross_earnings:,.2f}")
-            gross.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            self._runs_table.setItem(row, 2, gross)
-            net = QTableWidgetItem(f"{hit.net_payable:,.2f}")
-            net.setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-            self._runs_table.setItem(row, 3, net)
-            self._runs_table.setItem(
-                row, 4,
-                QTableWidgetItem(
-                    _RUN_STATUS_LABELS.get(run.status_code, run.status_code)
-                ),
-            )
-        self._runs_table.resizeColumnsToContents()
+            rows_data.append([
+                run_dto.run_reference,
+                f"{period_name} {run_dto.period_year}",
+                f"{emp_dto.gross_earnings:,.2f}",
+                f"{emp_dto.net_payable:,.2f}",
+                pay_status,
+                _RUN_STATUS_LABELS.get(run_dto.status_code, run_dto.status_code),
+            ])
+        self._runs_model.reset_data(rows_data)
+
+        count = len(self._recent_runs)
+        self._runs_count_label.setText(
+            f"Last {count} run{'s' if count != 1 else ''}" if count else "No runs"
+        )
 
     # ── Ribbon host ───────────────────────────────────────────────────
 
@@ -558,8 +672,9 @@ class EmployeeHubWindow(ChildWindowBase):
             "payroll_employee_hub.payroll_setup_wizard": self._on_payroll_setup,
             "payroll_employee_hub.compensation_change":  self._on_compensation_change,
             "payroll_employee_hub.new_assignment":       self._on_new_assignment,
-            "payroll_employee_hub.deactivate":           self._on_deactivate,
-            "payroll_employee_hub.reactivate":           self._on_reactivate,
+            "payroll_employee_hub.queue_correction":     self._on_queue_correction,
+            "payroll_employee_hub.deactivate":           self._on_terminate,
+            "payroll_employee_hub.reactivate":           self._on_rehire,
             "payroll_employee_hub.refresh":              self._reload,
             "payroll_employee_hub.close":                self.close,
         }
@@ -575,6 +690,7 @@ class EmployeeHubWindow(ChildWindowBase):
             "payroll_employee_hub.payroll_setup_wizard": loaded and active,
             "payroll_employee_hub.compensation_change":  loaded and active,
             "payroll_employee_hub.new_assignment":       loaded and active,
+            "payroll_employee_hub.queue_correction":     loaded and active,
             "payroll_employee_hub.deactivate":           loaded and active,
             "payroll_employee_hub.reactivate":           loaded and not active,
             "payroll_employee_hub.refresh":              True,
@@ -627,71 +743,70 @@ class EmployeeHubWindow(ChildWindowBase):
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self._reload()
 
-    def _on_deactivate(self) -> None:
+    def _on_queue_correction(self) -> None:
         emp = self._employee
         if emp is None or not emp.is_active:
             return
-        if QMessageBox.question(
-            self,
-            "Deactivate Employee",
-            f"Deactivate {emp.display_name}? They will be excluded from "
-            "future payroll runs.",
-        ) != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self._registry.employee_service.update_employee(
-                self._company_id, emp.id,
-                UpdateEmployeeCommand(
-                    employee_number=emp.employee_number,
-                    display_name=emp.display_name,
-                    first_name=emp.first_name,
-                    last_name=emp.last_name,
-                    hire_date=emp.hire_date,
-                    base_currency_code=emp.base_currency_code,
-                    is_active=False,
-                    department_id=emp.department_id,
-                    position_id=emp.position_id,
-                    termination_date=emp.termination_date or date.today(),
-                    phone=emp.phone,
-                    email=emp.email,
-                    tax_identifier=emp.tax_identifier,
-                    cnps_number=emp.cnps_number,
-                    default_payment_account_id=emp.default_payment_account_id,
-                ),
-            )
-        except (ValidationError, ConflictError, NotFoundError,
-                PermissionDeniedError) as exc:
-            show_error(self, "Employee Hub", str(exc))
-            return
-        self._reload()
+        today = date.today()
+        dlg = PayrollCorrectionDialog(
+            self._registry,
+            self._company_id,
+            employee_id=emp.id,
+            employee_label=emp.display_name,
+            period_year=today.year,
+            period_month=today.month,
+            parent=self,
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._reload()
 
-    def _on_reactivate(self) -> None:
+    def _on_terminate(self) -> None:
+        """Open the Termination BP wizard (guided flow with reason capture)."""
+        emp = self._employee
+        if emp is None or not emp.is_active:
+            return
+        completed = TerminateEmployeeWizardDialog.run(
+            self._registry,
+            self._company_id,
+            self._to_list_item_dto(emp),
+            parent=self,
+        )
+        if completed:
+            self._reload()
+
+    def _on_rehire(self) -> None:
+        """Open the Rehire BP wizard (guided flow)."""
         emp = self._employee
         if emp is None or emp.is_active:
             return
-        try:
-            self._registry.employee_service.update_employee(
-                self._company_id, emp.id,
-                UpdateEmployeeCommand(
-                    employee_number=emp.employee_number,
-                    display_name=emp.display_name,
-                    first_name=emp.first_name,
-                    last_name=emp.last_name,
-                    hire_date=emp.hire_date,
-                    base_currency_code=emp.base_currency_code,
-                    is_active=True,
-                    department_id=emp.department_id,
-                    position_id=emp.position_id,
-                    termination_date=None,
-                    phone=emp.phone,
-                    email=emp.email,
-                    tax_identifier=emp.tax_identifier,
-                    cnps_number=emp.cnps_number,
-                    default_payment_account_id=emp.default_payment_account_id,
-                ),
-            )
-        except (ValidationError, ConflictError, NotFoundError,
-                PermissionDeniedError) as exc:
-            show_error(self, "Employee Hub", str(exc))
+        completed = RehireEmployeeWizardDialog.run(
+            self._registry,
+            self._company_id,
+            self._to_list_item_dto(emp),
+            parent=self,
+        )
+        if completed:
+            self._reload()
+
+    # ── Runs table interaction ────────────────────────────────────
+
+    def _on_runs_table_double_clicked(self) -> None:
+        """Open payslip preview for the double-clicked run row."""
+        indexes = self._runs_table.selectedIndexes()
+        if not indexes:
             return
-        self._reload()
+        row = indexes[0].row()
+        if row < 0 or row >= len(self._recent_runs):
+            return
+        _run_dto, emp_dto = self._recent_runs[row]
+        run_employee_id = emp_dto.id
+        try:
+            dlg = PayslipPreviewDialog(
+                self._registry,
+                self._company_id,
+                run_employee_id,
+                parent=self,
+            )
+            dlg.exec()
+        except Exception as exc:  # noqa: BLE001
+            show_error(self, "Payslip Preview", f"Could not open payslip: {exc}")

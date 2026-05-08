@@ -28,6 +28,7 @@ from seeker_accounting.modules.reporting.dto.ohada_balance_sheet_dto import (
     OhadaBalanceSheetReportDTO,
 )
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 _ZERO = Decimal("0.00")
 
@@ -133,7 +134,7 @@ class BalanceSheetTemplatePreviewDialog(QDialog):
         swatch = QFrame(card)
         swatch.setFixedSize(84, 28)
         swatch.setStyleSheet(
-            f"background-color: {color_hex}; border: 1px solid #CBD5E1; border-radius: 6px;"
+            f"background-color: {color_hex}; border: 1px solid {_P.border_default}; border-radius: 6px;"
         )
         layout.addWidget(swatch)
 

@@ -53,7 +53,7 @@ class ConfirmStep(WizardStep):
         outer.addWidget(self._post_check)
 
         self._result_label = QLabel(root)
-        self._result_label.setStyleSheet("color: #2a7;")
+        self._result_label.setObjectName("WizardSuccessText")
         outer.addWidget(self._result_label)
 
         outer.addStretch(1)

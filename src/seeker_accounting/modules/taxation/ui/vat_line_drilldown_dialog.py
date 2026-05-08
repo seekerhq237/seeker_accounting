@@ -11,7 +11,6 @@ that no raw repositories are touched from the UI layer.
 
 from __future__ import annotations
 
-from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from decimal import Decimal
 
 from PySide6.QtCore import Qt
@@ -29,6 +28,7 @@ from PySide6.QtWidgets import (
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.dialogs import BaseDialog
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 
 class VATLineDrillDownDialog(BaseDialog):

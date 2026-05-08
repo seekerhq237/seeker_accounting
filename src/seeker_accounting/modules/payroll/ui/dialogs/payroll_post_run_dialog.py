@@ -26,6 +26,7 @@ from seeker_accounting.modules.payroll.dto.payroll_posting_dto import (
 )
 from seeker_accounting.platform.exceptions import AppError
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
 _SEVERITY_ICONS = {"error": "✖", "warning": "⚠"}
 
@@ -101,7 +102,7 @@ class PayrollPostRunDialog(QDialog):
         self._quickfix_row = QHBoxLayout()
         self._quickfix_row.setSpacing(8)
         quickfix_label = QLabel("Quick fix:")
-        quickfix_label.setStyleSheet("font-size: 11px; color: #666;")
+        quickfix_label.setStyleSheet(text_style("secondary", font_size="11px"))
         self._quickfix_row.addWidget(quickfix_label)
 
         self._btn_open_role_mappings = QPushButton("Open Account Role Mappings")
@@ -175,14 +176,14 @@ class PayrollPostRunDialog(QDialog):
             self._status_label.setText(
                 f"❌ {result.error_count} blocking error(s). Resolve before posting."
             )
-            self._status_label.setStyleSheet("color: #c0392b; font-size: 11px;")
+            self._status_label.setStyleSheet(text_style("danger", font_size="11px"))
             self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
             self._show_relevant_quickfix_buttons(result)
         else:
             self._status_label.setText(
                 f"✔ Ready to post {result.run_reference} ({result.period_label})."
             )
-            self._status_label.setStyleSheet("color: #1a7a2e; font-size: 11px;")
+            self._status_label.setStyleSheet(text_style("success", font_size="11px"))
             self._buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(True)
 
     def _hide_quickfix_buttons(self) -> None:

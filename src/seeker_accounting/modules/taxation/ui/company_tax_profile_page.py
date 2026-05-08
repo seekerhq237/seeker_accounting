@@ -31,6 +31,8 @@ from seeker_accounting.modules.taxation.ui.company_tax_profile_dialog import (
 )
 from seeker_accounting.platform.exceptions import PermissionDeniedError
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.inline_styles import panel_style, text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 _DASH = "\u2014"
@@ -128,21 +130,21 @@ class CompanyTaxProfilePage(RibbonHostMixin, QWidget):
         self._exists_banner.setObjectName("PageBanner")
         self._exists_banner.setWordWrap(True)
         self._exists_banner.setStyleSheet(
-            "QLabel { background: #FEF3C7; color: #92400E; padding: 8px 12px; "
-            "border-radius: 6px; font-size: 12px; }"
+            f"QLabel {{ {panel_style('warning')} padding: 8px 12px; "
+            "border-radius: 6px; font-size: 12px; }}"
         )
         outer.addWidget(self._exists_banner)
 
         # Header line
         self._title_label = QLabel(card)
         self._title_label.setStyleSheet(
-            "font-size: 18px; font-weight: 700; color: #111827;"
+            text_style("primary", font_size="18px", font_weight=700)
         )
         outer.addWidget(self._title_label)
 
         divider = QFrame(card)
         divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setStyleSheet("color: #E5E7EB;")
+        divider.setStyleSheet(f"color: {_P.divider_subtle};")
         outer.addWidget(divider)
 
         # Two-column field grid
@@ -203,7 +205,7 @@ class CompanyTaxProfilePage(RibbonHostMixin, QWidget):
 
         lbl = QLabel(label_text + ":", parent)
         lbl.setStyleSheet(
-            "font-size: 11px; color: #9CA3AF; font-weight: 500;"
+            text_style("muted", font_size="11px", font_weight=500)
         )
         lbl.setFixedWidth(160)
         lbl.setAlignment(
@@ -212,7 +214,7 @@ class CompanyTaxProfilePage(RibbonHostMixin, QWidget):
         row.addWidget(lbl)
 
         val = QLabel(_DASH, parent)
-        val.setStyleSheet("font-size: 12px; color: #111827;")
+        val.setStyleSheet(text_style("primary", font_size="12px"))
         val.setWordWrap(True)
         val.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred

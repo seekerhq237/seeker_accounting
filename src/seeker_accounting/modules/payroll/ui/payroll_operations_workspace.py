@@ -13,6 +13,7 @@ import logging
 
 from datetime import datetime
 from decimal import Decimal
+from string import Template
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor, QStandardItem, QStandardItemModel, QTextDocument
@@ -42,6 +43,8 @@ from seeker_accounting.modules.payroll.ui.dialogs.validation_check_detail_dialog
 from seeker_accounting.platform.exceptions import ValidationError
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 _MONTHS = {
     1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr",
@@ -50,9 +53,9 @@ _MONTHS = {
 }
 
 _SEVERITY_COLORS = {
-    "error": "#dc3545",
-    "warning": "#fd7e14",
-    "info": "#0d6efd",
+    "error": _P.danger,
+    "warning": _P.warning,
+    "info": _P.info,
 }
 
 
@@ -86,7 +89,7 @@ class PayrollOperationsWorkspace(RibbonHostMixin, QWidget):
         topbar.addStretch()
 
         self._company_label = QLabel("No company selected")
-        self._company_label.setStyleSheet("color: #666; font-size: 11px;")
+        self._company_label.setStyleSheet(text_style("secondary", font_size="11px"))
         topbar.addWidget(self._company_label)
         root.addLayout(topbar)
 
@@ -296,7 +299,7 @@ class _ValidationTab(QWidget):
         self._table.view().doubleClicked.connect(lambda *_: self._on_check_double_clicked())
 
         hint = QLabel("Double-click a row to see full details and remediation steps.")
-        hint.setStyleSheet("color: #888; font-size: 11px; padding: 1px 0 4px 0;")
+        hint.setStyleSheet(text_style("muted", font_size="11px", extra="padding: 1px 0 4px 0"))
         layout.addWidget(hint)
         layout.addWidget(self._table)
 
@@ -324,13 +327,13 @@ class _ValidationTab(QWidget):
         # Summary
         if result.is_ready:
             self._summary_label.setText(
-                f"<b style='color: #28a745;'>Ready</b> — "
+                f"<b style='color: {_P.success};'>Ready</b> — "
                 f"{result.ready_employee_count}/{result.employee_count} employees ready. "
                 f"{result.warning_count} warning(s)."
             )
         else:
             self._summary_label.setText(
-                f"<b style='color: #dc3545;'>Not Ready</b> — "
+                f"<b style='color: {_P.danger};'>Not Ready</b> — "
                 f"{result.error_count} error(s), {result.warning_count} warning(s). "
                 f"{result.ready_employee_count}/{result.employee_count} employees ready."
             )
@@ -339,7 +342,7 @@ class _ValidationTab(QWidget):
         self._model.removeRows(0, self._model.rowCount())
         for check in result.checks:
             sev_item = self._make_item(check.severity.upper(), user_data=check)
-            sev_item.setForeground(QBrush(QColor("white")))
+            sev_item.setForeground(QBrush(QColor(_P.accent_text)))
             self._model.appendRow([
                 sev_item,
                 self._make_item(check.category.title()),
@@ -409,11 +412,17 @@ class _StatutoryPacksTab(QWidget):
         # Actions
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
-        self._btn_preview = QPushButton("Preview Rollover")
+        self._btn_rollover_wizard = QPushButton("Rollover Wizard…")
+        self._btn_rollover_wizard.setObjectName("PacksTabRolloverWizardBtn")
+        self._btn_rollover_wizard.setProperty("variant", "primary")
+        self._btn_rollover_wizard.clicked.connect(self._on_rollover_wizard)
+        btn_row.addWidget(self._btn_rollover_wizard)
+
+        self._btn_preview = QPushButton("Quick Preview")
         self._btn_preview.clicked.connect(self._on_preview)
         btn_row.addWidget(self._btn_preview)
 
-        self._btn_apply = QPushButton("Apply Selected Pack")
+        self._btn_apply = QPushButton("Quick Apply")
         self._btn_apply.clicked.connect(self._on_apply)
         btn_row.addWidget(self._btn_apply)
         btn_row.addStretch()
@@ -422,7 +431,9 @@ class _StatutoryPacksTab(QWidget):
         # Preview result
         self._preview_label = QLabel("")
         self._preview_label.setWordWrap(True)
-        self._preview_label.setStyleSheet("font-size: 11px; padding: 6px; background: #f8f9fa; border-radius: 4px;")
+        self._preview_label.setStyleSheet(
+            f"font-size: 11px; padding: 6px; background: {_P.secondary_surface}; border-radius: 4px;"
+        )
         self._preview_label.hide()
         layout.addWidget(self._preview_label)
 
@@ -477,6 +488,21 @@ class _StatutoryPacksTab(QWidget):
         if user_data is not None:
             item.setData(user_data, Qt.ItemDataRole.UserRole)
         return item
+
+    def _on_rollover_wizard(self) -> None:
+        if not self._company_id:
+            show_info(self, "No Company", "Select an active company first.")
+            return
+        from seeker_accounting.modules.payroll.ui.dialogs.pack_rollover_wizard import (
+            PackRolloverWizardDialog,
+        )
+        dlg = PackRolloverWizardDialog(
+            self._company_id,
+            self._registry.payroll_pack_version_service,
+            parent=self,
+        )
+        if dlg.exec() and dlg.was_applied:
+            self.refresh()
 
     def _on_preview(self) -> None:
         pack_code = self._selected_pack_code()
@@ -565,7 +591,7 @@ class _ImportsTab(QWidget):
         layout.addLayout(type_row)
 
         self._file_label = QLabel("No file selected")
-        self._file_label.setStyleSheet("color: #666; font-size: 11px;")
+        self._file_label.setStyleSheet(text_style("secondary", font_size="11px"))
         layout.addWidget(self._file_label)
 
         # Preview / Import buttons
@@ -752,7 +778,7 @@ class _PrintTab(QWidget):
         export_row = QHBoxLayout()
         export_row.setSpacing(8)
         export_lbl = QLabel("Export:")
-        export_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #555;")
+        export_lbl.setStyleSheet(text_style("secondary", font_size="11px", font_weight=600))
         export_row.addWidget(export_lbl)
 
         self._btn_export_payslip = QPushButton("Export Payslips\u2026")
@@ -1131,75 +1157,88 @@ class _AuditTab(QWidget):
 # HTML builders for print
 # ══════════════════════════════════════════════════════════════════════════════
 
-_PRINT_STYLE = """
+_PRINT_STYLE = Template("""
 <style>
-  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; font-size: 10pt; color: #1F2933; }
+  body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; font-size: 10pt; color: $text_primary; }
   /* Centered content frame */
   .main { max-width: 86%; margin: 0 auto; }
   /* Company banner */
   .company-banner { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
   .company-banner td { vertical-align: middle; padding: 0; }
-  .company-banner .name-cell { font-size: 14pt; font-weight: 700; color: #2F4F6F; }
+  .company-banner .name-cell { font-size: 14pt; font-weight: 700; color: $accent; }
   .company-banner .title-cell { text-align: right; font-size: 10pt; font-weight: 600;
-      color: #6E859B; letter-spacing: 1px; line-height: 1.4; }
-  hr.sep { border: none; border-top: 1px solid #D6E0EA; margin: 6px 0; }
+      color: $text_secondary; letter-spacing: 1px; line-height: 1.4; }
+  hr.sep { border: none; border-top: 1px solid $border_default; margin: 6px 0; }
   /* Identity cards */
   .identity-row { width: 100%; border-collapse: separate; border-spacing: 12px 0; margin-bottom: 10px; }
   .identity-row > tbody > tr > td { vertical-align: top; width: 50%; padding: 0; }
-  .id-card { border: 1px solid #D6E0EA; border-radius: 4px; overflow: hidden; background: #fff; }
-  .identity-header { font-size: 8.5pt; font-weight: 600; color: #2F4F6F; background: #EAF1F7;
-      padding: 5px 10px; letter-spacing: 0.4px; border-bottom: 1px solid #D6E0EA; }
+  .id-card { border: 1px solid $border_default; border-radius: 4px; overflow: hidden; background: $workspace_surface; }
+  .identity-header { font-size: 8.5pt; font-weight: 600; color: $accent; background: $accent_soft;
+      padding: 5px 10px; letter-spacing: 0.4px; border-bottom: 1px solid $border_default; }
   .id-rows { padding: 6px 14px 8px 14px; }
   .id-row { padding: 1px 0; }
   .id-row-label { display: inline-block; width: 130px; text-align: right; font-size: 7.5pt;
-      color: #6B7280; padding-right: 8px; }
-  .id-row-value { font-size: 9pt; font-weight: 600; color: #1F2933; }
+      color: $text_secondary; padding-right: 8px; }
+  .id-row-value { font-size: 9pt; font-weight: 600; color: $text_primary; }
   /* Context strip (4-cell) */
-  .context-bar { background: #EAF1F7; margin-bottom: 14px; border-radius: 3px; }
+  .context-bar { background: $accent_soft; margin-bottom: 14px; border-radius: 3px; }
   .context-bar table { width: 100%; border-collapse: collapse; }
   .context-bar td { padding: 4px 8px; text-align: center; vertical-align: top; }
-  .context-bar .ctx-label { font-size: 7.5pt; color: #6B7280; }
-  .context-bar .ctx-value { font-size: 9pt; font-weight: 600; color: #1F2933; }
-  .context-bar .ctx-sep { width: 1px; background: #D6E0EA; padding: 0; }
+  .context-bar .ctx-label { font-size: 7.5pt; color: $text_secondary; }
+  .context-bar .ctx-value { font-size: 9pt; font-weight: 600; color: $text_primary; }
+  .context-bar .ctx-sep { width: 1px; background: $border_default; padding: 0; }
   /* Section headers */
-  .section-header { font-size: 9pt; font-weight: 600; color: #2F4F6F;
-      padding: 2px 0; margin: 10px 0 0 0; border-bottom: 2px solid #2F4F6F; }
-  h2 { font-size: 12pt; margin-top: 12px; margin-bottom: 4px; color: #2F4F6F; }
+  .section-header { font-size: 9pt; font-weight: 600; color: $accent;
+      padding: 2px 0; margin: 10px 0 0 0; border-bottom: 2px solid $accent; }
+  h2 { font-size: 12pt; margin-top: 12px; margin-bottom: 4px; color: $accent; }
   table { border-collapse: collapse; width: 100%; margin-top: 4px; font-size: 9pt; }
-  td { border-bottom: 1px solid #EAF1F7; padding: 3px 10px; text-align: left; }
+  td { border-bottom: 1px solid $accent_soft; padding: 3px 10px; text-align: left; }
   td.right { text-align: right; font-variant-numeric: tabular-nums; width: 140px; }
-  th { background: #2F4F6F; color: #fff; padding: 5px 10px; font-size: 8.5pt; font-weight: 600; text-align: left; }
+  th { background: $accent; color: $accent_text; padding: 5px 10px; font-size: 8.5pt; font-weight: 600; text-align: left; }
   th.right { text-align: right; }
-  .total-row { font-weight: 700; background: #EAF1F7; }
-  .total-row td { border-top: 2px solid #2F4F6F; color: #2F4F6F; }
-  tr:nth-child(even) { background: #F6F8FB; }
+  .total-row { font-weight: 700; background: $accent_soft; }
+  .total-row td { border-top: 2px solid $accent; color: $accent; }
+  tr:nth-child(even) { background: $row_alt; }
   /* Bases */
   .bases-strip { margin: 10px 0 14px 0; }
   .bases-strip table { border-collapse: separate; border-spacing: 10px 0; }
-  .bases-strip td { background: #EAF1F7; border: 1px solid #D6E0EA; border-radius: 3px;
+  .bases-strip td { background: $accent_soft; border: 1px solid $border_default; border-radius: 3px;
       text-align: center; padding: 8px 12px; width: 33%; }
-  .bases-strip .b-label { font-size: 7.5pt; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; }
-  .bases-strip .b-value { font-size: 10.5pt; font-weight: 600; color: #2F4F6F; }
+  .bases-strip .b-label { font-size: 7.5pt; color: $text_secondary; text-transform: uppercase; letter-spacing: 0.5px; }
+  .bases-strip .b-value { font-size: 10.5pt; font-weight: 600; color: $accent; }
   /* Net box */
-  .net-box { margin: 14px 0; background: #EDF7F1; border: 1px solid #C3DFD0;
+  .net-box { margin: 14px 0; background: $success_bg; border: 1px solid $success_border;
       border-radius: 5px; padding: 2px 0; }
   .net-box table { border-collapse: collapse; }
   .net-box td { padding: 8px 20px; border: none; background: transparent; }
-  .net-box .label { font-size: 9pt; color: #2E7D4F; }
-  .net-box .label-main { font-size: 11pt; font-weight: 600; color: #2E7D4F; }
-  .net-box .amount { font-size: 9.5pt; color: #2E7D4F; font-weight: 600; text-align: right; }
-  .net-box .amount-main { font-size: 16pt; font-weight: 700; color: #2E7D4F; text-align: right; }
-  .net-sep { border: none; border-top: 1px solid #C3DFD0; margin: 0; }
+  .net-box .label { font-size: 9pt; color: $success_fg; }
+  .net-box .label-main { font-size: 11pt; font-weight: 600; color: $success_fg; }
+  .net-box .amount { font-size: 9.5pt; color: $success_fg; font-weight: 600; text-align: right; }
+  .net-box .amount-main { font-size: 16pt; font-weight: 700; color: $success_fg; text-align: right; }
+  .net-sep { border: none; border-top: 1px solid $success_border; margin: 0; }
   /* Signatures */
   .sig-table { width: 100%; border-collapse: collapse; margin-top: 22px; }
   .sig-table td { width: 33%; padding: 0 12px; text-align: center; vertical-align: bottom;
-      font-size: 8pt; color: #6B7280; border: none; background: transparent; }
-  .sig-line { border-top: 1px solid #6E859B; padding-top: 4px; margin-top: 36px; }
+      font-size: 8pt; color: $text_secondary; border: none; background: transparent; }
+  .sig-line { border-top: 1px solid $text_secondary; padding-top: 4px; margin-top: 36px; }
   .section { margin-top: 14px; }
   .page-break { page-break-before: always; }
-  .footer { font-size: 7.5pt; color: #9CA3AF; margin-top: 14px; text-align: right; }
+  .footer { font-size: 7.5pt; color: $text_muted; margin-top: 14px; text-align: right; }
 </style>
-"""
+""").substitute(
+    text_primary=_P.text_primary,
+    text_secondary=_P.text_secondary,
+    text_muted=_P.text_muted,
+    workspace_surface=_P.workspace_surface,
+    border_default=_P.border_default,
+    row_alt=_P.data_table_row_alt,
+    accent=_P.accent,
+    accent_text=_P.accent_text,
+    accent_soft=_P.accent_soft,
+    success_bg=_P.status_success_bg,
+    success_fg=_P.status_success_fg,
+    success_border=_P.status_success_border,
+)
 
 
 def _id_field_html(label: str, value: str | None) -> str:
@@ -1331,7 +1370,7 @@ def _build_payslips_html(payslips: list) -> str:
 
 def _build_summary_html(data) -> str:
     parts = [f"<html><head>{_PRINT_STYLE}</head><body>"]
-    parts.append(f'<h1 style="color:#2F4F6F">{data.company_name}</h1>')
+    parts.append(f'<h1 style="color:{_P.accent}">{data.company_name}</h1>')
     parts.append(f'<h2>Payroll Summary — {data.period_label}</h2>')
     parts.append(f'<div class="context-bar"><b>Run:</b> {data.run_reference} ({data.run_label})')
     parts.append(f' &nbsp;&bull;&nbsp; <b>Employees:</b> {data.employee_count}')
@@ -1358,7 +1397,7 @@ def _build_summary_html(data) -> str:
     parts.append("</table>")
 
     # Summary box
-    parts.append('<div class="section"><h3 style="color:#2F4F6F">Summary</h3><table>')
+    parts.append(f'<div class="section"><h3 style="color:{_P.accent}">Summary</h3><table>')
     parts.append(f'<tr><td>Total Gross Earnings</td><td class="right">{data.total_gross_earnings:,.2f}</td></tr>')
     parts.append(f'<tr><td>Total Employee Deductions</td><td class="right">{data.total_deductions:,.2f}</td></tr>')
     parts.append(f'<tr><td>Total Taxes</td><td class="right">{data.total_taxes:,.2f}</td></tr>')

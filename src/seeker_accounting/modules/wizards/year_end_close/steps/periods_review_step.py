@@ -96,7 +96,7 @@ class PeriodsReviewStep(WizardStep):
         outer.addWidget(self._lock_checkbox)
 
         self._result = QLabel(root)
-        self._result.setStyleSheet("color: #2a7;")
+        self._result.setObjectName("WizardSuccessText")
         outer.addWidget(self._result)
         return root
 

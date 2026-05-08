@@ -745,6 +745,196 @@ QFrame#WorkspaceFrame {{
     background: {palette.secondary_surface};
 }}
 
+QDialog#WizardHostDialog {{
+    background: {palette.workspace_surface};
+}}
+
+QFrame#WizardIntroStrip {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-bottom: 1px solid {palette.border_default};
+}}
+
+QLabel#WizardIntroText {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_body}px;
+}}
+
+QListWidget#WizardStepRail {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-right: 1px solid {palette.border_default};
+    padding: 12px 0;
+    outline: 0;
+}}
+
+QListWidget#WizardStepRail::item {{
+    padding: 10px 16px;
+    color: {palette.text_secondary};
+    border: none;
+    border-left: 3px solid transparent;
+}}
+
+QListWidget#WizardStepRail::item:selected {{
+    background: transparent;
+}}
+
+QLabel#WizardStepTitle {{
+    color: {palette.text_primary};
+    font-size: {typography.size_section_title}px;
+    font-weight: {typography.weight_semibold};
+}}
+
+QLabel#WizardStepSubtitle {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_body}px;
+}}
+
+QLabel#WizardErrorStrip {{
+    background: {palette.status_danger_bg};
+    color: {palette.status_danger_fg};
+    border: 1px solid {palette.status_danger_border};
+    border-radius: {radius.small}px;
+    padding: 6px 8px;
+    font-size: {typography.size_body}px;
+}}
+
+QFrame#WizardAdvisorPane {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-left: 1px solid {palette.border_default};
+}}
+
+QLabel#WizardAdvisorTitle {{
+    color: {palette.text_primary};
+    font-size: {typography.size_card_title}px;
+    font-weight: {typography.weight_semibold};
+}}
+
+QLabel#WizardAdvisorEmpty {{
+    color: {palette.text_muted};
+    font-size: {typography.size_dense}px;
+}}
+
+QFrame#WizardAdvisorCard {{
+    background: {palette.status_info_bg};
+    border: 1px solid {palette.status_info_border};
+    border-radius: {radius.small}px;
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="blocker"] {{
+    background: {palette.severity_blocker_bg};
+    border-color: {palette.severity_blocker_accent};
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="warning"] {{
+    background: {palette.status_warning_bg};
+    border-color: {palette.status_warning_border};
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="suggestion"] {{
+    background: {palette.status_accent_bg};
+    border-color: {palette.status_accent_border};
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="info"] {{
+    background: {palette.status_info_bg};
+    border-color: {palette.status_info_border};
+}}
+
+QLabel#WizardAdvisorCardTitle {{
+    color: {palette.text_primary};
+    font-size: {typography.size_dense}px;
+    font-weight: {typography.weight_semibold};
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="blocker"] QLabel#WizardAdvisorCardTitle {{
+    color: {palette.severity_blocker_fg};
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="warning"] QLabel#WizardAdvisorCardTitle {{
+    color: {palette.status_warning_fg};
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="suggestion"] QLabel#WizardAdvisorCardTitle {{
+    color: {palette.status_accent_fg};
+}}
+
+QFrame#WizardAdvisorCard[advisorSeverity="info"] QLabel#WizardAdvisorCardTitle {{
+    color: {palette.status_info_fg};
+}}
+
+QLabel#WizardAdvisorCardDetail {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_dense}px;
+}}
+
+QPushButton#WizardAdvisorAction {{
+    min-height: {sizes.button_height}px;
+    padding: 2px 8px;
+    font-size: {typography.size_dense}px;
+    border: 1px solid {palette.border_default};
+    background: {palette.workspace_surface};
+    border-radius: {radius.small}px;
+}}
+
+QPushButton#WizardAdvisorAction:hover {{
+    background: {palette.command_bar_button_hover};
+    border-color: {palette.border_strong};
+}}
+
+QFrame#WizardStatusStrip {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-top: 1px solid {palette.border_default};
+}}
+
+QLabel#WizardStatusText {{
+    color: {palette.text_muted};
+    font-size: {typography.size_dense}px;
+}}
+
+QLabel#WizardBodyText {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_body}px;
+}}
+
+QLabel#WizardBodyTextStrong {{
+    color: {palette.text_primary};
+    font-size: {typography.size_body}px;
+    font-weight: 600;
+}}
+
+QLabel#WizardMutedText {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_dense}px;
+}}
+
+QLabel#WizardWarningText {{
+    color: {palette.status_warning_fg};
+    font-size: {typography.size_dense}px;
+}}
+
+QLabel#WizardSuccessText {{
+    color: {palette.status_success_fg};
+}}
+
+QLabel#WizardDangerText {{
+    color: {palette.status_danger_fg};
+}}
+
+QFrame#WizardReviewPanel {{
+    background: {palette.secondary_surface};
+    border: 1px solid {palette.border_default};
+    border-radius: 2px;
+}}
+
+QFrame#WizardActionRail {{
+    background: {palette.workspace_surface};
+    border: none;
+    border-top: 1px solid {palette.border_default};
+}}
+
 QFrame#PageCard {{
     background: transparent;
     border: 1px solid {palette.border_default};
@@ -771,6 +961,50 @@ QFrame#InfoCard {{
 }}
 
 /* ---------- Operational Desktop primitives ---------- */
+
+QFrame#MetricTile {{
+    background: {palette.secondary_surface};
+    border: 1px solid {palette.border_default};
+    border-radius: 0px;
+}}
+
+QLabel#MetricCaption,
+QLabel#FieldCaption {{
+    color: {palette.text_muted};
+    font-size: {typography.size_dense}px;
+    font-weight: 500;
+}}
+
+QLabel#MetricValue,
+QLabel#FieldValue {{
+    color: {palette.text_primary};
+}}
+
+QLabel#MetricValue {{
+    font-size: 18px;
+    font-weight: 600;
+}}
+
+QLabel#MutedHelpText {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_dense}px;
+}}
+
+QFrame#WarningPanel {{
+    background: {palette.status_warning_bg};
+    border: none;
+    border-left: 3px solid {palette.status_warning_border};
+}}
+
+QLabel#WarningPanelText {{
+    color: {palette.status_warning_fg};
+}}
+
+QFrame#NotesPanel {{
+    background: {palette.secondary_surface};
+    border: none;
+    border-left: 3px solid {palette.border_default};
+}}
 
 QFrame#Panel {{
     background: {palette.workspace_surface};
@@ -1241,6 +1475,7 @@ QTabBar#DashboardTabBar::tab {{
 }}
 
 QTabBar#DashboardTabBar::tab:selected {{
+    background: {palette.accent_soft};
     color: {palette.accent};
     border-bottom: 2px solid {palette.accent};
     font-weight: {typography.weight_semibold};
@@ -1252,6 +1487,27 @@ QTabBar#DashboardTabBar::tab:hover:!selected {{
 }}
 
 /* Content panels */
+QWidget#DashboardContainer QFrame#Panel {{
+    background: {palette.workspace_surface};
+    border: 1px solid {palette.border_default};
+    border-radius: 0px;
+}}
+
+QWidget#DashboardContainer QFrame#PanelHeader {{
+    background: {palette.table_header};
+    border: none;
+    border-left: 3px solid {palette.accent_soft_strong};
+    border-bottom: 1px solid {palette.border_default};
+    border-radius: 0;
+}}
+
+QWidget#DashboardContainer QLabel#PanelHeaderTitle {{
+    color: {palette.text_primary};
+    font-size: {typography.size_small}px;
+    font-weight: {typography.weight_semibold};
+    padding: 0 10px;
+}}
+
 QFrame#DashboardPanel {{
     background: {palette.workspace_surface};
     border: 1px solid {palette.border_default};
@@ -1269,6 +1525,76 @@ QLabel#DashboardSectionTitle {{
 QLabel#DashboardEmptyLabel {{
     color: {palette.text_muted};
     font-size: {typography.size_body}px;
+}}
+
+QLabel#DashboardSetupSummary {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_body}px;
+    font-weight: {typography.weight_medium};
+}}
+
+QFrame#DashboardSetupChecklistRow {{
+    background: {palette.workspace_surface};
+    border: 1px solid transparent;
+    border-left: 3px solid {palette.divider_subtle};
+}}
+
+QFrame#DashboardSetupChecklistRow[complete="false"] {{
+    background: {palette.status_warning_bg};
+    border-color: {palette.status_warning_border};
+    border-left-color: {palette.warning};
+}}
+
+QFrame#DashboardSetupChecklistRow[complete="true"] {{
+    border-left-color: {palette.status_success_border};
+}}
+
+QLabel#DashboardSetupStatus {{
+    min-width: 40px;
+    padding: 1px 6px;
+    border-radius: {radius.small}px;
+    font-size: {typography.size_caption}px;
+    font-weight: {typography.weight_semibold};
+    qproperty-alignment: AlignCenter;
+}}
+
+QLabel#DashboardSetupStatus[complete="true"] {{
+    background: {palette.status_success_bg};
+    color: {palette.status_success_fg};
+    border: 1px solid {palette.status_success_border};
+}}
+
+QLabel#DashboardSetupStatus[complete="false"] {{
+    background: {palette.workspace_surface};
+    color: {palette.status_warning_fg};
+    border: 1px solid {palette.status_warning_border};
+}}
+
+QLabel#DashboardSetupLabel {{
+    color: {palette.text_primary};
+    font-size: {typography.size_body}px;
+    font-weight: {typography.weight_medium};
+}}
+
+QLabel#DashboardSetupDetail {{
+    color: {palette.text_secondary};
+    font-size: {typography.size_dense}px;
+}}
+
+QPushButton#DashboardSetupOpenButton {{
+    background: {palette.workspace_surface};
+    border: 1px solid {palette.status_warning_border};
+    border-left: 3px solid {palette.warning};
+    border-radius: {radius.small}px;
+    color: {palette.status_warning_fg};
+    font-size: {typography.size_dense}px;
+    font-weight: {typography.weight_medium};
+    padding: 3px 10px;
+}}
+
+QPushButton#DashboardSetupOpenButton:hover {{
+    background: {palette.status_warning_bg};
+    border-color: {palette.warning};
 }}
 
 /* Aging buckets */
@@ -1293,6 +1619,7 @@ QLabel#DashboardAgingTotal {{
 QPushButton#DashboardQuickAction {{
     background: {palette.workspace_surface};
     border: 1px solid {palette.border_default};
+    border-left: 3px solid {palette.accent_soft_strong};
     border-radius: 0;
     color: {palette.text_primary};
     font-size: {typography.size_dense}px;
@@ -1304,6 +1631,7 @@ QPushButton#DashboardQuickAction {{
 QPushButton#DashboardQuickAction:hover {{
     background: {palette.accent_soft};
     border-color: {palette.accent};
+    border-left-color: {palette.accent};
     color: {palette.accent};
 }}
 
@@ -1486,7 +1814,8 @@ QPushButton[moduleParent="true"] {{
     min-height: {sizes.sidebar_parent_height}px;
     text-align: left;
     padding: 0 10px;
-    border: none;
+    border: 1px solid transparent;
+    border-left: 3px solid transparent;
     border-radius: {radius.small}px;
     background: transparent;
     color: {palette.text_secondary};
@@ -1502,12 +1831,14 @@ QPushButton[moduleParent="true"]:hover {{
 QPushButton[moduleParent="true"][moduleOpen="true"] {{
     background: {palette.sidebar_hover};
     color: {palette.text_primary};
+    border-left-color: {palette.border_strong};
     font-weight: {typography.weight_semibold};
 }}
 
 QPushButton[moduleParent="true"][moduleActive="true"] {{
     color: {palette.accent};
     background: {palette.accent_soft};
+    border-left-color: {palette.accent};
     font-weight: {typography.weight_semibold};
 }}
 
@@ -1524,7 +1855,8 @@ QPushButton[childNav="true"] {{
     min-height: {sizes.sidebar_child_height}px;
     text-align: left;
     padding: 0 10px 0 34px;
-    border: none;
+    border: 1px solid transparent;
+    border-left: 3px solid transparent;
     border-radius: {radius.small}px;
     background: transparent;
     color: {palette.text_secondary};
@@ -1540,6 +1872,7 @@ QPushButton[childNav="true"]:hover {{
 QPushButton[childNav="true"]:checked {{
     color: {palette.accent};
     background: {palette.accent_soft};
+    border-left-color: {palette.accent};
     font-weight: {typography.weight_semibold};
 }}
 
@@ -1771,11 +2104,11 @@ QTreeView::item:focus {{
 
 QHeaderView::section {{
     background: {palette.table_header};
-    color: {palette.text_primary};
+    color: {palette.text_secondary};
     border: none;
     border-right: 1px solid {palette.divider_subtle};
     border-bottom: 1px solid {palette.border_strong};
-    padding: 0 6px;
+    padding: 0 8px;
     font-size: {typography.size_small}px;
     font-weight: {typography.weight_semibold};
 }}
@@ -1803,17 +2136,30 @@ QScrollBar::sub-page:vertical {{
 QMenu {{
     background: {palette.workspace_surface};
     border: 1px solid {palette.border_default};
-    padding: 6px;
+    border-radius: {radius.medium}px;
+    padding: 4px 0;
 }}
 
 QMenu::item {{
-    padding: 8px 12px;
+    padding: 6px 16px;
+    color: {palette.text_primary};
+    background: transparent;
     border-radius: {radius.small}px;
 }}
 
 QMenu::item:selected {{
     background: {palette.accent_soft};
     color: {palette.accent};
+}}
+
+QMenu::item:disabled {{
+    color: {palette.text_muted};
+}}
+
+QMenu::separator {{
+    height: 1px;
+    background: {palette.border_default};
+    margin: 4px 0;
 }}
 
 QToolTip {{
@@ -2264,7 +2610,7 @@ QLabel#EntityDetailSubtitle {{
 
 QLabel#EntityDetailStatusChipActive {{
     background: {palette.success};
-    color: #FFFFFF;
+    color: {palette.accent_text};
     font-size: {typography.size_caption}px;
     font-weight: {typography.weight_semibold};
     border-radius: 10px;
@@ -2309,7 +2655,7 @@ QFrame#MoneyBar {{
 }}
 
 QFrame#MoneyCardNeutral {{
-    background: {palette.raised_surface};
+    background: {palette.secondary_surface};
     border: 1px solid {palette.border_default};
     border-top: 3px solid {palette.border_strong};
     border-radius: {radius.small}px;
@@ -2317,32 +2663,32 @@ QFrame#MoneyCardNeutral {{
 }}
 
 QFrame#MoneyCardDanger {{
-    background: {palette.raised_surface};
-    border: 1px solid {palette.border_default};
+    background: {palette.status_danger_bg};
+    border: 1px solid {palette.status_danger_border};
     border-top: 3px solid {palette.danger};
     border-radius: {radius.small}px;
     min-height: 58px;
 }}
 
 QFrame#MoneyCardWarning {{
-    background: {palette.raised_surface};
-    border: 1px solid {palette.border_default};
+    background: {palette.status_warning_bg};
+    border: 1px solid {palette.status_warning_border};
     border-top: 3px solid {palette.warning};
     border-radius: {radius.small}px;
     min-height: 58px;
 }}
 
 QFrame#MoneyCardSuccess {{
-    background: {palette.raised_surface};
-    border: 1px solid {palette.border_default};
+    background: {palette.status_success_bg};
+    border: 1px solid {palette.status_success_border};
     border-top: 3px solid {palette.success};
     border-radius: {radius.small}px;
     min-height: 58px;
 }}
 
 QFrame#MoneyCardInfo {{
-    background: {palette.raised_surface};
-    border: 1px solid {palette.border_default};
+    background: {palette.status_accent_bg};
+    border: 1px solid {palette.status_accent_border};
     border-top: 3px solid {palette.info};
     border-radius: {radius.small}px;
     min-height: 58px;
@@ -2360,6 +2706,11 @@ QLabel#MoneyCardLabel {{
     color: {palette.text_secondary};
     background: transparent;
 }}
+
+QFrame#MoneyCardDanger QLabel#MoneyCardValue {{ color: {palette.status_danger_fg}; }}
+QFrame#MoneyCardWarning QLabel#MoneyCardValue {{ color: {palette.status_warning_fg}; }}
+QFrame#MoneyCardSuccess QLabel#MoneyCardValue {{ color: {palette.status_success_fg}; }}
+QFrame#MoneyCardInfo QLabel#MoneyCardValue {{ color: {palette.status_accent_fg}; }}
 
 /* Entity Detail Tab Bar */
 
@@ -2432,7 +2783,7 @@ QWidget#StatusChip {{
     background: {palette.status_neutral_bg};
     color: {palette.status_neutral_fg};
     font-size: {typography.size_small}px;
-    font-weight: {typography.weight_semibold};
+    font-weight: {typography.weight_medium};
     margin: 0;
 }}
 

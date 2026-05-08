@@ -26,8 +26,11 @@ from seeker_accounting.app.shell.ribbon import RibbonHostMixin
 from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.purchases.dto.purchase_bill_dto import PurchaseBillListItemDTO
 from seeker_accounting.modules.purchases.ui.purchase_bill_dialog import PurchaseBillDialog
+from seeker_accounting.modules.purchases.ui.purchase_bill_grn_match_dialog import (
+    PurchaseBillGrnMatchDialog,
+)
 from seeker_accounting.app.navigation.workflow_resume_service import ResumeTokenPayload
-from seeker_accounting.platform.exceptions import NotFoundError, PeriodLockedError, ValidationError
+from seeker_accounting.platform.exceptions import AppError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.exceptions.app_error_codes import AppErrorCode
 from seeker_accounting.platform.exceptions.error_resolution_resolver import ErrorResolutionResolver
 from seeker_accounting.shared.ui.components import (
@@ -67,6 +70,7 @@ _CMD_NEW = "purchase_bills.new"
 _CMD_EDIT = "purchase_bills.edit"
 _CMD_CANCEL = "purchase_bills.cancel"
 _CMD_POST = "purchase_bills.post"
+_CMD_MATCH_GRN = "purchase_bills.match_grn"
 _CMD_REFRESH = "purchase_bills.refresh"
 _CMD_PRINT = "purchase_bills.print"
 _CMD_EXPORT_LIST = "purchase_bills.export_list"
@@ -84,6 +88,7 @@ class PurchaseBillsPage(RibbonHostMixin, QWidget):
             _CMD_EDIT: False,
             _CMD_CANCEL: False,
             _CMD_POST: False,
+            _CMD_MATCH_GRN: False,
             _CMD_REFRESH: True,
             _CMD_PRINT: False,
             _CMD_EXPORT_LIST: False,
@@ -435,6 +440,7 @@ class PurchaseBillsPage(RibbonHostMixin, QWidget):
         has_company = self._active_company() is not None
         selected_bill = self._selected_bill()
         is_draft = bool(selected_bill and selected_bill.status_code == "draft")
+        is_posted = bool(selected_bill and selected_bill.status_code == "posted")
         permission_service = self._service_registry.permission_service
 
         self._set_command_enabled(
@@ -452,6 +458,10 @@ class PurchaseBillsPage(RibbonHostMixin, QWidget):
         self._set_command_enabled(
             _CMD_POST,
             is_draft and permission_service.has_permission("purchases.bills.post"),
+        )
+        self._set_command_enabled(
+            _CMD_MATCH_GRN,
+            is_posted and permission_service.has_permission("purchases.bills.post"),
         )
         self._set_command_enabled(_CMD_REFRESH, True)
         self._set_command_enabled(
@@ -472,6 +482,7 @@ class PurchaseBillsPage(RibbonHostMixin, QWidget):
             "purchase_bills.edit": self._open_edit_dialog,
             "purchase_bills.cancel": self._cancel_selected_draft,
             "purchase_bills.post": self._post_selected_bill,
+            "purchase_bills.match_grn": self._match_selected_bill_to_grns,
             "purchase_bills.refresh": self.reload_bills,
             "purchase_bills.print": self._print_selected_bill,
             "purchase_bills.export_list": self._print_bill_list,
@@ -633,6 +644,48 @@ class PurchaseBillsPage(RibbonHostMixin, QWidget):
         except Exception:
             _log.exception("Post Bill")
             show_error(self, "Post Bill", "An unexpected error occurred. See application log for details.")
+
+    def _match_selected_bill_to_grns(self) -> None:
+        if not self._service_registry.permission_service.has_permission("purchases.bills.post"):
+            self._show_permission_denied("purchases.bills.post")
+            return
+        bill = self._selected_bill()
+        if bill is None:
+            return
+        if bill.status_code != "posted":
+            show_error(self, "Match GRNs", "Only posted bills can be matched to goods receipts.")
+            return
+        active_company = self._active_company()
+        if active_company is None:
+            return
+
+        try:
+            result = PurchaseBillGrnMatchDialog.match_bill(
+                self._service_registry,
+                active_company.company_id,
+                bill.id,
+                parent=self,
+            )
+        except AppError as exc:
+            show_error(self, "Match GRNs", str(exc))
+            return
+        except Exception:
+            _log.exception("Match GRNs")
+            show_error(self, "Match GRNs", "An unexpected error occurred. See application log for details.")
+            return
+
+        if result is None:
+            return
+        self.reload_bills(bill.id)
+        show_info(
+            self,
+            "GRNs Matched",
+            (
+                f"Matched {result.matched_line_count} receipt line(s).\n"
+                f"GRNI cleared: {result.grni_cleared_amount:,.2f}\n"
+                f"PPV: {result.purchase_price_variance_amount:,.2f}"
+            ),
+        )
 
     def _open_companies_workspace(self) -> None:
         self._service_registry.navigation_service.navigate_to(nav_ids.COMPANIES)

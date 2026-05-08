@@ -229,10 +229,10 @@ class InsightRulesServiceTests(unittest.TestCase):
 class FinancialAnalysisWorkspaceServiceTests(unittest.TestCase):
     def test_reporting_workspace_exposes_insights_launcher_tile(self) -> None:
         workspace = ReportingWorkspaceService().get_workspace_dto()
-        insights_tab = next(tab for tab in workspace.tabs if tab.tab_key == "insights")
+        analytics_tab = next(tab for tab in workspace.tabs if tab.tab_key == "analytics")
 
-        self.assertTrue(insights_tab.is_launcher)
-        self.assertEqual([tile.tile_key for tile in insights_tab.tiles], ["financial_analysis"])
+        self.assertTrue(analytics_tab.is_launcher)
+        self.assertEqual([tile.tile_key for tile in analytics_tab.tiles], ["financial_analysis"])
 
     def test_workspace_assembles_overview_tabs_and_management_insights(self) -> None:
         snapshot = _sample_snapshot()

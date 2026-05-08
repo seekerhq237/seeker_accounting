@@ -33,6 +33,9 @@ class PayrollRunStatus(str, Enum):
     SUBMITTED_FOR_REVIEW = "submitted_for_review"
     APPROVED = "approved"
     POSTED = "posted"
+    SETTLING = "settling"  # P3.S1 — settlement in progress
+    PAID = "paid"           # P3.S1 — all employees paid
+    CLOSED = "closed"       # P3.S1 — period closed, fully immutable
     REVERSED = "reversed"
     VOIDED = "voided"
 
@@ -40,6 +43,7 @@ class PayrollRunStatus(str, Enum):
 _TERMINAL: Final[frozenset[str]] = frozenset({
     PayrollRunStatus.REVERSED.value,
     PayrollRunStatus.VOIDED.value,
+    PayrollRunStatus.CLOSED.value,  # P3.S1
 })
 
 
@@ -65,9 +69,17 @@ _ALLOWED: Final[dict[str, frozenset[str]]] = {
     }),
     PayrollRunStatus.POSTED.value: frozenset({
         PayrollRunStatus.REVERSED.value,
+        PayrollRunStatus.SETTLING.value,  # P3.S1 — payment settlement starts
+    }),
+    PayrollRunStatus.SETTLING.value: frozenset({
+        PayrollRunStatus.PAID.value,       # P3.S1 — all employees paid
+    }),
+    PayrollRunStatus.PAID.value: frozenset({
+        PayrollRunStatus.CLOSED.value,     # P3.S1 — period closed
     }),
     PayrollRunStatus.REVERSED.value: frozenset(),
     PayrollRunStatus.VOIDED.value: frozenset(),
+    PayrollRunStatus.CLOSED.value: frozenset(),  # P3.S1 terminal
 }
 
 
@@ -79,6 +91,9 @@ TIMELINE_ORDER: Final[tuple[str, ...]] = (
     PayrollRunStatus.SUBMITTED_FOR_REVIEW.value,
     PayrollRunStatus.APPROVED.value,
     PayrollRunStatus.POSTED.value,
+    PayrollRunStatus.SETTLING.value,  # P3.S1
+    PayrollRunStatus.PAID.value,       # P3.S1
+    PayrollRunStatus.CLOSED.value,     # P3.S1
 )
 
 SIDE_STATES: Final[tuple[str, ...]] = (
@@ -95,6 +110,9 @@ STATUS_LABELS: Final[dict[str, str]] = {
     PayrollRunStatus.SUBMITTED_FOR_REVIEW.value: "In Review",
     PayrollRunStatus.APPROVED.value: "Approved",
     PayrollRunStatus.POSTED.value: "Posted",
+    PayrollRunStatus.SETTLING.value: "Settling",   # P3.S1
+    PayrollRunStatus.PAID.value: "Paid",            # P3.S1
+    PayrollRunStatus.CLOSED.value: "Closed",        # P3.S1
     PayrollRunStatus.REVERSED.value: "Reversed",
     PayrollRunStatus.VOIDED.value: "Voided",
 }
@@ -132,10 +150,19 @@ _PRIMARY_BY_STATE: Final[dict[str, PrimaryAction]] = {
         target_state=PayrollRunStatus.POSTED.value,
     ),
     PayrollRunStatus.POSTED.value: PrimaryAction(
-        command_id="payroll.run.reverse",
-        label="Reverse",
-        target_state=PayrollRunStatus.REVERSED.value,
-        is_destructive=True,
+        command_id="payroll.run.settle",
+        label="Begin Settlement",
+        target_state=PayrollRunStatus.SETTLING.value,
+    ),
+    PayrollRunStatus.SETTLING.value: PrimaryAction(  # P3.S1
+        command_id="payroll.run.mark_paid",
+        label="Mark Paid",
+        target_state=PayrollRunStatus.PAID.value,
+    ),
+    PayrollRunStatus.PAID.value: PrimaryAction(  # P3.S1
+        command_id="payroll.run.close",
+        label="Close Period",
+        target_state=PayrollRunStatus.CLOSED.value,
     ),
 }
 
@@ -187,15 +214,30 @@ class PayrollRunStateMachine:
         return status == PayrollRunStatus.POSTED.value
 
     @classmethod
+    def can_settle(cls, status: str) -> bool:  # P3.S1
+        return status == PayrollRunStatus.POSTED.value
+
+    @classmethod
+    def can_mark_paid(cls, status: str) -> bool:  # P3.S1
+        return status == PayrollRunStatus.SETTLING.value
+
+    @classmethod
+    def can_close(cls, status: str) -> bool:  # P3.S1
+        return status == PayrollRunStatus.PAID.value
+
+    @classmethod
     def can_edit_inclusion(cls, status: str) -> bool:
         """Employee include/exclude is only mutable on a calculated run."""
         return status == PayrollRunStatus.CALCULATED.value
 
     @classmethod
     def is_immutable(cls, status: str) -> bool:
-        """Posted / reversed runs are immutable for accounting purposes."""
+        """Posted / reversed / settling / paid / closed runs are accounting-immutable."""
         return status in (
             PayrollRunStatus.POSTED.value,
+            PayrollRunStatus.SETTLING.value,  # P3.S1
+            PayrollRunStatus.PAID.value,       # P3.S1
+            PayrollRunStatus.CLOSED.value,     # P3.S1
             PayrollRunStatus.REVERSED.value,
         )
 

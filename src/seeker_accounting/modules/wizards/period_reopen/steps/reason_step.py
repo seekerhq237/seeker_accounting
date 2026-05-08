@@ -43,7 +43,7 @@ class ReasonStep(WizardStep):
             root,
         )
         prompt.setWordWrap(True)
-        prompt.setStyleSheet("color: #4E5866; font-size: 11px;")
+        prompt.setObjectName("WizardMutedText")
         outer.addWidget(prompt)
 
         self._reason = QTextEdit(root)

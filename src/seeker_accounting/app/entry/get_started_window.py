@@ -39,29 +39,31 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
+
 logger = logging.getLogger(__name__)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Palette (light theme from palette.py)
 # ══════════════════════════════════════════════════════════════════════════════
 
-_BG = "#F5F7FB"
-_SURFACE = "#FFFFFF"
-_RAISED = "#FFFFFF"
-_CARD = "#F8FAFD"
-_BORDER = "#D9E2EC"
-_BORDER_STRONG = "#C5D0DD"
-_TEXT = "#182230"
-_TEXT_SEC = "#526071"
-_TEXT_MUTED = "#7A8797"
-_ACCENT = "#2363EA"
-_ACCENT_HOVER = "#1B55D1"
-_ACCENT_SOFT = "#F3F7FF"
-_SUCCESS = "#13795B"
-_WARNING = "#B7791F"
-_DANGER = "#C53030"
-_INFO = "#2563EB"
-_DIVIDER = "#E5EBF3"
+_BG = _P.app_background
+_SURFACE = _P.workspace_surface
+_RAISED = _P.workspace_surface
+_CARD = _P.secondary_surface
+_BORDER = _P.border_default
+_BORDER_STRONG = _P.border_strong
+_TEXT = _P.text_primary
+_TEXT_SEC = _P.text_secondary
+_TEXT_MUTED = _P.text_muted
+_ACCENT = _P.accent
+_ACCENT_HOVER = _P.accent_hover
+_ACCENT_SOFT = _P.accent_soft
+_SUCCESS = _P.status_success_fg
+_WARNING = _P.status_warning_fg
+_DANGER = _P.status_danger_fg
+_INFO = _P.status_info_fg
+_DIVIDER = _P.divider_subtle
 
 _FONT_FAMILY = "Segoe UI"
 
@@ -166,7 +168,7 @@ QFrame#GSFeatureCard {{
 /* ── Buttons ────────────────────────────────────────────── */
 QPushButton#GSPrimaryBtn {{
     background: {_ACCENT};
-    color: #FFFFFF;
+    color: {_P.accent_text};
     border: none;
     border-radius: 6px;
     padding: 8px 24px;
@@ -207,7 +209,7 @@ QPushButton#GSGhostBtn:hover {{
 }}
 QPushButton#GSActionBtn {{
     background: {_ACCENT};
-    color: #FFFFFF;
+    color: {_P.accent_text};
     border: none;
     border-radius: 8px;
     padding: 12px 32px;
@@ -355,7 +357,7 @@ def _step_card(number: str, icon: str, title: str, desc: str) -> QFrame:
     badge.setFixedSize(36, 36)
     badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
     badge.setStyleSheet(
-        f"background: {_ACCENT}; color: #FFFFFF; border-radius: 18px; "
+        f"background: {_ACCENT}; color: {_P.accent_text}; border-radius: 18px; "
         f'font-family: "{_FONT_FAMILY}"; font-size: 16px; font-weight: 700;'
     )
     hl.addWidget(badge)
@@ -599,7 +601,7 @@ class GetStartedWindow(QDialog):
         self._btn_next.setObjectName("GSPrimaryBtn")
         self._btn_next.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_next.setStyleSheet(
-            f'QPushButton {{ background: {_ACCENT}; color: #FFFFFF; border: none;'
+            f'QPushButton {{ background: {_ACCENT}; color: {_P.accent_text}; border: none;'
             f' border-radius: 6px; padding: 8px 24px; font-family: "{_FONT_FAMILY}";'
             f' font-size: 13px; font-weight: 600; min-height: 34px; }}'
             f' QPushButton:hover {{ background: {_ACCENT_HOVER}; }}'

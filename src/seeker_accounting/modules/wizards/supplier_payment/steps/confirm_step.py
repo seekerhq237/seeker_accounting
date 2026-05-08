@@ -52,7 +52,7 @@ class ConfirmStep(WizardStep):
         self._amount_lbl = QLabel("", root)
         self._allocated_lbl = QLabel("", root)
         for w in (self._supplier_lbl, self._account_lbl, self._amount_lbl, self._allocated_lbl):
-            w.setStyleSheet("color: #2E3848; font-size: 12px;")
+            w.setObjectName("WizardBodyText")
         form.addRow(QLabel("Supplier:", root), self._supplier_lbl)
         form.addRow(QLabel("Account:", root), self._account_lbl)
         form.addRow(QLabel("Amount:", root), self._amount_lbl)

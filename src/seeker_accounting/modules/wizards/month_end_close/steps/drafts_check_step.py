@@ -68,7 +68,7 @@ class DraftsCheckStep(WizardStep):
         outer.setSpacing(8)
 
         self._summary = QLabel("Loading drafts…", root)
-        self._summary.setStyleSheet("color: #2E3848; font-size: 12px;")
+        self._summary.setObjectName("WizardBodyText")
         outer.addWidget(self._summary)
 
         self._model = QStandardItemModel(0, len(_COLUMNS), root)

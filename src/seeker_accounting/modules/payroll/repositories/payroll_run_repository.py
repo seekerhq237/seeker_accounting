@@ -20,6 +20,7 @@ class PayrollRunRepository:
         stmt = (
             select(PayrollRun)
             .where(PayrollRun.company_id == company_id)
+            .options(selectinload(PayrollRun.employees))
             .order_by(PayrollRun.period_year.desc(), PayrollRun.period_month.desc())
         )
         if status_code is not None:
@@ -175,6 +176,27 @@ class PayrollRunEmployeeRepository:
             .order_by(PayrollRunEmployee.employee_id)
         )
         return list(self._session.scalars(stmt).all())
+
+    def list_runs_for_employee(
+        self,
+        company_id: int,
+        employee_id: int,
+        limit: int = 20,
+    ) -> list[tuple["PayrollRun", "PayrollRunEmployee"]]:
+        """Single-query JOIN returning (run, run_employee) pairs for one employee."""
+        stmt = (
+            select(PayrollRun, PayrollRunEmployee)
+            .join(
+                PayrollRunEmployee,
+                (PayrollRunEmployee.run_id == PayrollRun.id)
+                & (PayrollRunEmployee.employee_id == employee_id)
+                & (PayrollRunEmployee.company_id == company_id),
+            )
+            .where(PayrollRun.company_id == company_id)
+            .order_by(PayrollRun.period_year.desc(), PayrollRun.period_month.desc())
+            .limit(limit)
+        )
+        return list(self._session.execute(stmt).all())
 
     def save(self, run_employee: PayrollRunEmployee) -> PayrollRunEmployee:
         self._session.add(run_employee)

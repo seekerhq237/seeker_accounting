@@ -398,6 +398,12 @@ class WorkspaceHost(QFrame):
         if nav_id == nav_ids.PROJECTS:
             from seeker_accounting.modules.contracts_projects.ui.projects_page import ProjectsPage
             return ProjectsPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.PAYROLL:
+            from seeker_accounting.modules.payroll.ui.workbench.payroll_workbench_page import PayrollWorkbenchPage
+            return PayrollWorkbenchPage(self._service_registry, self._stack)
+        if nav_id == nav_ids.PAYROLL_WORKBENCH:
+            from seeker_accounting.modules.payroll.ui.workbench.payroll_workbench_page import PayrollWorkbenchPage
+            return PayrollWorkbenchPage(self._service_registry, self._stack)
         if nav_id == nav_ids.PAYROLL_SETUP:
             from seeker_accounting.modules.payroll.ui.payroll_setup_page import PayrollSetupPage
             return PayrollSetupPage(self._service_registry, self._stack)

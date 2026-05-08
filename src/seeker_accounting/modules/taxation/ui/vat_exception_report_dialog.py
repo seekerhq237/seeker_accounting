@@ -13,7 +13,6 @@ This dialog is a pure UI surface.
 
 from __future__ import annotations
 
-from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 import logging
 from datetime import date
 
@@ -35,6 +34,7 @@ from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.shared.ui.dialogs import BaseDialog
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 _log = logging.getLogger(__name__)
 

@@ -20,6 +20,7 @@ from seeker_accounting.modules.administration.dto.user_session_dto import (
     EXPLANATION_OTHER,
     UserSessionDTO,
 )
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
 
 class AbnormalShutdownDialog(QDialog):
@@ -67,7 +68,7 @@ class AbnormalShutdownDialog(QDialog):
             )
             info = QLabel(info_text)
             info.setTextFormat(Qt.TextFormat.RichText)
-            info.setStyleSheet("color: #666; font-size: 12px;")
+            info.setStyleSheet(text_style("secondary", font_size="12px"))
             layout.addWidget(info)
 
         # Radio options

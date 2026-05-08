@@ -4,6 +4,7 @@ Mirrors CompanyLogoService exactly, adapted for the users table.
 Files are stored in: <data_root>/user_avatars/user_{user_id}_{sha256_prefix}{suffix}
 """
 from __future__ import annotations
+import logging
 
 import hashlib
 import shutil
@@ -229,4 +230,4 @@ class UserAvatarService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

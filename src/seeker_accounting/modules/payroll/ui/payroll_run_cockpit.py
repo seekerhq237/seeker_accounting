@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from datetime import date as _date
 
@@ -73,7 +73,12 @@ from seeker_accounting.shared.ui.components.workbench_primitives import (
     WorkbenchHeader,
 )
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
+
+if TYPE_CHECKING:
+    from seeker_accounting.modules.payroll.services.payroll_dry_run import PayrollDryRunEstimate
 
 # Rail tab indices (kept in one place to avoid brittle magic numbers).
 _TAB_SUMMARY = 0
@@ -763,34 +768,30 @@ class PayrollRunCockpit(QWidget):
 
     def refresh(self) -> None:
         """Re-load run + employees from the service layer."""
-        try:
-            run = self._registry.payroll_run_service.get_run(
-                self._company_id, self._run_id
-            )
-        except AppError as exc:
-            show_error(self, "Payroll run", str(exc))
+        company_id = self._company_id
+        run_id = self._run_id
+        task = run_with_progress(
+            parent=self,
+            title="Payroll run",
+            message="Loading run data…",
+            worker=lambda: (
+                self._registry.payroll_run_service.get_run(company_id, run_id),
+                list(self._registry.payroll_run_service.list_run_employees(company_id, run_id)),
+            ),
+        )
+        if task.cancelled:
             return
-        except Exception:  # noqa: BLE001
-            _log.exception("Failed to load payroll run %s", self._run_id)
+        if task.error is not None:
+            _log.warning("Failed to load payroll run %s: %s", run_id, task.error)
             show_error(
                 self, "Payroll run",
-                "Failed to load the run. See application log for details.",
+                f"Failed to load the run.\n\n{task.error}",
             )
             return
 
-        try:
-            employees = self._registry.payroll_run_service.list_run_employees(
-                self._company_id, self._run_id
-            )
-        except AppError as exc:
-            show_error(self, "Payroll run", str(exc))
-            return
-        except Exception:  # noqa: BLE001
-            _log.exception("Failed to load run employees for run %s", self._run_id)
-            employees = []
-
+        run, employees = task.value
         self._run = run
-        self._employees = list(employees)
+        self._employees = employees
         self._employee_detail_cache.clear()
         self._posting_validated = False  # P6.S2: reset validation state on reload
 
@@ -878,7 +879,7 @@ class PayrollRunCockpit(QWidget):
         if sent_back_reason:
             lines.append("")
             lines.append(
-                f"<b style='color:#b00'>Sent back for revision:</b> {sent_back_reason}"
+                f"<b style='color:{_P.status_danger_fg}'>Sent back for revision:</b> {sent_back_reason}"
             )
         if run.notes:
             lines.append("")
@@ -1198,7 +1199,7 @@ class PayrollRunCockpit(QWidget):
         posting_svc = getattr(self._registry, "payroll_posting_service", None)
         if posting_svc is None:
             self._posting_issues_label.setText(
-                "<span style='color:#b00020'>Posting service unavailable.</span>"
+                f"<span style='color:{_P.status_danger_fg}'>Posting service unavailable.</span>"
             )
             self._posting_issues_label.setVisible(True)
             return
@@ -1222,7 +1223,7 @@ class PayrollRunCockpit(QWidget):
             except Exception as exc:  # noqa: BLE001
                 _log.debug("validate_posting failed", exc_info=True)
                 self._posting_issues_label.setText(
-                    f"<span style='color:#b00020'>Validation error: {exc}</span>"
+                    f"<span style='color:{_P.status_danger_fg}'>Validation error: {exc}</span>"
                 )
                 self._posting_issues_label.setVisible(True)
                 return
@@ -1235,7 +1236,7 @@ class PayrollRunCockpit(QWidget):
             lines = []
             for issue in result.issues:
                 icon = "✖" if issue.severity == "error" else "⚠"
-                color = "#b00020" if issue.severity == "error" else "#a05a00"
+                color = _P.danger if issue.severity == "error" else _P.warning
                 lines.append(
                     f"<span style='color:{color}'>{icon} {issue.message}</span>"
                 )
@@ -1248,12 +1249,12 @@ class PayrollRunCockpit(QWidget):
                 for issue in result.issues:
                     lines.append(f"⚠ {issue.message}")
                 self._posting_issues_label.setText(
-                    "<br>".join(f"<span style='color:#a05a00'>{l}</span>" for l in lines)
+                    "<br>".join(f"<span style='color:{_P.status_warning_fg}'>{l}</span>" for l in lines)
                 )
                 self._posting_issues_label.setVisible(True)
             else:
                 self._posting_issues_label.setText(
-                    "<span style='color:#1f7a3a'>✔ Ready to post — no issues found.</span>"
+                    f"<span style='color:{_P.status_success_fg}'>✔ Ready to post — no issues found.</span>"
                 )
                 self._posting_issues_label.setVisible(True)
             self._posting_post_btn.setEnabled(True)
@@ -1769,19 +1770,27 @@ class PayrollRunCockpit(QWidget):
         )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        try:
-            self._registry.payroll_run_service.calculate_run(
-                self._company_id, self._run_id
-            )
-        except AppError as exc:
-            show_error(self, "Payroll Calculation", str(exc))
+        company_id = self._company_id
+        run_id = self._run_id
+        task = run_with_progress(
+            parent=self,
+            title="Payroll Calculation",
+            message="Calculating payroll run…",
+            worker=lambda: self._registry.payroll_run_service.calculate_run(
+                company_id, run_id
+            ),
+        )
+        if task.cancelled:
             return
-        except Exception:  # noqa: BLE001
-            _log.exception("Calculate run failed")
-            show_error(
-                self, "Payroll Calculation",
-                "An unexpected error occurred. See application log.",
-            )
+        if task.error is not None:
+            if isinstance(task.error, AppError):
+                show_error(self, "Payroll Calculation", str(task.error))
+            else:
+                _log.warning("Calculate run failed: %s", task.error, exc_info=task.error)
+                show_error(
+                    self, "Payroll Calculation",
+                    "An unexpected error occurred. See application log.",
+                )
             return
         show_info(self, "Payroll calculation complete.")
         self.refresh()

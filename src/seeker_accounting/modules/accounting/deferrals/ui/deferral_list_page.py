@@ -181,7 +181,7 @@ class DeferralListPage(QWidget):
     # ── Reload ────────────────────────────────────────────────────────
 
     def reload(self) -> None:
-        company = self._service_registry.active_company_context.active_company
+        company = self._service_registry.company_context_service.get_active_company()
         if company is None:
             self._schedules = []
             self._stack.setCurrentWidget(self._no_company)
@@ -193,7 +193,7 @@ class DeferralListPage(QWidget):
 
         try:
             self._schedules = self._service_registry.deferral_service.list_schedules(
-                company.id,
+                company.company_id,
                 deferral_type=type_filter,
                 status_code=status_filter,
             )
@@ -227,8 +227,8 @@ class DeferralListPage(QWidget):
     # ── Handlers ──────────────────────────────────────────────────────
 
     def _active_company_id(self) -> int | None:
-        co = self._service_registry.active_company_context.active_company
-        return co.id if co else None
+        co = self._service_registry.company_context_service.get_active_company()
+        return co.company_id if co else None
 
     def _selected_schedule(self) -> DeferralScheduleDTO | None:
         rows = self._table.selectionModel().selectedRows()

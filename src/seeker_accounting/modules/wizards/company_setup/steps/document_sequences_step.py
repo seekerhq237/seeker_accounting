@@ -53,7 +53,7 @@ class DocumentSequencesStep(WizardStep):
             root,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #4E5866; font-size: 11px;")
+        intro.setObjectName("WizardMutedText")
         layout.addWidget(intro)
 
         for code, prefix, padding in _DEFAULTS:

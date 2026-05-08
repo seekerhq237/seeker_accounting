@@ -188,6 +188,8 @@ class InventoryDocument(TimestampMixin, Base):
     foreign_currency_code: Mapped[str | None] = mapped_column(String(10), nullable=True)
     foreign_unit_cost: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     foreign_exchange_rate: Mapped[Decimal | None] = mapped_column(Numeric(18, 8), nullable=True)
+    # P7 / Slice 8.1 – optimistic-concurrency token; incremented on every save
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     company: Mapped["Company"] = relationship("Company")
     location: Mapped["InventoryLocation | None"] = relationship(

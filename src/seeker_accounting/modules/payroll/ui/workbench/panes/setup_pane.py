@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+from seeker_accounting.shared.ui.keyboard_shortcuts import install_shortcut, shortcut_map
 from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 
 logger = logging.getLogger(__name__)
@@ -238,12 +239,21 @@ class _DepartmentTab(QWidget):
         self._count_label.setObjectName("WorkbenchPaneCountLabel")
         tb.addWidget(self._count_label)
         tb.addStretch(1)
+        self._new_btn = QPushButton("Manage…", toolbar)
+        self._new_btn.setObjectName("DeptTabNewBtn")
+        self._new_btn.setProperty("variant", "primary")
+        self._new_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._new_btn.clicked.connect(self._on_manage)
+        tb.addWidget(self._new_btn)
         refresh_btn = QPushButton("Refresh", toolbar)
         refresh_btn.setProperty("variant", "ghost")
         refresh_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         refresh_btn.clicked.connect(self.refresh)
         tb.addWidget(refresh_btn)
         layout.addWidget(toolbar)
+
+        _sc = shortcut_map("payroll.setup")
+        install_shortcut(self, _sc["new_item"], self._on_manage)
 
         cols = [
             DataTableColumn(key="code", title="Code", width=100),
@@ -254,6 +264,30 @@ class _DepartmentTab(QWidget):
         self._table.set_model(self._model)
         layout.addWidget(self._table, 1)
 
+        self.refresh()
+
+    def _on_manage(self) -> None:
+        company_id = self._active_company_id()
+        if company_id is None:
+            return
+        ctx = getattr(self._sr, "company_context_service", None)
+        company_name = ""
+        if ctx is not None:
+            try:
+                c = ctx.get_active_company()
+                company_name = getattr(c, "name", "") or ""
+            except Exception:
+                pass
+        from seeker_accounting.modules.payroll.ui.dialogs.department_dialog import (
+            DepartmentManagementDialog,
+        )
+        dlg = DepartmentManagementDialog(
+            service_registry=self._sr,
+            company_id=company_id,
+            company_name=company_name,
+            parent=self,
+        )
+        dlg.exec()
         self.refresh()
 
     def refresh(self) -> None:
@@ -270,7 +304,9 @@ class _DepartmentTab(QWidget):
             depts = svc.list_departments(company_id)
         except Exception:
             logger.warning("list_departments failed", exc_info=True)
-            depts = []
+            self._model.load([])
+            self._count_label.setText("Could not load departments")
+            return
         rows = []
         for d in depts:
             rows.append((
@@ -312,12 +348,21 @@ class _PositionTab(QWidget):
         self._count_label.setObjectName("WorkbenchPaneCountLabel")
         tb.addWidget(self._count_label)
         tb.addStretch(1)
+        self._new_pos_btn = QPushButton("Manage…", toolbar)
+        self._new_pos_btn.setObjectName("PosTabNewBtn")
+        self._new_pos_btn.setProperty("variant", "primary")
+        self._new_pos_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._new_pos_btn.clicked.connect(self._on_manage)
+        tb.addWidget(self._new_pos_btn)
         refresh_btn = QPushButton("Refresh", toolbar)
         refresh_btn.setProperty("variant", "ghost")
         refresh_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         refresh_btn.clicked.connect(self.refresh)
         tb.addWidget(refresh_btn)
         layout.addWidget(toolbar)
+
+        _sc = shortcut_map("payroll.setup")
+        install_shortcut(self, _sc["new_item"], self._on_manage)
 
         cols = [
             DataTableColumn(key="code", title="Code", width=100),
@@ -329,6 +374,30 @@ class _PositionTab(QWidget):
         self._table.set_model(self._model)
         layout.addWidget(self._table, 1)
 
+        self.refresh()
+
+    def _on_manage(self) -> None:
+        company_id = self._active_company_id()
+        if company_id is None:
+            return
+        ctx = getattr(self._sr, "company_context_service", None)
+        company_name = ""
+        if ctx is not None:
+            try:
+                c = ctx.get_active_company()
+                company_name = getattr(c, "name", "") or ""
+            except Exception:
+                pass
+        from seeker_accounting.modules.payroll.ui.dialogs.position_dialog import (
+            PositionManagementDialog,
+        )
+        dlg = PositionManagementDialog(
+            service_registry=self._sr,
+            company_id=company_id,
+            company_name=company_name,
+            parent=self,
+        )
+        dlg.exec()
         self.refresh()
 
     def refresh(self) -> None:
@@ -345,7 +414,9 @@ class _PositionTab(QWidget):
             positions = svc.list_positions(company_id)
         except Exception:
             logger.warning("list_positions failed", exc_info=True)
-            positions = []
+            self._model.load([])
+            self._count_label.setText("Could not load positions")
+            return
         rows = []
         for p in positions:
             rows.append((
@@ -424,7 +495,9 @@ class _ComponentsTab(QWidget):
             components = svc.list_components(company_id)
         except Exception:
             logger.warning("list_components failed", exc_info=True)
-            components = []
+            self._model.load([])
+            self._count_label.setText("Could not load components")
+            return
         rows = []
         for c in components:
             rows.append((

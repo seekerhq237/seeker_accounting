@@ -60,9 +60,9 @@ class InventoryReconciliationReportService:
     def _build(
         self, session: Session, company_id: int, as_of_date: date
     ) -> InventoryReconciliationReportDTO:
-        from seeker_accounting.modules.gl.models.journal_entry_line import JournalEntryLine
-        from seeker_accounting.modules.gl.models.journal_entry import JournalEntry
-        from seeker_accounting.modules.chart_of_accounts.models.account import Account
+        from seeker_accounting.modules.accounting.journals.models.journal_entry_line import JournalEntryLine
+        from seeker_accounting.modules.accounting.journals.models.journal_entry import JournalEntry
+        from seeker_accounting.modules.accounting.chart_of_accounts.models.account import Account
 
         # 1. Inventory account IDs used by items
         inv_account_ids: set[int] = set(

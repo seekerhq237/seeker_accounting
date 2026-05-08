@@ -17,6 +17,9 @@ from typing import TYPE_CHECKING, Callable
 from sqlalchemy.orm import Session
 
 from seeker_accounting.db.unit_of_work import UnitOfWorkFactory
+from seeker_accounting.modules.accounting.fiscal_periods.repositories.fiscal_period_repository import (
+    FiscalPeriodRepository,
+)
 from seeker_accounting.modules.accounting.journals.models.journal_entry import JournalEntry
 from seeker_accounting.modules.accounting.journals.models.journal_entry_line import JournalEntryLine
 from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import (
@@ -38,10 +41,13 @@ from seeker_accounting.modules.inventory.repositories.purchase_receipt_link_repo
     PurchaseReceiptLinkRepository,
 )
 from seeker_accounting.modules.inventory.services.stock_ledger_service import StockLedgerService
+from seeker_accounting.modules.purchases.repositories.purchase_bill_repository import (
+    PurchaseBillRepository,
+)
 from seeker_accounting.modules.purchases.repositories.purchase_order_repository import (
     PurchaseOrderRepository,
 )
-from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, PeriodLockedError, ValidationError
 from seeker_accounting.platform.numerics.rounding_policy import quantize_amount, quantize_quantity
 
 if TYPE_CHECKING:
@@ -52,7 +58,9 @@ _ZERO_AMT = Decimal("0.00")
 
 JournalEntryRepositoryFactory = Callable[[Session], JournalEntryRepository]
 AccountRoleMappingRepositoryFactory = Callable[[Session], AccountRoleMappingRepository]
+FiscalPeriodRepositoryFactory = Callable[[Session], FiscalPeriodRepository]
 InventoryDocumentRepositoryFactory = Callable[[Session], InventoryDocumentRepository]
+PurchaseBillRepositoryFactory = Callable[[Session], PurchaseBillRepository]
 PurchaseOrderRepositoryFactory = Callable[[Session], PurchaseOrderRepository]
 PurchaseReceiptLinkRepositoryFactory = Callable[[Session], PurchaseReceiptLinkRepository]
 
@@ -80,6 +88,62 @@ class GrnPostResultDTO:
     journal_entry_id: int
 
 
+@dataclass
+class GrnBillMatchLineCommand:
+    purchase_bill_line_id: int
+    inventory_document_line_id: int
+    matched_qty: Decimal
+
+
+@dataclass
+class GrnBillMatchResultDTO:
+    purchase_bill_id: int
+    journal_entry_id: int
+    matched_line_count: int
+    grni_cleared_amount: Decimal
+    bill_matched_amount: Decimal
+    purchase_price_variance_amount: Decimal
+
+
+@dataclass(frozen=True)
+class GrnBillMatchBillLineDTO:
+    purchase_bill_line_id: int
+    line_number: int
+    description: str
+    item_id: int | None
+    quantity: Decimal
+    matched_qty: Decimal
+    available_qty: Decimal
+    unit_cost: Decimal | None
+    line_subtotal_amount: Decimal
+
+
+@dataclass(frozen=True)
+class GrnBillMatchReceiptLineDTO:
+    inventory_document_line_id: int
+    inventory_document_id: int
+    document_number: str
+    receipt_date: date
+    item_id: int
+    item_code: str
+    item_name: str
+    received_qty: Decimal
+    matched_qty: Decimal
+    available_qty: Decimal
+    unit_cost: Decimal
+    available_amount: Decimal
+
+
+@dataclass(frozen=True)
+class GrnBillMatchOptionsDTO:
+    purchase_bill_id: int
+    bill_number: str
+    bill_date: date
+    bill_status_code: str
+    bill_lines: tuple[GrnBillMatchBillLineDTO, ...]
+    receipt_lines: tuple[GrnBillMatchReceiptLineDTO, ...]
+
+
 class GoodsReceiptService:
     """Orchestrates GRN creation, posting, and bill matching."""
 
@@ -90,16 +154,20 @@ class GoodsReceiptService:
         journal_entry_repository_factory: JournalEntryRepositoryFactory,
         account_role_mapping_repository_factory: AccountRoleMappingRepositoryFactory,
         inventory_document_repository_factory: InventoryDocumentRepositoryFactory,
+        purchase_bill_repository_factory: PurchaseBillRepositoryFactory,
         purchase_order_repository_factory: PurchaseOrderRepositoryFactory,
         purchase_receipt_link_repository_factory: PurchaseReceiptLinkRepositoryFactory,
+        fiscal_period_repository_factory: FiscalPeriodRepositoryFactory | None = None,
     ) -> None:
         self._uow_factory = unit_of_work_factory
         self._stock_ledger_service = stock_ledger_service
         self._journal_entry_repository_factory = journal_entry_repository_factory
         self._account_role_mapping_repository_factory = account_role_mapping_repository_factory
         self._inventory_document_repository_factory = inventory_document_repository_factory
+        self._purchase_bill_repository_factory = purchase_bill_repository_factory
         self._purchase_order_repository_factory = purchase_order_repository_factory
         self._purchase_receipt_link_repository_factory = purchase_receipt_link_repository_factory
+        self._fiscal_period_repository_factory = fiscal_period_repository_factory
 
     # ------------------------------------------------------------------
     # Create draft GRN from PO
@@ -184,10 +252,8 @@ class GoodsReceiptService:
     ) -> GrnPostResultDTO:
         with self._uow_factory() as uow:
             doc_repo = self._inventory_document_repository_factory(uow.session)
-            doc = doc_repo.get(inventory_document_id)
+            doc = doc_repo.get_detail(company_id, inventory_document_id)
             if doc is None:
-                raise NotFoundError(f"Inventory document {inventory_document_id} not found.")
-            if doc.company_id != company_id:
                 raise NotFoundError(f"Inventory document {inventory_document_id} not found.")
             if doc.status_code != "draft":
                 raise ConflictError(
@@ -313,6 +379,306 @@ class GoodsReceiptService:
             )
 
     # ------------------------------------------------------------------
+    # Match posted GRNs to a posted supplier bill
+    # ------------------------------------------------------------------
+
+    def match_to_bill(
+        self,
+        company_id: int,
+        purchase_bill_id: int,
+        lines: list[GrnBillMatchLineCommand],
+        fiscal_period_id: int | None = None,
+        actor_user_id: int | None = None,
+    ) -> GrnBillMatchResultDTO:
+        if not lines:
+            raise ValidationError("At least one GRN line match is required.")
+
+        with self._uow_factory() as uow:
+            bill_repo = self._purchase_bill_repository_factory(uow.session)
+            doc_repo = self._inventory_document_repository_factory(uow.session)
+            link_repo = self._purchase_receipt_link_repository_factory(uow.session)
+            role_mapping_repo = self._account_role_mapping_repository_factory(uow.session)
+            journal_repo = self._journal_entry_repository_factory(uow.session)
+
+            bill = bill_repo.get_detail(company_id, purchase_bill_id)
+            if bill is None:
+                raise NotFoundError(f"Purchase bill {purchase_bill_id} not found.")
+            if bill.status_code != "posted":
+                raise ValidationError(
+                    "Only posted purchase bills can be matched to GRNs. "
+                    "Post the bill first so AP and tax facts remain owned by purchase bill posting."
+                )
+
+            resolved_fiscal_period_id = self._resolve_fiscal_period_id(
+                uow.session,
+                company_id=company_id,
+                bill_date=bill.bill_date,
+                fiscal_period_id=fiscal_period_id,
+            )
+
+            grni_mapping = role_mapping_repo.get_by_role_code(company_id, "grni_clearing")
+            if grni_mapping is None:
+                raise ValidationError(
+                    "A GRNI clearing account mapping must be configured before matching GRNs to bills."
+                )
+
+            bill_lines_by_id = {line.id: line for line in bill.lines}
+            doc_line_ids = [cmd.inventory_document_line_id for cmd in lines]
+            doc_lines_by_id = {
+                line.id: line
+                for line in doc_repo.list_lines_by_ids(company_id, doc_line_ids)
+            }
+
+            pair_keys: set[tuple[int, int]] = set()
+            pending_doc_qty: dict[int, Decimal] = {}
+            pending_bill_qty: dict[int, Decimal] = {}
+            match_links: list[PurchaseBillLineReceiptLink] = []
+            journal_lines: list[JournalEntryLine] = []
+            line_number = 1
+            total_grni = _ZERO_AMT
+            total_bill = _ZERO_AMT
+            net_ppv = _ZERO_AMT
+            ppv_mapping = None
+
+            for idx, command in enumerate(lines, start=1):
+                bill_line = bill_lines_by_id.get(command.purchase_bill_line_id)
+                if bill_line is None:
+                    raise ValidationError(f"Bill line on match {idx} does not belong to purchase bill {purchase_bill_id}.")
+
+                doc_line = doc_lines_by_id.get(command.inventory_document_line_id)
+                if doc_line is None:
+                    raise ValidationError(f"GRN line on match {idx} was not found for this company.")
+
+                doc = doc_line.inventory_document
+                if doc.document_type_code != "goods_receipt_purchase" or doc.status_code != "posted":
+                    raise ValidationError(
+                        f"GRN line on match {idx} must belong to a posted goods receipt."
+                    )
+                if bill_line.item_id is not None and bill_line.item_id != doc_line.item_id:
+                    raise ValidationError(
+                        f"Bill line {bill_line.id} item does not match GRN line {doc_line.id}."
+                    )
+
+                pair_key = (bill_line.id, doc_line.id)
+                if pair_key in pair_keys:
+                    raise ConflictError("The same bill line and GRN line pair cannot be matched twice.")
+                pair_keys.add(pair_key)
+
+                existing_doc_links = link_repo.list_bill_links_for_document(doc_line.id)
+                if any(link.purchase_bill_line_id == bill_line.id for link in existing_doc_links):
+                    raise ConflictError(
+                        f"Bill line {bill_line.id} is already matched to GRN line {doc_line.id}."
+                    )
+                existing_bill_links = link_repo.list_bill_links_for_bill_line(company_id, bill_line.id)
+
+                matched_qty = self._require_positive_quantity(command.matched_qty, f"Matched quantity on line {idx}")
+                doc_available = self._available_quantity(
+                    total_quantity=self._document_line_quantity(doc_line),
+                    existing_links=existing_doc_links,
+                    pending_quantity=pending_doc_qty.get(doc_line.id, _ZERO),
+                )
+                bill_available = self._available_quantity(
+                    total_quantity=self._bill_line_quantity(bill_line),
+                    existing_links=existing_bill_links,
+                    pending_quantity=pending_bill_qty.get(bill_line.id, _ZERO),
+                )
+                if matched_qty > doc_available:
+                    raise ValidationError(
+                        f"Matched quantity for GRN line {doc_line.id} exceeds the available receipt quantity."
+                    )
+                if matched_qty > bill_available:
+                    raise ValidationError(
+                        f"Matched quantity for bill line {bill_line.id} exceeds the available bill quantity."
+                    )
+
+                receipt_amount = self._receipt_amount_for_quantity(doc_line, matched_qty)
+                bill_amount = self._bill_amount_for_quantity(bill_line, matched_qty)
+                variance = quantize_amount(bill_amount - receipt_amount)
+
+                journal_lines.append(
+                    JournalEntryLine(
+                        journal_entry_id=0,
+                        line_number=line_number,
+                        account_id=grni_mapping.account_id,
+                        line_description=f"GRNI clear - Bill {bill.bill_number} / GRN line {doc_line.id}",
+                        debit_amount=receipt_amount,
+                        credit_amount=_ZERO_AMT,
+                    )
+                )
+                line_number += 1
+
+                if bill_line.expense_account_id is None:
+                    raise ValidationError(
+                        f"Bill line {bill_line.line_number} must have an expense account to reverse posted bill cost."
+                    )
+                journal_lines.append(
+                    JournalEntryLine(
+                        journal_entry_id=0,
+                        line_number=line_number,
+                        account_id=bill_line.expense_account_id,
+                        line_description=f"Reverse bill cost - Bill {bill.bill_number} / line {bill_line.line_number}",
+                        debit_amount=_ZERO_AMT,
+                        credit_amount=bill_amount,
+                        contract_id=bill_line.contract_id or bill.contract_id,
+                        project_id=bill_line.project_id or bill.project_id,
+                        project_job_id=bill_line.project_job_id,
+                        project_cost_code_id=bill_line.project_cost_code_id,
+                    )
+                )
+                line_number += 1
+
+                if variance != _ZERO_AMT:
+                    if ppv_mapping is None:
+                        ppv_mapping = role_mapping_repo.get_by_role_code(
+                            company_id, "purchase_price_variance"
+                        )
+                        if ppv_mapping is None:
+                            raise ValidationError(
+                                "A purchase price variance account mapping must be configured "
+                                "before matching bill costs that differ from receipt costs."
+                            )
+                    journal_lines.append(
+                        JournalEntryLine(
+                            journal_entry_id=0,
+                            line_number=line_number,
+                            account_id=ppv_mapping.account_id,
+                            line_description=f"PPV - Bill {bill.bill_number} / GRN line {doc_line.id}",
+                            debit_amount=variance if variance > _ZERO_AMT else _ZERO_AMT,
+                            credit_amount=abs(variance) if variance < _ZERO_AMT else _ZERO_AMT,
+                        )
+                    )
+                    line_number += 1
+
+                match_links.append(
+                    PurchaseBillLineReceiptLink(
+                        company_id=company_id,
+                        purchase_bill_line_id=bill_line.id,
+                        inventory_document_line_id=doc_line.id,
+                        matched_qty=matched_qty,
+                        matched_amount=bill_amount,
+                    )
+                )
+                pending_doc_qty[doc_line.id] = pending_doc_qty.get(doc_line.id, _ZERO) + matched_qty
+                pending_bill_qty[bill_line.id] = pending_bill_qty.get(bill_line.id, _ZERO) + matched_qty
+                total_grni = quantize_amount(total_grni + receipt_amount)
+                total_bill = quantize_amount(total_bill + bill_amount)
+                net_ppv = quantize_amount(net_ppv + variance)
+
+            journal_entry = JournalEntry(
+                company_id=company_id,
+                fiscal_period_id=resolved_fiscal_period_id,
+                entry_number=None,
+                entry_date=bill.bill_date,
+                journal_type_code="PURCHASE",
+                reference_text=bill.bill_number,
+                description=f"GRN match for bill {bill.bill_number}",
+                source_module_code="inventory",
+                source_document_type="goods_receipt_bill_match",
+                source_document_id=bill.id,
+                status_code="POSTED",
+                posted_at=datetime.utcnow(),
+                posted_by_user_id=actor_user_id,
+                created_by_user_id=actor_user_id,
+            )
+            journal_repo.add(journal_entry)
+            uow.session.flush()
+
+            for journal_line in journal_lines:
+                journal_line.journal_entry_id = journal_entry.id
+            uow.session.add_all(journal_lines)
+            for match_link in match_links:
+                link_repo.add_bill_link(match_link)
+
+            uow.commit()
+            return GrnBillMatchResultDTO(
+                purchase_bill_id=bill.id,
+                journal_entry_id=journal_entry.id,
+                matched_line_count=len(match_links),
+                grni_cleared_amount=total_grni,
+                bill_matched_amount=total_bill,
+                purchase_price_variance_amount=net_ppv,
+            )
+
+    def get_match_options(
+        self,
+        company_id: int,
+        purchase_bill_id: int,
+    ) -> GrnBillMatchOptionsDTO:
+        with self._uow_factory() as uow:
+            bill_repo = self._purchase_bill_repository_factory(uow.session)
+            doc_repo = self._inventory_document_repository_factory(uow.session)
+            link_repo = self._purchase_receipt_link_repository_factory(uow.session)
+
+            bill = bill_repo.get_detail(company_id, purchase_bill_id)
+            if bill is None:
+                raise NotFoundError(f"Purchase bill {purchase_bill_id} not found.")
+            if bill.status_code != "posted":
+                raise ValidationError("Only posted purchase bills can be matched to GRNs.")
+
+            bill_line_options: list[GrnBillMatchBillLineDTO] = []
+            for bill_line in bill.lines:
+                total_qty = self._bill_line_quantity(bill_line)
+                existing_links = link_repo.list_bill_links_for_bill_line(company_id, bill_line.id)
+                matched_qty = sum((Decimal(str(link.matched_qty)) for link in existing_links), _ZERO)
+                available_qty = quantize_quantity(total_qty - matched_qty)
+                if available_qty <= _ZERO:
+                    continue
+                bill_line_options.append(
+                    GrnBillMatchBillLineDTO(
+                        purchase_bill_line_id=bill_line.id,
+                        line_number=bill_line.line_number,
+                        description=bill_line.description,
+                        item_id=bill_line.item_id,
+                        quantity=total_qty,
+                        matched_qty=quantize_quantity(matched_qty),
+                        available_qty=available_qty,
+                        unit_cost=bill_line.unit_cost,
+                        line_subtotal_amount=bill_line.line_subtotal_amount,
+                    )
+                )
+
+            receipt_line_options: list[GrnBillMatchReceiptLineDTO] = []
+            purchase_order_id = getattr(bill, "source_order_id", None)
+            for doc_line in doc_repo.list_posted_goods_receipt_lines(
+                company_id,
+                purchase_order_id=purchase_order_id,
+            ):
+                existing_links = link_repo.list_bill_links_for_document(doc_line.id)
+                matched_qty = sum((Decimal(str(link.matched_qty)) for link in existing_links), _ZERO)
+                received_qty = self._document_line_quantity(doc_line)
+                available_qty = quantize_quantity(received_qty - matched_qty)
+                if available_qty <= _ZERO:
+                    continue
+                unit_cost = Decimal(str(doc_line.unit_cost or _ZERO))
+                item = getattr(doc_line, "item", None)
+                doc = doc_line.inventory_document
+                receipt_line_options.append(
+                    GrnBillMatchReceiptLineDTO(
+                        inventory_document_line_id=doc_line.id,
+                        inventory_document_id=doc.id,
+                        document_number=doc.document_number,
+                        receipt_date=doc.document_date,
+                        item_id=doc_line.item_id,
+                        item_code=getattr(item, "item_code", "") or "",
+                        item_name=getattr(item, "item_name", "") or "",
+                        received_qty=received_qty,
+                        matched_qty=quantize_quantity(matched_qty),
+                        available_qty=available_qty,
+                        unit_cost=unit_cost,
+                        available_amount=quantize_amount(available_qty * unit_cost),
+                    )
+                )
+
+            return GrnBillMatchOptionsDTO(
+                purchase_bill_id=bill.id,
+                bill_number=bill.bill_number,
+                bill_date=bill.bill_date,
+                bill_status_code=bill.status_code,
+                bill_lines=tuple(bill_line_options),
+                receipt_lines=tuple(receipt_line_options),
+            )
+
+    # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
@@ -341,3 +707,65 @@ class GoodsReceiptService:
                 f"Could not find a PO line for item {item_id} on PO {po_id}."
             )
         return result
+
+    def _require_positive_quantity(self, value: Decimal, label: str) -> Decimal:
+        quantity = quantize_quantity(Decimal(str(value)))
+        if quantity <= _ZERO:
+            raise ValidationError(f"{label} must be greater than zero.")
+        return quantity
+
+    def _available_quantity(
+        self,
+        *,
+        total_quantity: Decimal,
+        existing_links: list[PurchaseBillLineReceiptLink],
+        pending_quantity: Decimal,
+    ) -> Decimal:
+        matched = sum((Decimal(str(link.matched_qty)) for link in existing_links), _ZERO)
+        return quantize_quantity(total_quantity - matched - pending_quantity)
+
+    def _document_line_quantity(self, doc_line: InventoryDocumentLine) -> Decimal:
+        return quantize_quantity(Decimal(str(doc_line.base_quantity or doc_line.quantity or _ZERO)))
+
+    def _bill_line_quantity(self, bill_line: object) -> Decimal:
+        return quantize_quantity(
+            Decimal(str(getattr(bill_line, "base_quantity", None) or getattr(bill_line, "quantity", None) or _ZERO))
+        )
+
+    def _receipt_amount_for_quantity(self, doc_line: InventoryDocumentLine, quantity: Decimal) -> Decimal:
+        unit_cost = Decimal(str(doc_line.unit_cost or _ZERO))
+        return quantize_amount(quantity * unit_cost)
+
+    def _bill_amount_for_quantity(self, bill_line: object, quantity: Decimal) -> Decimal:
+        bill_quantity = self._bill_line_quantity(bill_line)
+        if bill_quantity <= _ZERO:
+            raise ValidationError(
+                f"Bill line {getattr(bill_line, 'line_number', '')} must have a positive quantity to match."
+            )
+        line_subtotal = Decimal(str(getattr(bill_line, "line_subtotal_amount", _ZERO_AMT) or _ZERO_AMT))
+        unit_amount = line_subtotal / bill_quantity
+        return quantize_amount(quantity * unit_amount)
+
+    def _resolve_fiscal_period_id(
+        self,
+        session: Session,
+        *,
+        company_id: int,
+        bill_date: date,
+        fiscal_period_id: int | None,
+    ) -> int:
+        if fiscal_period_id is not None:
+            return fiscal_period_id
+        if self._fiscal_period_repository_factory is None:
+            raise ValidationError("A fiscal period is required to match GRNs to bills.")
+        fiscal_period = self._fiscal_period_repository_factory(session).get_covering_date(
+            company_id,
+            bill_date,
+        )
+        if fiscal_period is None:
+            raise ValidationError("Bill date must fall within an existing fiscal period.")
+        if fiscal_period.status_code == "LOCKED":
+            raise PeriodLockedError("GRN matching cannot be posted into a locked fiscal period.")
+        if fiscal_period.status_code != "OPEN":
+            raise ValidationError("GRN matching can only be posted into an open fiscal period.")
+        return fiscal_period.id

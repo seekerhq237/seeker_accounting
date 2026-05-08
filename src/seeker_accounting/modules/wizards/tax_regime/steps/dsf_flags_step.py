@@ -79,7 +79,7 @@ class DsfFlagsStep(WizardStep):
         outer.addWidget(self._summary)
 
         self._result = QLabel(root)
-        self._result.setStyleSheet("color: #2a7;")
+        self._result.setObjectName("WizardSuccessText")
         outer.addWidget(self._result)
         outer.addStretch(1)
         return root

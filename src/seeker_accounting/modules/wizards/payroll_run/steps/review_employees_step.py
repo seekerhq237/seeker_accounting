@@ -73,7 +73,7 @@ class ReviewEmployeesStep(WizardStep):
             root,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #4E5866; font-size: 11px;")
+        intro.setObjectName("WizardMutedText")
         outer.addWidget(intro)
 
         self._model = QStandardItemModel(0, len(_COLUMNS), root)
@@ -93,7 +93,7 @@ class ReviewEmployeesStep(WizardStep):
         outer.addWidget(self._table, 1)
 
         self._summary = QLabel("", root)
-        self._summary.setStyleSheet("color: #2E3848; font-size: 12px; font-weight: 600;")
+        self._summary.setObjectName("WizardBodyTextStrong")
         outer.addWidget(self._summary)
         return root
 

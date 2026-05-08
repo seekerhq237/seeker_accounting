@@ -1,11 +1,87 @@
 from __future__ import annotations
 
+import faulthandler
 import logging
+import os
 import sys
+import threading
+from pathlib import Path
 
+from PySide6.QtCore import QtMsgType, qInstallMessageHandler
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from seeker_accounting.config.constants import APP_NAME, ORGANIZATION_NAME
+
+# ── Enable faulthandler immediately: catches C-level segfaults / aborts ──────
+# Directed to stderr here; redirected to a real log file once the log directory
+# is known (see _redirect_faulthandler_to_file below).
+faulthandler.enable()
+
+
+def _install_crash_hooks(logger: logging.Logger) -> None:
+    """Install Python, threading, and Qt crash/exception reporters.
+
+    Must be called once, after QApplication exists, before any heavy work.
+    """
+
+    def _excepthook(exc_type, exc_value, exc_tb):  # type: ignore[no-untyped-def]
+        # Let KeyboardInterrupt use the normal handler (allows Ctrl+C).
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+        logger.critical(
+            "Unhandled exception on main thread",
+            exc_info=(exc_type, exc_value, exc_tb),
+        )
+        try:
+            app = QApplication.instance()
+            if app is not None:
+                QMessageBox.critical(
+                    None,
+                    APP_NAME,
+                    f"An unexpected error occurred.\n\n"
+                    f"{exc_type.__name__}: {exc_value}\n\n"
+                    "The error has been logged. If this keeps happening, contact support.",
+                )
+        except Exception:  # noqa: BLE001 — last-resort handler
+            pass
+
+    def _thread_excepthook(args: threading.ExceptHookArgs) -> None:
+        if args.exc_type is None or issubclass(args.exc_type, SystemExit):
+            return
+        thread_name = getattr(args.thread, "name", "unknown-thread")
+        logger.critical(
+            "Unhandled exception in thread '%s'",
+            thread_name,
+            exc_info=(args.exc_type, args.exc_value, args.exc_tb),
+        )
+
+    def _qt_message_handler(mode: QtMsgType, _context: object, message: str) -> None:
+        _levels = {
+            QtMsgType.QtDebugMsg: logging.DEBUG,
+            QtMsgType.QtInfoMsg: logging.INFO,
+            QtMsgType.QtWarningMsg: logging.WARNING,
+            QtMsgType.QtCriticalMsg: logging.ERROR,
+            QtMsgType.QtFatalMsg: logging.CRITICAL,
+        }
+        logger.log(_levels.get(mode, logging.DEBUG), "Qt: %s", message)
+
+    sys.excepthook = _excepthook
+    threading.excepthook = _thread_excepthook
+    qInstallMessageHandler(_qt_message_handler)
+
+
+def _redirect_faulthandler_to_file() -> None:
+    """Point faulthandler at a persistent crash log once the log directory is known."""
+    try:
+        from seeker_accounting.config.paths import build_runtime_paths
+        runtime = build_runtime_paths()
+        runtime.logs.mkdir(parents=True, exist_ok=True)
+        crash_path = runtime.logs / "crash.log"
+        crash_file = open(crash_path, "ab")  # noqa: WPS515 — kept open by faulthandler
+        faulthandler.enable(file=crash_file)
+    except Exception:  # noqa: BLE001 — fall back to stderr, already enabled above
+        pass
 
 
 def main() -> int:
@@ -14,6 +90,11 @@ def main() -> int:
     qt_app.setOrganizationName(ORGANIZATION_NAME)
     qt_app.setStyle("Fusion")
     qt_app.setQuitOnLastWindowClosed(True)
+
+    # ── Install crash safety net (excepthooks + Qt message handler) ───
+    _install_crash_hooks(logging.getLogger("seeker_accounting"))
+    # Redirect faulthandler to the user's log dir as soon as paths are resolvable.
+    _redirect_faulthandler_to_file()
 
     # ── Show animated splash immediately — before any heavy imports ────
     from seeker_accounting.config.settings import load_settings

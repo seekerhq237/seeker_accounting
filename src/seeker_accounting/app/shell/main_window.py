@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
@@ -243,7 +245,7 @@ class MainWindow(QMainWindow):
             info = self._service_registry.license_service.get_license_info(bypass_cache=True)
             self._readonly_banner.refresh(info)
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("Failed to refresh license banner", exc_info=True)
 
     def _show_license_dialog(self) -> None:
         from seeker_accounting.app.shell.license_dialog import LicenseDialog

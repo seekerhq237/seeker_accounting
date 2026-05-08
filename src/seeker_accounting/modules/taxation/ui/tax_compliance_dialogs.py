@@ -8,7 +8,6 @@ stays calm and consistent.
 
 from __future__ import annotations
 
-from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -76,7 +75,9 @@ from seeker_accounting.platform.exceptions import (
     ValidationError,
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
 
 _PAYMENT_METHOD_OPTIONS: tuple[tuple[str, str], ...] = (
@@ -97,7 +98,7 @@ def _section_frame(parent: QWidget, title: str) -> QFrame:
     grid.setHorizontalSpacing(16)
     grid.setVerticalSpacing(8)
     header = QLabel(title, frame)
-    header.setStyleSheet("font-weight: 600; color: #111827;")
+    header.setObjectName("DialogSectionTitle")
     grid.addWidget(header, 0, 0, 1, 2)
     grid.setColumnStretch(1, 1)
     return frame
@@ -812,7 +813,7 @@ class DSFExportDialog(BaseDialog):
 
         self._readiness_summary = QLabel("No readiness check run yet.", readiness_frame)
         self._readiness_summary.setWordWrap(True)
-        self._readiness_summary.setStyleSheet("color: #6B7280;")
+        self._readiness_summary.setStyleSheet(text_style("secondary"))
         readiness_grid.addWidget(self._readiness_summary, 1, 0, 1, 2)
 
         self._readiness_list = QListWidget(readiness_frame)
@@ -854,7 +855,7 @@ class DSFExportDialog(BaseDialog):
         self._readiness_list.clear()
         if not issues:
             self._readiness_summary.setText("No readiness issues found.")
-            self._readiness_summary.setStyleSheet("color: #047857;")
+            self._readiness_summary.setStyleSheet(text_style("success"))
             return
 
         errors = sum(1 for i in issues if i.severity == "error")
@@ -863,7 +864,7 @@ class DSFExportDialog(BaseDialog):
             f"{errors} blocking issue(s), {warns} warning(s)."
         )
         self._readiness_summary.setStyleSheet(
-            "color: #B91C1C;" if errors else "color: #92400E;"
+            text_style("danger" if errors else "warning")
         )
 
         for issue in issues:
@@ -1043,7 +1044,7 @@ class SettleVATReturnDialog(BaseDialog):
 
         # ── Blocking issues list ──
         self._issues_label = QLabel("Blocking issues", self)
-        self._issues_label.setStyleSheet("font-weight: 600; color: #b91c1c;")
+        self._issues_label.setStyleSheet(text_style("danger", font_weight=600))
         self._issues_list = QListWidget(self)
         self._issues_list.setMaximumHeight(110)
         self._issues_label.hide()

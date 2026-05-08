@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from decimal import Decimal
 from typing import TYPE_CHECKING, Callable
@@ -340,4 +341,4 @@ class ContractService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

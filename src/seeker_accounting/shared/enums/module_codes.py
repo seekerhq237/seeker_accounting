@@ -46,6 +46,7 @@ class ModuleCode(StrEnum):
     DEPRECIATION_RUNS = "depreciation_runs"
     CONTRACTS = "contracts"
     PROJECTS = "projects"
+    PAYROLL = "payroll"
     PAYROLL_SETUP = "payroll_setup"
     PAYROLL_CALCULATION = "payroll_calculation"
     PAYROLL_ACCOUNTING = "payroll_accounting"

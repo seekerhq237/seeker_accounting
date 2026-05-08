@@ -24,6 +24,7 @@ from seeker_accounting.modules.administration.services.permission_service import
 from seeker_accounting.modules.audit.dto.audit_event_dto import RecordAuditEventCommand
 from seeker_accounting.modules.audit.services.audit_service import AuditService
 from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
+    CreateOffCyclePayrollRunCommand,
     CreatePayrollRunCommand,
     PayrollRunDetailDTO,
     PayrollRunEmployeeDetailDTO,
@@ -150,11 +151,9 @@ class PayrollRunService:
         with self._uow_factory() as uow:
             repo = self._run_repo_factory(uow.session)
             runs = repo.list_by_company(company_id, status_code=status_code)
-            run_emp_repo = self._run_employee_repo_factory(uow.session)
             result = []
             for r in runs:
-                employees = run_emp_repo.list_by_run(company_id, r.id)
-                included = [e for e in employees if e.status_code == "included"]
+                included = [e for e in r.employees if e.status_code == "included"]
                 total_net = sum(Decimal(str(e.net_payable)) for e in included)
                 total_gross = sum(Decimal(str(e.gross_earnings)) for e in included)
                 result.append(
@@ -173,6 +172,10 @@ class PayrollRunService:
                         total_net_payable=total_net,
                         total_gross_earnings=total_gross,
                         posted_journal_entry_id=r.posted_journal_entry_id,
+                        run_type_code=r.run_type_code,
+                        run_sequence=r.run_sequence,
+                        off_cycle_reason_code=r.off_cycle_reason_code,
+                        source_run_id=r.source_run_id,
                     )
                 )
             return result
@@ -193,6 +196,42 @@ class PayrollRunService:
             repo = self._run_employee_repo_factory(uow.session)
             rows = repo.list_by_run(company_id, run_id)
             return [self._to_run_employee_list_dto(r) for r in rows]
+
+    def list_employee_run_history(
+        self,
+        company_id: int,
+        employee_id: int,
+        limit: int = 20,
+    ) -> list[tuple[PayrollRunListItemDTO, PayrollRunEmployeeListItemDTO]]:
+        """Return run + employee-result pairs for a single employee, newest first.
+
+        Uses a single JOIN query instead of N+1 list_runs + list_run_employees calls.
+        """
+        with self._uow_factory() as uow:
+            run_repo = self._run_repo_factory(uow.session)
+            pairs = run_repo.list_runs_for_employee(company_id, employee_id, limit=limit)
+            result = []
+            for run, emp_row in pairs:
+                run_dto = PayrollRunListItemDTO(
+                    id=run.id,
+                    company_id=run.company_id,
+                    run_reference=run.run_reference,
+                    run_label=run.run_label,
+                    period_year=run.period_year,
+                    period_month=run.period_month,
+                    status_code=run.status_code,
+                    currency_code=run.currency_code,
+                    run_date=run.run_date,
+                    payment_date=run.payment_date,
+                    employee_count=0,
+                    total_net_payable=Decimal("0"),
+                    posted_journal_entry_id=run.posted_journal_entry_id,
+                    run_type_code=getattr(run, "run_type_code", "regular") or "regular",
+                    run_sequence=getattr(run, "run_sequence", 1) or 1,
+                )
+                emp_dto = self._to_run_employee_list_dto(emp_row)
+                result.append((run_dto, emp_dto))
+            return result
 
     def get_run_employee_detail(
         self, company_id: int, run_employee_id: int
@@ -234,6 +273,10 @@ class PayrollRunService:
                 run_date=cmd.run_date,
                 payment_date=cmd.payment_date,
                 notes=cmd.notes,
+                run_type_code="regular",
+                run_sequence=repo.next_run_sequence(
+                    company_id, cmd.period_year, cmd.period_month, "regular"
+                ),
             )
             repo.save(run)
             uow.session.flush()
@@ -275,6 +318,98 @@ class PayrollRunService:
                         "period_month": cmd.period_month,
                     },
                 )
+            return self._to_run_dto(run)
+
+    def create_offcycle_run(
+        self, company_id: int, cmd: CreateOffCyclePayrollRunCommand
+    ) -> PayrollRunDetailDTO:
+        self._permission_service.require_permission(PAYROLL_RUN_CREATE)
+        self._validate_period(cmd.period_year, cmd.period_month)
+        employee_ids = tuple(dict.fromkeys(int(emp_id) for emp_id in cmd.employee_ids))
+        if not employee_ids:
+            raise ValidationError("Select at least one employee for an off-cycle payroll run.")
+        reason_code = (cmd.off_cycle_reason_code or "").strip()
+        if not reason_code:
+            raise ValidationError("An off-cycle reason is required.")
+
+        with self._uow_factory() as uow:
+            repo = self._run_repo_factory(uow.session)
+            employee_repo = self._employee_repo_factory(uow.session)
+            missing_ids = [
+                employee_id
+                for employee_id in employee_ids
+                if employee_repo.get_by_id(company_id, employee_id) is None
+            ]
+            if missing_ids:
+                raise ValidationError(
+                    "One or more selected employees do not exist for this company: "
+                    + ", ".join(str(employee_id) for employee_id in missing_ids)
+                )
+            if cmd.source_run_id is not None and repo.get_by_id(company_id, cmd.source_run_id) is None:
+                raise ValidationError("The selected source payroll run was not found.")
+
+            ref = self._numbering_service.issue_next_number(
+                uow.session, company_id, _RUN_DOC_TYPE
+            )
+            run = PayrollRun(
+                company_id=company_id,
+                run_reference=ref,
+                run_label=cmd.run_label
+                or f"{_CALENDAR_MONTHS[cmd.period_month]} {cmd.period_year} Off-cycle Payroll",
+                period_year=cmd.period_year,
+                period_month=cmd.period_month,
+                status_code="draft",
+                currency_code=cmd.currency_code,
+                run_date=cmd.run_date,
+                payment_date=cmd.payment_date,
+                notes=cmd.notes,
+                run_type_code="off_cycle",
+                run_sequence=repo.next_run_sequence(
+                    company_id, cmd.period_year, cmd.period_month, "off_cycle"
+                ),
+                off_cycle_reason_code=reason_code,
+                off_cycle_employee_ids=json.dumps(list(employee_ids)),
+                source_run_id=cmd.source_run_id,
+            )
+            repo.save(run)
+            uow.session.flush()
+            self._record_state_transition_in_session(
+                uow.session,
+                company_id,
+                run,
+                from_state=None,
+                to_state="draft",
+                description=f"Created off-cycle payroll run '{run.run_reference}'.",
+                context={
+                    "period_year": run.period_year,
+                    "period_month": run.period_month,
+                    "employee_count": len(employee_ids),
+                    "off_cycle_reason_code": run.off_cycle_reason_code,
+                },
+            )
+            self._audit_service.record_event_in_session(
+                uow.session,
+                company_id,
+                RecordAuditEventCommand(
+                    event_type_code="PAYROLL_OFFCYCLE_RUN_CREATED",
+                    module_code="payroll",
+                    entity_type="payroll_run",
+                    entity_id=run.id,
+                    description=f"Created off-cycle payroll run '{run.run_reference}'.",
+                    detail_json=json.dumps(
+                        {
+                            "run_reference": run.run_reference,
+                            "period_year": run.period_year,
+                            "period_month": run.period_month,
+                            "employee_ids": list(employee_ids),
+                            "off_cycle_reason_code": run.off_cycle_reason_code,
+                            "source_run_id": run.source_run_id,
+                        }
+                    ),
+                ),
+            )
+            uow.commit()
+            uow.session.refresh(run)
             return self._to_run_dto(run)
 
     def calculate_run(self, company_id: int, run_id: int) -> PayrollRunDetailDTO:
@@ -629,6 +764,17 @@ class PayrollRunService:
                 ),
             )
             uow.commit()
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_submitted",
+                    event_code="monthly_run.run_submitted",
+                    context={
+                        "company_id": company_id,
+                        "period_year": run.period_year,
+                        "period_month": run.period_month,
+                    },
+                )
 
     def send_back_run(
         self,
@@ -678,6 +824,17 @@ class PayrollRunService:
                 ),
             )
             uow.commit()
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_sent_back",
+                    event_code="monthly_run.run_sent_back",
+                    context={
+                        "company_id": company_id,
+                        "period_year": run.period_year,
+                        "period_month": run.period_month,
+                    },
+                )
 
     def approve_run(
         self,
@@ -730,6 +887,17 @@ class PayrollRunService:
                 ),
             )
             uow.commit()
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_approved",
+                    event_code="monthly_run.run_approved",
+                    context={
+                        "company_id": company_id,
+                        "period_year": run.period_year,
+                        "period_month": run.period_month,
+                    },
+                )
 
     def void_run(self, company_id: int, run_id: int) -> None:
         self._permission_service.require_permission(PAYROLL_RUN_CREATE)
@@ -775,6 +943,17 @@ class PayrollRunService:
                 ),
             )
             uow.commit()
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_voided",
+                    event_code="monthly_run.run_voided",
+                    context={
+                        "company_id": company_id,
+                        "period_year": run.period_year,
+                        "period_month": run.period_month,
+                    },
+                )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -939,9 +1118,20 @@ class PayrollRunService:
             notes=r.notes,
             calculated_at=r.calculated_at,
             approved_at=r.approved_at,
+            approved_by_user_id=r.approved_by_user_id,
+            submitted_at=r.submitted_at,
+            submitted_by_user_id=r.submitted_by_user_id,
+            sent_back_at=r.sent_back_at,
+            sent_back_by_user_id=r.sent_back_by_user_id,
+            sent_back_reason=r.sent_back_reason,
             posted_at=r.posted_at,
             posted_by_user_id=r.posted_by_user_id,
             posted_journal_entry_id=r.posted_journal_entry_id,
+            run_type_code=r.run_type_code,
+            run_sequence=r.run_sequence,
+            off_cycle_reason_code=r.off_cycle_reason_code,
+            off_cycle_employee_ids=tuple(sorted(PayrollRunService._employee_scope_for_run(r) or ())),
+            source_run_id=r.source_run_id,
         )
 
     @staticmethod
@@ -960,6 +1150,7 @@ class PayrollRunService:
             employer_cost_base=Decimal(str(r.employer_cost_base)),
             status_code=r.status_code,
             exclusion_reason=r.exclusion_reason,
+            payment_status_code=getattr(r, "payment_status_code", "unpaid") or "unpaid",
         )
 
     @staticmethod

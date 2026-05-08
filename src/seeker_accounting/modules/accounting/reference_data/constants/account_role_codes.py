@@ -29,6 +29,16 @@ ACCOUNT_ROLE_DEFINITIONS: tuple[AccountRoleDefinition, ...] = (
         "Default operating purchases expense account.",
     ),
     AccountRoleDefinition(
+        "grni_clearing",
+        "GRNI Clearing",
+        "Goods received not invoiced clearing account used by purchase receipt matching.",
+    ),
+    AccountRoleDefinition(
+        "purchase_price_variance",
+        "Purchase Price Variance",
+        "Expense or income account for differences between receipt cost and supplier bill cost.",
+    ),
+    AccountRoleDefinition(
         "payroll_payable",
         "Payroll Payable",
         "Default payroll liability account.",

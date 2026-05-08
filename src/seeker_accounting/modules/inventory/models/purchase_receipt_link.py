@@ -24,7 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from seeker_accounting.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from seeker_accounting.modules.inventory.models.inventory_document import (
+    from seeker_accounting.modules.inventory.models.inventory_document_line import (
         InventoryDocumentLine,
     )
     from seeker_accounting.modules.purchases.models.purchase_bill_line import PurchaseBillLine

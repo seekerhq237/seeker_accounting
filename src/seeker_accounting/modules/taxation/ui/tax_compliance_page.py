@@ -13,11 +13,10 @@ itself.
 from __future__ import annotations
 
 import logging
-
 from datetime import date
 from decimal import Decimal
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSortFilterProxyModel
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFrame,
@@ -27,8 +26,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QStackedWidget,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -62,26 +60,43 @@ from seeker_accounting.modules.taxation.ui.tax_compliance_dialogs import (
     RecordTaxPaymentDialog,
     SettleVATReturnDialog,
 )
-from seeker_accounting.modules.taxation.ui.tax_return_detail_dialog import (
-    TaxReturnDetailDialog,
-)
 from seeker_accounting.platform.exceptions import (
-    AppError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
     ValidationError,
 )
+from seeker_accounting.shared.ui.background_task import run_with_progress
+from seeker_accounting.shared.ui.components.read_only_table_model import (
+    ReadOnlyTableModel,
+    selected_user_data,
+)
 from seeker_accounting.shared.ui.message_boxes import (
     show_error,
     show_info,
 )
+from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
+
+_log = logging.getLogger(__name__)
 
 _DASH = "\u2014"
 
 
-_log = logging.getLogger(__name__)
+def _load_obligations(service_registry: object, company_id: int) -> list:
+    """Load tax obligations; swallow PermissionDeniedError."""
+    try:
+        return list(service_registry.tax_obligation_service.list_obligations(company_id))
+    except PermissionDeniedError:
+        return []
+
+
+def _load_returns(service_registry: object, company_id: int) -> list:
+    """Load tax returns; swallow PermissionDeniedError."""
+    try:
+        return list(service_registry.tax_return_service.list_returns(company_id))
+    except PermissionDeniedError:
+        return []
 
 
 def _money(value: Decimal | float | int | None) -> str:
@@ -96,9 +111,6 @@ def _date_text(value: date | None) -> str:
     return value.isoformat()
 
 
-def _right(item: QTableWidgetItem) -> QTableWidgetItem:
-    item.setTextAlignment(int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter))
-    return item
 
 
 class TaxCompliancePage(RibbonHostMixin, QWidget):
@@ -228,14 +240,6 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         self._payment_button.clicked.connect(self._handle_record_payment)
         layout.addWidget(self._payment_button)
 
-        self._view_return_button = QPushButton("View Return", card)
-        self._view_return_button.setProperty("variant", "secondary")
-        self._view_return_button.setToolTip(
-            "Open the selected return in DGI VAT-form layout (Sections 4 \u2014 8)."
-        )
-        self._view_return_button.clicked.connect(self._handle_view_return)
-        layout.addWidget(self._view_return_button)
-
         self._export_pdf_button = QPushButton("Export PDF", card)
         self._export_pdf_button.setProperty("variant", "secondary")
         self._export_pdf_button.clicked.connect(self._handle_export_pdf)
@@ -288,7 +292,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(20)
 
-        self._obligations_table = self._build_section(
+        self._obligations_table, self._obligations_model, self._obligations_proxy = self._build_section(
             layout,
             heading="Obligations",
             description=(
@@ -298,7 +302,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             columns=self.OBLIGATION_COLUMNS,
         )
 
-        self._returns_table = self._build_section(
+        self._returns_table, self._returns_model, self._returns_proxy = self._build_section(
             layout,
             heading="Returns",
             description=(
@@ -306,9 +310,10 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
                 "posted invoices; filed returns are immutable."
             ),
             columns=self.RETURN_COLUMNS,
+            right_align_cols=frozenset({4, 5}),
         )
 
-        self._payments_table = self._build_section(
+        self._payments_table, self._payments_model, self._payments_proxy = self._build_section(
             layout,
             heading="Payments (selected return)",
             description=(
@@ -316,17 +321,15 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
                 "to view its payments."
             ),
             columns=self.PAYMENT_COLUMNS,
+            right_align_cols=frozenset({1}),
         )
 
         layout.addStretch(1)
 
-        self._obligations_table.itemSelectionChanged.connect(
+        self._obligations_table.selectionModel().selectionChanged.connect(
             self._update_action_state
         )
-        self._returns_table.itemSelectionChanged.connect(self._handle_return_selected)
-        self._returns_table.itemDoubleClicked.connect(
-            lambda *_: self._handle_view_return()
-        )
+        self._returns_table.selectionModel().selectionChanged.connect(self._handle_return_selected)
 
         return wrapper
 
@@ -337,7 +340,8 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         heading: str,
         description: str,
         columns: tuple[str, ...],
-    ) -> QTableWidget:
+        right_align_cols: frozenset[int] | None = None,
+    ) -> tuple[QTableView, ReadOnlyTableModel, QSortFilterProxyModel]:
         section = QFrame(self)
         section.setObjectName("DialogSection")
 
@@ -346,31 +350,27 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         v.setSpacing(6)
 
         heading_label = QLabel(heading, section)
-        heading_label.setStyleSheet(
-            "font-size: 14px; font-weight: 600; color: #111827;"
-        )
+        heading_label.setObjectName("DialogSectionTitle")
         v.addWidget(heading_label)
 
         desc_label = QLabel(description, section)
-        desc_label.setStyleSheet("color: #6B7280; font-size: 11px;")
+        desc_label.setObjectName("DialogSectionSummary")
         desc_label.setWordWrap(True)
         v.addWidget(desc_label)
 
-        table = QTableWidget(0, len(columns), section)
-        table.setHorizontalHeaderLabels(list(columns))
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.verticalHeader().setVisible(False)
-        table.setAlternatingRowColors(True)
+        model = ReadOnlyTableModel(list(columns), right_align_cols)
+        proxy = QSortFilterProxyModel(section)
+        proxy.setSourceModel(model)
+        table = QTableView(section)
+        configure_compact_table(table)
+        table.setModel(proxy)
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        header.setStretchLastSection(True)
         table.setMinimumHeight(160)
         v.addWidget(table)
 
         parent_layout.addWidget(section)
-        return table
+        return table, model, proxy
 
     # ── Reload ────────────────────────────────────────────────────────
 
@@ -381,32 +381,30 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             self._returns = []
             self._payments = []
             self._meta_label.setText("Select a company")
-            self._set_actions_enabled(
-                False, False, False, False, False, False, False, False, False, False
-            )
+            self._set_actions_enabled(False, False, False, False, False, False, False, False, False)
             self._stack.setCurrentWidget(self._no_company_card)
             return
 
-        try:
-            self._obligations = self._service_registry.tax_obligation_service.list_obligations(
-                active.company_id
-            )
-        except PermissionDeniedError:
-            self._obligations = []
-        except Exception as exc:  # pragma: no cover - defensive
-            self._obligations = []
-            show_error(self, "Tax Compliance", f"Could not load obligations.\n\n{exc}")
+        company_id = active.company_id
+        task = run_with_progress(
+            parent=self,
+            title="Tax Compliance",
+            message="Loading tax data…",
+            worker=lambda: (
+                _load_obligations(self._service_registry, company_id),
+                _load_returns(self._service_registry, company_id),
+            ),
+        )
+        if task.cancelled:
+            return
+        if task.error is not None:
+            _log.warning("Failed to load tax compliance data: %s", task.error)
+            show_error(self, "Tax Compliance", f"Could not load tax data.\n\n{task.error}")
+            return
 
-        try:
-            self._returns = self._service_registry.tax_return_service.list_returns(
-                active.company_id
-            )
-        except PermissionDeniedError:
-            self._returns = []
-        except Exception as exc:  # pragma: no cover - defensive
-            self._returns = []
-            show_error(self, "Tax Compliance", f"Could not load returns.\n\n{exc}")
-
+        obligations, returns = task.value
+        self._obligations = obligations
+        self._returns = returns
         self._payments = []  # populated on return selection
         self._populate_obligations()
         self._populate_returns()
@@ -420,60 +418,49 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
     # ── Populate tables ───────────────────────────────────────────────
 
     def _populate_obligations(self) -> None:
-        self._obligations_table.setRowCount(len(self._obligations))
-        for ri, ob in enumerate(self._obligations):
-            self._obligations_table.setItem(ri, 0, QTableWidgetItem(ob.tax_type_code))
-            self._obligations_table.setItem(ri, 1, QTableWidgetItem(_date_text(ob.period_start)))
-            self._obligations_table.setItem(ri, 2, QTableWidgetItem(_date_text(ob.period_end)))
-            self._obligations_table.setItem(ri, 3, QTableWidgetItem(_date_text(ob.due_date)))
-            self._obligations_table.setItem(ri, 4, QTableWidgetItem(ob.status_code))
-            self._obligations_table.setItem(ri, 5, QTableWidgetItem(ob.notes or ""))
+        data = [
+            [ob.tax_type_code, _date_text(ob.period_start), _date_text(ob.period_end),
+             _date_text(ob.due_date), ob.status_code, ob.notes or ""]
+            for ob in self._obligations
+        ]
+        self._obligations_model.reset_data(data, self._obligations)
 
     def _populate_returns(self) -> None:
-        self._returns_table.setRowCount(len(self._returns))
-        for ri, r in enumerate(self._returns):
-            self._returns_table.setItem(ri, 0, QTableWidgetItem(r.tax_type_code))
-            self._returns_table.setItem(ri, 1, QTableWidgetItem(_date_text(r.period_start)))
-            self._returns_table.setItem(ri, 2, QTableWidgetItem(_date_text(r.period_end)))
-            self._returns_table.setItem(ri, 3, QTableWidgetItem(r.status_code))
-            self._returns_table.setItem(ri, 4, _right(QTableWidgetItem(_money(r.total_due_amount))))
-            self._returns_table.setItem(ri, 5, _right(QTableWidgetItem(_money(r.total_paid_amount))))
-            self._returns_table.setItem(
-                ri, 6, QTableWidgetItem(r.filed_at.isoformat() if r.filed_at else _DASH)
-            )
-            ref = r.otp_reference or r.external_reference or ""
-            self._returns_table.setItem(ri, 7, QTableWidgetItem(ref))
+        data = [
+            [
+                r.tax_type_code,
+                _date_text(r.period_start),
+                _date_text(r.period_end),
+                r.status_code,
+                _money(r.total_due_amount),
+                _money(r.total_paid_amount),
+                r.filed_at.isoformat() if r.filed_at else _DASH,
+                r.otp_reference or r.external_reference or "",
+            ]
+            for r in self._returns
+        ]
+        self._returns_model.reset_data(data, self._returns)
 
     def _populate_payments(self) -> None:
-        self._payments_table.setRowCount(len(self._payments))
-        for ri, p in enumerate(self._payments):
-            self._payments_table.setItem(ri, 0, QTableWidgetItem(_date_text(p.payment_date)))
-            self._payments_table.setItem(ri, 1, _right(QTableWidgetItem(_money(p.amount))))
-            self._payments_table.setItem(ri, 2, QTableWidgetItem(p.payment_method_code))
-            self._payments_table.setItem(ri, 3, QTableWidgetItem(p.reference or ""))
-            self._payments_table.setItem(
-                ri, 4, QTableWidgetItem(str(p.tax_return_id) if p.tax_return_id else "")
-            )
+        data = [
+            [
+                _date_text(p.payment_date),
+                _money(p.amount),
+                p.payment_method_code,
+                p.reference or "",
+                str(p.tax_return_id) if p.tax_return_id else "",
+            ]
+            for p in self._payments
+        ]
+        self._payments_model.reset_data(data, self._payments)
 
     # ── Selection / state ─────────────────────────────────────────────
 
     def _selected_obligation(self) -> TaxObligationDTO | None:
-        rows = self._obligations_table.selectionModel().selectedRows() if self._obligations_table.selectionModel() else []
-        if not rows:
-            return None
-        idx = rows[0].row()
-        if 0 <= idx < len(self._obligations):
-            return self._obligations[idx]
-        return None
+        return selected_user_data(self._obligations_table)
 
     def _selected_return(self) -> TaxReturnDTO | None:
-        rows = self._returns_table.selectionModel().selectedRows() if self._returns_table.selectionModel() else []
-        if not rows:
-            return None
-        idx = rows[0].row()
-        if 0 <= idx < len(self._returns):
-            return self._returns[idx]
-        return None
+        return selected_user_data(self._returns_table)
 
     def _set_actions_enabled(
         self,
@@ -484,7 +471,6 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         file_return: bool,
         settle: bool,
         record_payment: bool,
-        view_return: bool,
         export_pdf: bool,
         dsf: bool,
     ) -> None:
@@ -495,7 +481,6 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         self._file_button.setEnabled(file_return)
         self._settle_button.setEnabled(settle)
         self._payment_button.setEnabled(record_payment)
-        self._view_return_button.setEnabled(view_return)
         self._export_pdf_button.setEnabled(export_pdf)
         self._dsf_button.setEnabled(dsf)
 
@@ -503,7 +488,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         active = self._active_company()
         if active is None:
             self._set_actions_enabled(
-                False, False, False, False, False, False, False, False, False, False
+                False, False, False, False, False, False, False, False, False
             )
             self._notify_ribbon_state_changed()
             return
@@ -533,8 +518,7 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         )
         # Record payment only works on FILED returns (must be an actual liability).
         payment_eligible = rt is not None and rt.status_code == RETURN_STATUS_FILED
-        # View / Export PDF work on any selected return (DRAFT or FILED).
-        view_eligible = rt is not None
+        # PDF export works on any selected return.
         export_pdf_eligible = rt is not None
 
         self._set_actions_enabled(
@@ -545,7 +529,6 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             file_return=can_file_return and file_eligible,
             settle=can_settle_return and settle_eligible,
             record_payment=can_manage_payments and payment_eligible,
-            view_return=view_eligible,
             export_pdf=can_export_pdf and export_pdf_eligible,
             dsf=can_export_dsf,
         )
@@ -683,7 +666,6 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             "tax_compliance.file_return": self._handle_file_return,
             "tax_compliance.settle_return": self._handle_settle_return,
             "tax_compliance.record_payment": self._handle_record_payment,
-            "tax_compliance.view_return": self._handle_view_return,
             "tax_compliance.export_pdf": self._handle_export_pdf,
             "tax_compliance.export_dsf": self._handle_export_dsf,
             "tax_compliance.refresh": self.reload,
@@ -701,7 +683,6 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
             "tax_compliance.file_return": self._file_button.isEnabled(),
             "tax_compliance.settle_return": self._settle_button.isEnabled(),
             "tax_compliance.record_payment": self._payment_button.isEnabled(),
-            "tax_compliance.view_return": self._view_return_button.isEnabled(),
             "tax_compliance.export_pdf": self._export_pdf_button.isEnabled(),
             "tax_compliance.export_dsf": self._dsf_button.isEnabled(),
             "tax_compliance.refresh": True,
@@ -743,12 +724,8 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
         except (NotFoundError, ConflictError, PermissionDeniedError) as exc:
             show_error(self, "Draft VAT Return", str(exc))
             return
-        except AppError as exc:
+        except Exception as exc:  # pragma: no cover - defensive
             show_error(self, "Draft VAT Return", f"Could not draft return.\n\n{exc}")
-            return
-        except Exception:
-            _log.exception("Draft VAT Return")
-            show_error(self, "Draft VAT Return", "An unexpected error occurred. See application log for details.")
             return
 
         show_info(self, "Draft VAT Return", "Draft return generated.")
@@ -808,40 +785,6 @@ class TaxCompliancePage(RibbonHostMixin, QWidget):
                     "DSF Export",
                     f"DSF written to:\n{result.output_path}",
                 )
-
-    def _handle_view_return(self) -> None:
-        active = self._active_company()
-        rt = self._selected_return()
-        if active is None or rt is None:
-            return
-
-        # Hydrate with full lines (the page list may be a thin row).
-        try:
-            full = self._service_registry.tax_return_service.get_return(
-                active.company_id, rt.id
-            )
-        except (NotFoundError, PermissionDeniedError) as exc:
-            show_error(self, "View Return", str(exc))
-            return
-        except Exception as exc:  # pragma: no cover - defensive
-            _log.exception("View Return")
-            show_error(
-                self,
-                "View Return",
-                f"Could not load return.\n\n{exc}",
-            )
-            return
-
-        dialog = TaxReturnDetailDialog(
-            self._service_registry,
-            active.company_id,
-            active.company_name,
-            full,
-            parent=self,
-        )
-        dialog.exec()
-        if dialog.was_redrafted():
-            self.reload()
 
     def _handle_export_pdf(self) -> None:
         active = self._active_company()

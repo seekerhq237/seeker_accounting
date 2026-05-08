@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from datetime import datetime
 from decimal import Decimal
@@ -247,7 +248,7 @@ class BillOfMaterialService:
                 ),
             )
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)
 
     @staticmethod
     def _to_dto(bom: BillOfMaterial) -> BillOfMaterialDTO:

@@ -30,6 +30,7 @@ from seeker_accounting.modules.suppliers.dto.supplier_dto import SupplierListIte
 from seeker_accounting.modules.suppliers.ui.supplier_dialog import SupplierDialog
 from seeker_accounting.modules.suppliers.ui.supplier_group_dialog import SupplierGroupDialog
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.components import (
     DataTable,
     DataTableColumn,
@@ -122,22 +123,30 @@ class SuppliersPage(RibbonHostMixin, QWidget):
             self._update_action_state()
             return
 
-        try:
-            self._suppliers = list(
+        company_id = active_company.company_id
+        task = run_with_progress(
+            parent=self,
+            title="Suppliers",
+            message="Loading suppliers…",
+            worker=lambda: list(
                 self._service_registry.supplier_service.list_suppliers(
-                    active_company.company_id,
+                    company_id,
                     active_only=False,
                 )
-            )
-        except Exception as exc:
+            ),
+        )
+        if task.cancelled:
+            return
+        if task.error is not None:
             self._suppliers = []
             self._populate_table()
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
-            show_error(self, "Suppliers", f"Supplier data could not be loaded.\n\n{exc}")
+            show_error(self, "Suppliers", f"Supplier data could not be loaded.\n\n{task.error}")
             return
 
+        self._suppliers = task.value
         self._populate_table()
         self._sync_surface_state(active_company)
         self._update_record_count_label()

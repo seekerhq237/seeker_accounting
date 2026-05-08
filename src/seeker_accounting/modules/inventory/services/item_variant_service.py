@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import hashlib
 import json
@@ -371,7 +372,7 @@ class ItemVariantService:
                 ),
             )
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)
 
     @staticmethod
     def _attribute_to_dto(entity: ItemAttributeDefinition) -> ItemAttributeDefinitionDTO:

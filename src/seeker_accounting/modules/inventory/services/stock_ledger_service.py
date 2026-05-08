@@ -174,4 +174,5 @@ class StockLedgerService:
             avg_cost=new_avg,
             last_movement_id=entry.id,
         )
+        session.flush()
         return entry

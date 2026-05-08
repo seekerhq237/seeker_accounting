@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.modules.accounting.chart_of_accounts.dto.account_dto import AccountLookupDTO
 from seeker_accounting.modules.accounting.journals.ui.account_picker_dialog import AccountPickerDialog
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 class AccountCellWidget(QWidget):
@@ -113,7 +114,8 @@ class AccountCellWidget(QWidget):
             self._code_edit.setStyleSheet("")
         else:
             self._code_edit.setStyleSheet(
-                "QLineEdit { border: 1px solid #E53E3E; background: #FFF5F5; }"
+                f"QLineEdit {{ border: 1px solid {_P.status_danger_border}; "
+                f"background: {_P.status_danger_bg}; }}"
             )
 
     # ------------------------------------------------------------------

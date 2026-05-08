@@ -26,6 +26,7 @@ from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
 )
 from seeker_accounting.platform.exceptions import ConflictError, ValidationError
 from seeker_accounting.shared.ui.message_boxes import show_configuration_error, show_error
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
 _MONTHS = [
     (1, "January"), (2, "February"), (3, "March"), (4, "April"),
@@ -61,7 +62,7 @@ class PayrollRunDialog(QDialog):
             "Run 'Calculate' to process the selected scope."
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #666; font-size: 11px;")
+        info_label.setStyleSheet(text_style("secondary", font_size="11px"))
         layout.addWidget(info_label)
 
         form = QFormLayout()

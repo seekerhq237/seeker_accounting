@@ -22,6 +22,8 @@ from seeker_accounting.db.engine import create_database_engine
 from seeker_accounting.db.session import create_session_factory
 from seeker_accounting.db.unit_of_work import create_unit_of_work_factory
 from seeker_accounting.platform.code_suggestion import CodeSuggestionService, EntityCodeConfig
+from seeker_accounting.platform.feature_flags import FeatureFlagService
+from seeker_accounting.platform.licensing.license_service import LicenseService
 from seeker_accounting.modules.accounting.chart_of_accounts.repositories.account_repository import (
     AccountRepository,
 )
@@ -598,6 +600,7 @@ from seeker_accounting.modules.payroll.services.payroll_posting_validation_servi
 from seeker_accounting.modules.payroll.services.payroll_posting_service import PayrollPostingService
 from seeker_accounting.modules.payroll.services.payroll_payment_tracking_service import PayrollPaymentTrackingService
 from seeker_accounting.modules.payroll.services.payroll_remittance_service import PayrollRemittanceService
+from seeker_accounting.modules.payroll.services.payroll_correction_service import PayrollCorrectionService
 from seeker_accounting.modules.payroll.services.payroll_summary_service import PayrollSummaryService
 from seeker_accounting.modules.payroll.services.payroll_pack_version_service import PayrollPackVersionService
 from seeker_accounting.modules.payroll.services.payroll_validation_dashboard_service import PayrollValidationDashboardService
@@ -606,6 +609,11 @@ from seeker_accounting.modules.payroll.services.payroll_print_service import Pay
 from seeker_accounting.modules.payroll.services.payroll_export_service import PayrollExportService
 from seeker_accounting.modules.payroll.services.payroll_output_warning_service import PayrollOutputWarningService
 from seeker_accounting.modules.payroll.services.payroll_remittance_deadline_service import PayrollRemittanceDeadlineService
+from seeker_accounting.modules.payroll.services.employee_onboarding_service import EmployeeOnboardingService
+from seeker_accounting.modules.payroll.repositories.employee_onboarding_draft_repository import EmployeeOnboardingDraftRepository
+from seeker_accounting.modules.payroll.repositories.employee_repository import EmployeeRepository as _EmployeeRepositoryForOnboarding
+from seeker_accounting.modules.payroll.repositories.compensation_profile_repository import CompensationProfileRepository as _CompProfileRepoForOnboarding
+from seeker_accounting.modules.payroll.repositories.component_assignment_repository import ComponentAssignmentRepository as _CompAssignRepoForOnboarding
 from seeker_accounting.modules.audit.repositories.audit_event_repository import AuditEventRepository
 from seeker_accounting.modules.audit.services.audit_export_service import AuditExportService
 from seeker_accounting.modules.audit.services.audit_service import AuditService
@@ -650,6 +658,10 @@ from seeker_accounting.modules.reporting.services.inventory_reconciliation_repor
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
 from seeker_accounting.platform.printing.print_engine import PrintEngine
 from seeker_accounting.platform.session.session_idle_watcher_service import SessionIdleWatcherService
+from seeker_accounting.shared.services.telemetry_service import (
+    TelemetryService,
+    get_default_telemetry_service,
+)
 from seeker_accounting.shared.ui.styles.theme_manager import ThemeManager
 
 
@@ -883,6 +895,7 @@ def create_project_cost_code_service(
 
 def create_project_budget_service(
     session_context: SessionContext,
+    permission_service: PermissionService,
     audit_service: AuditService | None = None,
 ) -> ProjectBudgetService:
     return ProjectBudgetService(
@@ -892,6 +905,7 @@ def create_project_budget_service(
         project_repository_factory=ProjectRepository,
         project_job_repository_factory=ProjectJobRepository,
         project_cost_code_repository_factory=ProjectCostCodeRepository,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
 
@@ -912,7 +926,10 @@ def create_budget_control_service(session_context: SessionContext) -> BudgetCont
     return BudgetControlService(
         unit_of_work_factory=session_context.unit_of_work_factory,
         version_repository_factory=ProjectBudgetVersionRepository,
+        line_repository_factory=ProjectBudgetLineRepository,
         project_repository_factory=ProjectRepository,
+        commitment_line_repository_factory=ProjectCommitmentLineRepository,
+        actuals_query_repository_factory=ProjectActualsQueryRepository,
     )
 
 
@@ -1440,8 +1457,6 @@ def create_tax_settlement_service(
         numbering_service=numbering_service,
         permission_service=permission_service,
         audit_service=audit_service,
-        setting_repository_factory=CompanyPayrollSettingRepository,
-        trace_repository_factory=PayrollCalculationTraceRepository,
     )
 
 
@@ -1656,13 +1671,17 @@ def create_numbering_setup_service(
     )
 
 
-def create_chart_template_import_service(session_context: SessionContext) -> ChartTemplateImportService:
+def create_chart_template_import_service(
+    session_context: SessionContext,
+    permission_service: PermissionService,
+) -> ChartTemplateImportService:
     return ChartTemplateImportService(
         unit_of_work_factory=session_context.unit_of_work_factory,
         company_repository_factory=CompanyRepository,
         account_repository_factory=AccountRepository,
         account_class_repository_factory=AccountClassRepository,
         account_type_repository_factory=AccountTypeRepository,
+        permission_service=permission_service,
         template_loader=ChartTemplateLoader(),
     )
 
@@ -1746,7 +1765,12 @@ def create_period_control_service(
     )
 
 
-def create_journal_service(session_context: SessionContext, app_context: AppContext) -> JournalService:
+def create_journal_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService | None = None,
+) -> JournalService:
     return JournalService(
         unit_of_work_factory=session_context.unit_of_work_factory,
         app_context=app_context,
@@ -1756,6 +1780,8 @@ def create_journal_service(session_context: SessionContext, app_context: AppCont
         fiscal_period_repository_factory=FiscalPeriodRepository,
         company_repository_factory=CompanyRepository,
         project_dimension_validation_service=create_project_dimension_validation_service(session_context),
+        permission_service=permission_service,
+        audit_service=audit_service,
     )
 
 
@@ -1780,7 +1806,7 @@ def create_journal_posting_service(
 
 
 def create_company_seed_service(chart_seed_service: ChartSeedService) -> CompanySeedService:
-    return CompanySeedService(chart_seed_service)
+    return CompanySeedService(chart_seed_service=chart_seed_service)
 
 
 def create_fx_revaluation_service(
@@ -2581,12 +2607,14 @@ def create_unit_of_measure_service(
 
 def create_item_category_service(
     session_context: SessionContext,
+    permission_service: PermissionService,
     audit_service: AuditService | None = None,
 ) -> ItemCategoryService:
     return ItemCategoryService(
         unit_of_work_factory=session_context.unit_of_work_factory,
         company_repository_factory=CompanyRepository,
         item_category_repository_factory=ItemCategoryRepository,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
 
@@ -2605,6 +2633,7 @@ def create_inventory_location_service(
 
 def create_item_service(
     session_context: SessionContext,
+    permission_service: PermissionService,
     audit_service: AuditService | None = None,
 ) -> ItemService:
     return ItemService(
@@ -2613,6 +2642,7 @@ def create_item_service(
         item_repository_factory=ItemRepository,
         unit_of_measure_repository_factory=UnitOfMeasureRepository,
         item_category_repository_factory=ItemCategoryRepository,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
 
@@ -2637,16 +2667,29 @@ def create_inventory_posting_service(
     numbering_service: NumberingService,
     audit_service: AuditService | None = None,
 ) -> InventoryPostingService:
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_balance_repository import (
+        StockLedgerBalanceRepository,
+    )
+    from seeker_accounting.modules.inventory.repositories.stock_ledger_entry_repository import (
+        StockLedgerEntryRepository,
+    )
+    from seeker_accounting.modules.inventory.services.stock_ledger_service import StockLedgerService
+    stock_ledger_svc = StockLedgerService(
+        entry_repository_factory=StockLedgerEntryRepository,
+        balance_repository_factory=StockLedgerBalanceRepository,
+    )
     return InventoryPostingService(
         unit_of_work_factory=session_context.unit_of_work_factory,
         app_context=app_context,
         company_repository_factory=CompanyRepository,
+        company_preference_repository_factory=CompanyPreferenceRepository,
         fiscal_period_repository_factory=FiscalPeriodRepository,
         journal_entry_repository_factory=JournalEntryRepository,
         inventory_document_repository_factory=InventoryDocumentRepository,
         item_repository_factory=ItemRepository,
         inventory_cost_layer_repository_factory=InventoryCostLayerRepository,
         numbering_service=numbering_service,
+        stock_ledger_service=stock_ledger_svc,
         audit_service=audit_service,
     )
 
@@ -2690,6 +2733,7 @@ def create_goods_receipt_service(
     )
     from seeker_accounting.modules.inventory.services.stock_ledger_service import StockLedgerService
     from seeker_accounting.modules.accounting.journals.repositories.journal_entry_repository import JournalEntryRepository
+    from seeker_accounting.modules.accounting.fiscal_periods.repositories.fiscal_period_repository import FiscalPeriodRepository
     from seeker_accounting.modules.accounting.reference_data.repositories.account_role_mapping_repository import AccountRoleMappingRepository
     from seeker_accounting.modules.purchases.repositories.purchase_order_repository import PurchaseOrderRepository
     stock_ledger_svc = StockLedgerService(
@@ -2702,8 +2746,10 @@ def create_goods_receipt_service(
         journal_entry_repository_factory=JournalEntryRepository,
         account_role_mapping_repository_factory=AccountRoleMappingRepository,
         inventory_document_repository_factory=InventoryDocumentRepository,
+        purchase_bill_repository_factory=PurchaseBillRepository,
         purchase_order_repository_factory=PurchaseOrderRepository,
         purchase_receipt_link_repository_factory=PurchaseReceiptLinkRepository,
+        fiscal_period_repository_factory=FiscalPeriodRepository,
     )
 
 
@@ -2797,6 +2843,15 @@ def create_item_barcode_service(session_context: SessionContext) -> ItemBarcodeS
     )
 
 
+def create_inventory_invariant_checker_service(session_context: SessionContext):
+    from seeker_accounting.modules.inventory.services.inventory_invariant_checker_service import (
+        InventoryInvariantCheckerService,
+    )
+    return InventoryInvariantCheckerService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+    )
+
+
 def create_inventory_kardex_report_service(session_context: SessionContext) -> InventoryKardexReportService:
     return InventoryKardexReportService(unit_of_work_factory=session_context.unit_of_work_factory)
 
@@ -2823,6 +2878,7 @@ def create_inventory_reconciliation_report_service(session_context: SessionConte
 
 def create_asset_category_service(
     session_context: SessionContext,
+    permission_service: PermissionService,
     audit_service: AuditService | None = None,
 ) -> AssetCategoryService:
     return AssetCategoryService(
@@ -2830,12 +2886,14 @@ def create_asset_category_service(
         asset_category_repository_factory=AssetCategoryRepository,
         account_repository_factory=AccountRepository,
         company_repository_factory=CompanyRepository,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
 
 
 def create_asset_service(
     session_context: SessionContext,
+    permission_service: PermissionService,
     audit_service: AuditService | None = None,
 ) -> AssetService:
     return AssetService(
@@ -2844,6 +2902,7 @@ def create_asset_service(
         asset_category_repository_factory=AssetCategoryRepository,
         company_repository_factory=CompanyRepository,
         supplier_repository_factory=SupplierRepository,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
 
@@ -3114,6 +3173,7 @@ def create_payroll_run_service(
     numbering_service: NumberingService,
     permission_service: PermissionService,
     audit_service: AuditService,
+    telemetry_service: TelemetryService | None = None,
 ) -> PayrollRunService:
     return PayrollRunService(
         unit_of_work_factory=session_context.unit_of_work_factory,
@@ -3128,6 +3188,7 @@ def create_payroll_run_service(
         numbering_service=numbering_service,
         permission_service=permission_service,
         audit_service=audit_service,
+        telemetry_service=telemetry_service or get_default_telemetry_service(),
     )
 
 
@@ -3162,6 +3223,7 @@ def create_payroll_posting_service(
     numbering_service: NumberingService,
     permission_service: PermissionService,
     audit_service: AuditService,
+    telemetry_service: TelemetryService | None = None,
 ) -> PayrollPostingService:
     return PayrollPostingService(
         unit_of_work_factory=session_context.unit_of_work_factory,
@@ -3174,6 +3236,7 @@ def create_payroll_posting_service(
         numbering_service=numbering_service,
         permission_service=permission_service,
         audit_service=audit_service,
+        telemetry_service=telemetry_service or get_default_telemetry_service(),
     )
 
 
@@ -3197,6 +3260,7 @@ def create_payroll_remittance_service(
     numbering_service: NumberingService,
     permission_service: PermissionService,
     audit_service: AuditService,
+    telemetry_service: TelemetryService | None = None,
 ) -> PayrollRemittanceService:
     return PayrollRemittanceService(
         unit_of_work_factory=session_context.unit_of_work_factory,
@@ -3206,6 +3270,7 @@ def create_payroll_remittance_service(
         numbering_service=numbering_service,
         permission_service=permission_service,
         audit_service=audit_service,
+        telemetry_service=telemetry_service,
     )
 
 
@@ -3216,6 +3281,31 @@ def create_payroll_summary_service(
         unit_of_work_factory=session_context.unit_of_work_factory,
         run_repository_factory=PayrollRunRepository,
         summary_repository_factory=PayrollSummaryRepository,
+    )
+
+
+def create_payroll_correction_service(
+    session_context: SessionContext,
+    app_context: AppContext,
+    permission_service: PermissionService,
+    audit_service: AuditService,
+    telemetry_service: TelemetryService | None = None,
+) -> PayrollCorrectionService:
+    from seeker_accounting.modules.payroll.repositories.employee_payroll_correction_repository import (
+        EmployeePayrollCorrectionRepository as _CorrectionRepo,
+    )
+    from seeker_accounting.modules.payroll.repositories.payroll_component_repository import (
+        PayrollComponentRepository as _ComponentRepo,
+    )
+    return PayrollCorrectionService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        app_context=app_context,
+        correction_repository_factory=_CorrectionRepo,
+        employee_repository_factory=EmployeeRepository,
+        component_repository_factory=_ComponentRepo,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        telemetry_service=telemetry_service,
     )
 
 
@@ -3327,6 +3417,24 @@ def create_payroll_remittance_deadline_service(
     )
 
 
+def create_employee_onboarding_service(
+    session_context: SessionContext,
+    permission_service: PermissionService,
+    audit_service: AuditService,
+    telemetry_service: TelemetryService | None = None,
+) -> EmployeeOnboardingService:
+    return EmployeeOnboardingService(
+        unit_of_work_factory=session_context.unit_of_work_factory,
+        draft_repository_factory=EmployeeOnboardingDraftRepository,
+        employee_repository_factory=_EmployeeRepositoryForOnboarding,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        compensation_profile_repository_factory=_CompProfileRepoForOnboarding,
+        component_assignment_repository_factory=_CompAssignRepoForOnboarding,
+        telemetry_service=telemetry_service or get_default_telemetry_service(),
+    )
+
+
 def create_audit_service(
     session_context: SessionContext,
     app_context: AppContext,
@@ -3352,8 +3460,9 @@ def create_audit_export_service(
 
 def create_permission_service(
     app_context: AppContext,
+    license_service: LicenseService | None = None,
 ) -> PermissionService:
-    return PermissionService(app_context=app_context)
+    return PermissionService(app_context=app_context, license_service=license_service)
 
 
 def create_user_auth_service(
@@ -3465,7 +3574,11 @@ def create_service_registry(
     session_idle_watcher_service: SessionIdleWatcherService,
 ) -> ServiceRegistry:
     workflow_resume_service = create_workflow_resume_service()
-    permission_service = create_permission_service(app_context=app_context)
+    license_service = LicenseService(settings=settings)
+    permission_service = create_permission_service(
+        app_context=app_context,
+        license_service=license_service,
+    )
     audit_service = create_audit_service(
         session_context=session_context,
         app_context=app_context,
@@ -3556,7 +3669,10 @@ def create_service_registry(
         permission_service=permission_service,
         audit_service=audit_service,
     )
-    chart_template_import_service = create_chart_template_import_service(session_context=session_context)
+    chart_template_import_service = create_chart_template_import_service(
+        session_context=session_context,
+        permission_service=permission_service,
+    )
     chart_seed_service = create_chart_seed_service(
         session_context=session_context,
         chart_template_import_service=chart_template_import_service,
@@ -3582,8 +3698,11 @@ def create_service_registry(
         permission_service=permission_service,
         audit_service=audit_service,
     )
-    journal_service =create_journal_service(
-        session_context=session_context, app_context=app_context,
+    journal_service = create_journal_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
     )
     journal_posting_service = create_journal_posting_service(
         session_context=session_context,
@@ -3769,16 +3888,18 @@ def create_service_registry(
         session_context=session_context,
         audit_service=audit_service,
     )
-    item_category_service =create_item_category_service(
+    item_category_service = create_item_category_service(
+        session_context=session_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
+    inventory_location_service = create_inventory_location_service(
         session_context=session_context,
         audit_service=audit_service,
     )
-    inventory_location_service =create_inventory_location_service(
+    item_service = create_item_service(
         session_context=session_context,
-        audit_service=audit_service,
-    )
-    item_service =create_item_service(
-        session_context=session_context,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
     inventory_document_service =create_inventory_document_service(
@@ -3807,18 +3928,21 @@ def create_service_registry(
     reorder_planning_service = create_reorder_planning_service(session_context=session_context)
     inventory_dashboard_service = create_inventory_dashboard_service(session_context=session_context)
     item_barcode_service = create_item_barcode_service(session_context=session_context)
+    inventory_invariant_checker_service = create_inventory_invariant_checker_service(session_context=session_context)
     inventory_kardex_report_service = create_inventory_kardex_report_service(session_context=session_context)
     inventory_aging_report_service = create_inventory_aging_report_service(session_context=session_context)
     inventory_abc_analysis_service = create_inventory_abc_analysis_service(session_context=session_context)
     inventory_item_profitability_service = create_inventory_item_profitability_service(session_context=session_context)
     grni_accrual_report_service = create_grni_accrual_report_service(session_context=session_context)
     inventory_reconciliation_report_service = create_inventory_reconciliation_report_service(session_context=session_context)
-    asset_category_service =create_asset_category_service(
+    asset_category_service = create_asset_category_service(
         session_context=session_context,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
-    asset_service =create_asset_service(
+    asset_service = create_asset_service(
         session_context=session_context,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
     depreciation_schedule_service = create_depreciation_schedule_service(session_context=session_context)
@@ -3900,6 +4024,14 @@ def create_service_registry(
         numbering_service=numbering_service,
         permission_service=permission_service,
         audit_service=audit_service,
+        telemetry_service=get_default_telemetry_service(),
+    )
+    payroll_correction_service = create_payroll_correction_service(
+        session_context=session_context,
+        app_context=app_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+        telemetry_service=get_default_telemetry_service(),
     )
     payroll_summary_service = create_payroll_summary_service(session_context=session_context)
     payroll_pack_version_service = create_payroll_pack_version_service(
@@ -3936,6 +4068,11 @@ def create_service_registry(
     payroll_remittance_deadline_service = create_payroll_remittance_deadline_service(
         session_context=session_context,
     )
+    employee_onboarding_service = create_employee_onboarding_service(
+        session_context=session_context,
+        permission_service=permission_service,
+        audit_service=audit_service,
+    )
     company_project_preference_service = create_company_project_preference_service(session_context=session_context, audit_service=audit_service)
     contract_service =create_contract_service(
         session_context=session_context,
@@ -3948,8 +4085,9 @@ def create_service_registry(
     )
     project_structure_service = create_project_structure_service(session_context=session_context, audit_service=audit_service)
     project_cost_code_service = create_project_cost_code_service(session_context=session_context, audit_service=audit_service)
-    project_budget_service =create_project_budget_service(
+    project_budget_service = create_project_budget_service(
         session_context=session_context,
+        permission_service=permission_service,
         audit_service=audit_service,
     )
     budget_approval_service =create_budget_approval_service(
@@ -4251,9 +4389,6 @@ def create_service_registry(
         audit_service=audit_service,
     )
 
-    from seeker_accounting.platform.licensing.license_service import LicenseService
-    license_service = LicenseService(settings=settings)
-
     # Wizard run persistence service (resumable wizard state).
     from seeker_accounting.platform.wizards.persistence.wizard_run_repository import (
         WizardRunRepository as _WizardRunRepository,
@@ -4431,6 +4566,7 @@ def create_service_registry(
         reorder_planning_service=reorder_planning_service,
         inventory_dashboard_service=inventory_dashboard_service,
         item_barcode_service=item_barcode_service,
+        inventory_invariant_checker_service=inventory_invariant_checker_service,
         inventory_kardex_report_service=inventory_kardex_report_service,
         inventory_aging_report_service=inventory_aging_report_service,
         inventory_abc_analysis_service=inventory_abc_analysis_service,
@@ -4466,6 +4602,7 @@ def create_service_registry(
         payroll_posting_service=payroll_posting_service,
         payroll_payment_tracking_service=payroll_payment_tracking_service,
         payroll_remittance_service=payroll_remittance_service,
+        payroll_correction_service=payroll_correction_service,
         payroll_summary_service=payroll_summary_service,
         payroll_pack_version_service=payroll_pack_version_service,
         payroll_validation_dashboard_service=payroll_validation_dashboard_service,
@@ -4474,6 +4611,7 @@ def create_service_registry(
         payroll_export_service=payroll_export_service,
         payroll_output_warning_service=payroll_output_warning_service,
         payroll_remittance_deadline_service=payroll_remittance_deadline_service,
+        employee_onboarding_service=employee_onboarding_service,
         dashboard_service=dashboard_service,
         audit_service=audit_service,
         permission_service=permission_service,
@@ -4503,6 +4641,7 @@ def create_service_registry(
         license_service=license_service,
         wizard_run_service=wizard_run_service,
         deferral_service=deferral_service,
+        feature_flag_service=FeatureFlagService(),
         ribbon_registry=ribbon_registry,
         child_window_manager=child_window_manager,
     )

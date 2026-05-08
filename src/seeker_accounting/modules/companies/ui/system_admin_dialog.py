@@ -27,6 +27,12 @@ from seeker_accounting.modules.companies.services.system_admin_company_service i
     SystemAdminCompanyService,
 )
 from seeker_accounting.platform.exceptions.app_exceptions import ValidationError
+from seeker_accounting.shared.ui.styles.inline_styles import (
+    ghost_button_style,
+    solid_button_style,
+    status_chip_style,
+)
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 _log = logging.getLogger(__name__)
@@ -83,17 +89,17 @@ class SystemAdminDialog(QDialog):
         # ── Header bar ────────────────────────────────────────────────────────
         header = QWidget()
         header.setFixedHeight(54)
-        header.setStyleSheet("background: #1E3A5F;")
+        header.setStyleSheet(f"background: {_P.accent};")
         header_row = QHBoxLayout(header)
         header_row.setContentsMargins(20, 0, 20, 0)
 
         title_lbl = QLabel("⚙  Company Administration")
-        title_lbl.setStyleSheet("font-size: 15px; font-weight: 600; color: #F9FAFB;")
+        title_lbl.setStyleSheet(f"font-size: 15px; font-weight: 600; color: {_P.accent_text};")
         header_row.addWidget(title_lbl)
         header_row.addStretch()
 
         sub_lbl = QLabel("Manage all companies — active, deactivated, and pending deletion")
-        sub_lbl.setStyleSheet("font-size: 11px; color: #93C5FD;")
+        sub_lbl.setStyleSheet(f"font-size: 11px; color: {_P.accent_soft_strong};")
         header_row.addWidget(sub_lbl)
         root.addWidget(header)
 
@@ -126,11 +132,12 @@ class SystemAdminDialog(QDialog):
         self._table.setColumnWidth(5, 240)
 
         self._table.setStyleSheet(
-            "QTableWidget { border: none; outline: none; background: #FFFFFF; "
-            "alternate-background-color: #F8FAFC; }"
-            "QTableWidget::item { padding: 0 8px; border: none; color: #111827; }"
-            "QHeaderView::section { background: #F1F5F9; border: none; border-bottom: 1px solid #E2E8F0; "
-            "padding: 8px; font-size: 11px; font-weight: 600; color: #475569; }"
+            f"QTableWidget {{ border: none; outline: none; background: {_P.workspace_surface}; "
+            f"alternate-background-color: {_P.data_table_row_alt}; }}"
+            f"QTableWidget::item {{ padding: 0 8px; border: none; color: {_P.text_primary}; }}"
+            f"QHeaderView::section {{ background: {_P.data_table_header_bg}; border: none; "
+            f"border-bottom: 1px solid {_P.data_table_grid_line}; padding: 8px; "
+            f"font-size: 11px; font-weight: 600; color: {_P.data_table_header_fg}; }}"
         )
         self._table.setRowHeight(0, 44)
         root.addWidget(self._table)
@@ -139,48 +146,32 @@ class SystemAdminDialog(QDialog):
         footer = QWidget()
         footer.setFixedHeight(50)
         footer.setStyleSheet(
-            "background: #F8FAFC; border-top: 1px solid #E2E8F0;"
+            f"background: {_P.secondary_surface}; border-top: 1px solid {_P.border_default};"
         )
         footer_row = QHBoxLayout(footer)
         footer_row.setContentsMargins(16, 0, 16, 0)
 
         refresh_btn = QPushButton("↻  Refresh")
         refresh_btn.setFixedHeight(32)
-        refresh_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: 1px solid #CBD5E1; "
-            "border-radius: 4px; padding: 0 12px; font-size: 12px; color: #475569; }"
-            "QPushButton:hover { background: #F1F5F9; }"
-        )
+        refresh_btn.setStyleSheet(ghost_button_style())
         refresh_btn.clicked.connect(self._load)
         footer_row.addWidget(refresh_btn)
         export_btn = QPushButton("↓  Export Backup")
         export_btn.setFixedHeight(32)
-        export_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: 1px solid #CBD5E1; "
-            "border-radius: 4px; padding: 0 12px; font-size: 12px; color: #475569; }"
-            "QPushButton:hover { background: #F1F5F9; }"
-        )
+        export_btn.setStyleSheet(ghost_button_style())
         export_btn.clicked.connect(self._export_backup)
         footer_row.addWidget(export_btn)
 
         import_btn = QPushButton("↑  Import Backup")
         import_btn.setFixedHeight(32)
-        import_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: 1px solid #CBD5E1; "
-            "border-radius: 4px; padding: 0 12px; font-size: 12px; color: #475569; }"
-            "QPushButton:hover { background: #F1F5F9; }"
-        )
+        import_btn.setStyleSheet(ghost_button_style())
         import_btn.clicked.connect(self._import_backup)
         footer_row.addWidget(import_btn)
         footer_row.addStretch()
 
         close_btn = QPushButton("Close")
         close_btn.setFixedHeight(32)
-        close_btn.setStyleSheet(
-            "QPushButton { background: #374151; color: #fff; border: none; "
-            "border-radius: 4px; padding: 0 20px; font-size: 12px; font-weight: 600; }"
-            "QPushButton:hover { background: #1F2937; }"
-        )
+        close_btn.setStyleSheet(solid_button_style("neutral"))
         close_btn.clicked.connect(self.accept)
         footer_row.addWidget(close_btn)
 
@@ -243,10 +234,10 @@ class SystemAdminDialog(QDialog):
     @staticmethod
     def _status_chip_attrs(dto: CompanyListItemDTO) -> tuple[str, str]:
         if dto.deleted_at is not None:
-            return "Pending Deletion", "background: #FEF3C7; color: #92400E;"
+            return "Pending Deletion", status_chip_style("warning")
         if dto.is_active:
-            return "Active", "background: #D1FAE5; color: #065F46;"
-        return "Deactivated", "background: #F3F4F6; color: #6B7280;"
+            return "Active", status_chip_style("success")
+        return "Deactivated", status_chip_style("neutral")
 
     # ── Action widgets ────────────────────────────────────────────────────────
 
@@ -258,25 +249,25 @@ class SystemAdminDialog(QDialog):
 
         if dto.deleted_at is not None:
             # Pending Deletion → Restore only
-            restore_btn = self._small_btn("Restore", "#0369A1", "#075985")
+            restore_btn = self._small_btn("Restore", "info")
             restore_btn.clicked.connect(lambda: self._on_restore(dto.id, dto.display_name))
             row_layout.addWidget(restore_btn)
         elif dto.is_active:
             # Active → Deactivate | Schedule Deletion
-            deact_btn = self._small_btn("Deactivate", "#6B7280", "#4B5563")
+            deact_btn = self._small_btn("Deactivate", "neutral")
             deact_btn.clicked.connect(lambda: self._on_deactivate(dto.id, dto.display_name))
             row_layout.addWidget(deact_btn)
 
-            sched_btn = self._small_btn("Schedule Deletion", "#DC2626", "#B91C1C")
+            sched_btn = self._small_btn("Schedule Deletion", "danger")
             sched_btn.clicked.connect(lambda: self._on_schedule_deletion(dto.id, dto.display_name))
             row_layout.addWidget(sched_btn)
         else:
             # Deactivated → Reactivate | Schedule Deletion
-            react_btn = self._small_btn("Reactivate", "#059669", "#047857")
+            react_btn = self._small_btn("Reactivate", "success")
             react_btn.clicked.connect(lambda: self._on_reactivate(dto.id, dto.display_name))
             row_layout.addWidget(react_btn)
 
-            sched_btn = self._small_btn("Schedule Deletion", "#DC2626", "#B91C1C")
+            sched_btn = self._small_btn("Schedule Deletion", "danger")
             sched_btn.clicked.connect(lambda: self._on_schedule_deletion(dto.id, dto.display_name))
             row_layout.addWidget(sched_btn)
 
@@ -284,14 +275,10 @@ class SystemAdminDialog(QDialog):
         return wrapper
 
     @staticmethod
-    def _small_btn(label: str, bg: str, hover: str) -> QPushButton:
+    def _small_btn(label: str, family: str) -> QPushButton:
         btn = QPushButton(label)
         btn.setFixedHeight(28)
-        btn.setStyleSheet(
-            f"QPushButton {{ background: {bg}; color: #fff; border: none; "
-            f"border-radius: 3px; padding: 0 10px; font-size: 11px; }}"
-            f"QPushButton:hover {{ background: {hover}; }}"
-        )
+        btn.setStyleSheet(solid_button_style(family))
         return btn
 
     # ── Action handlers ───────────────────────────────────────────────────────

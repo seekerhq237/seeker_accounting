@@ -20,11 +20,14 @@ from seeker_accounting.platform.printing.print_data_protocol import (
     CompanyHeaderData,
     PageSize,
 )
+from seeker_accounting.platform.printing.colors import PRINT_PALETTE as _P
 
-_BRAND_PRIMARY = "#1e3a5f"
-_BRAND_LIGHT = "#f0f3f7"
-_BRAND_BORDER = "#d0d7de"
-_BRAND_TEXT_MUTED = "#6b7280"
+_BRAND_PRIMARY = _P.accent
+_BRAND_LIGHT = _P.accent_soft
+_BRAND_BORDER = _P.border_default
+_BRAND_TEXT = _P.text_primary
+_BRAND_TEXT_SECONDARY = _P.text_secondary
+_BRAND_TEXT_MUTED = _P.text_muted
 
 _BRAND_NAME = "Seeker Accounting"
 _BRAND_TAGLINE = "Built for Business Clarity. Designed For Success."
@@ -60,7 +63,7 @@ html, body {{ height: 100%; }}
 body {{
     font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
     font-size: {fs}pt;
-    color: #1a1a1a;
+    color: {_BRAND_TEXT};
     margin: 0;
     padding: 0;
     line-height: 1.48;
@@ -113,7 +116,7 @@ body {{
 }}
 .co-address {{
     font-size: {fs - 1}pt;
-    color: #374151;
+    color: {_BRAND_TEXT_SECONDARY};
     line-height: 1.45;
 }}
 .co-meta {{
@@ -171,7 +174,7 @@ body {{
 .kv-value {{
     font-size: {fs - 1}pt;
     font-weight: 600;
-    color: #1a1a1a;
+    color: {_BRAND_TEXT};
 }}
 
 .chip {{
@@ -182,12 +185,12 @@ body {{
     font-weight: 600;
     letter-spacing: 0.25px;
 }}
-.chip-draft {{ background: #f0f0f0; color: #555; }}
-.chip-posted {{ background: #e6f4ea; color: #1e6b3a; }}
-.chip-cancelled {{ background: #fde8e8; color: #9b1c1c; }}
-.chip-paid {{ background: #e6f4ea; color: #1e6b3a; }}
-.chip-partial {{ background: #fff3cd; color: #856404; }}
-.chip-unpaid {{ background: #fff0f0; color: #9b1c1c; }}
+.chip-draft {{ background: {_P.status_neutral_bg}; color: {_P.status_neutral_fg}; }}
+.chip-posted {{ background: {_P.status_success_bg}; color: {_P.status_success_fg}; }}
+.chip-cancelled {{ background: {_P.status_danger_bg}; color: {_P.status_danger_fg}; }}
+.chip-paid {{ background: {_P.status_success_bg}; color: {_P.status_success_fg}; }}
+.chip-partial {{ background: {_P.status_warning_bg}; color: {_P.status_warning_fg}; }}
+.chip-unpaid {{ background: {_P.status_danger_bg}; color: {_P.status_danger_fg}; }}
 
 .section-title {{
     font-size: {fs}pt;
@@ -224,7 +227,7 @@ table.data-table th {{
 table.data-table th.num {{ text-align: right; }}
 table.data-table td {{
     padding: 5px 8px;
-    border-bottom: 1px solid #e8edf3;
+    border-bottom: 1px solid {_P.divider_subtle};
     vertical-align: top;
     overflow-wrap: break-word;
 }}
@@ -237,12 +240,12 @@ table.data-table th.nowrap,
 table.data-table td.nowrap {{
     white-space: nowrap;
 }}
-table.data-table tr.even {{ background: #ffffff; }}
-table.data-table tr.odd {{ background: #fbfcfe; }}
+table.data-table tr.even {{ background: {_P.workspace_surface}; }}
+table.data-table tr.odd {{ background: {_P.data_table_row_alt}; }}
 table.data-table tr.total-row td {{
     font-weight: 700;
     border-top: 1.5px solid {_BRAND_PRIMARY};
-    background: #f7f9fc;
+    background: {_P.secondary_surface};
 }}
 table.data-table tr.subtotal-row td {{
     font-weight: 600;
@@ -271,7 +274,7 @@ table.data-table td.empty {{
 }}
 .summary-box td {{
     padding: 6px 12px;
-    border-bottom: 1px solid #edf2f7;
+    border-bottom: 1px solid {_P.divider_subtle};
 }}
 .summary-box td.num {{
     text-align: right;
@@ -291,19 +294,19 @@ table.data-table td.empty {{
 .net-box {{
     margin: 12px 0;
     padding: 10px 14px;
-    background: #e8f5e9;
-    border-left: 4px solid #2e7d32;
+    background: {_P.status_success_bg};
+    border-left: 4px solid {_P.status_success_border};
     border-radius: 2px;
 }}
-.net-box .net-label {{ font-size: {fs - 1}pt; font-weight: 600; color: #1b5e20; }}
-.net-box .net-amount {{ font-size: {fs + 3}pt; font-weight: 700; color: #1b5e20; }}
+.net-box .net-label {{ font-size: {fs - 1}pt; font-weight: 600; color: {_P.status_success_fg}; }}
+.net-box .net-amount {{ font-size: {fs + 3}pt; font-weight: 700; color: {_P.status_success_fg}; }}
 
 .warning-bar {{
     padding: 6px 10px;
-    background: #fff8e1;
-    border-left: 3px solid #f9a825;
+    background: {_P.status_warning_bg};
+    border-left: 3px solid {_P.status_warning_border};
     font-size: {fs - 1}pt;
-    color: #6d4c00;
+    color: {_P.status_warning_fg};
     margin-bottom: 10px;
 }}
 

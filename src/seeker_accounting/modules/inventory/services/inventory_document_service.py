@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import uuid
 from datetime import datetime
@@ -856,4 +857,4 @@ class InventoryDocumentService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

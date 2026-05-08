@@ -117,10 +117,10 @@ class GrniAccrualReportService:
 
     def _load_supplier_names(self, session: Session, company_id: int) -> dict[int, str]:
         try:
-            from seeker_accounting.modules.purchases.models.supplier import Supplier
-            stmt = select(Supplier.id, Supplier.supplier_name).where(
+            from seeker_accounting.modules.suppliers.models.supplier import Supplier
+            stmt = select(Supplier.id, Supplier.display_name).where(
                 Supplier.company_id == company_id
             )
-            return {row.id: row.supplier_name for row in session.execute(stmt)}
+            return {row.id: row.display_name for row in session.execute(stmt)}
         except Exception:
             return {}

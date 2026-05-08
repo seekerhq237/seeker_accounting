@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from seeker_accounting.db.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from seeker_accounting.modules.accounting.chart_of_accounts.models.account import Account
+    from seeker_accounting.modules.payroll.models.payroll_component import PayrollComponent
+    from seeker_accounting.modules.payroll.models.payroll_remittance_batch import (
+        PayrollRemittanceBatch,
+    )
 
 
 class PayrollRemittanceLine(TimestampMixin, Base):
@@ -59,8 +67,8 @@ class PayrollRemittanceLine(TimestampMixin, Base):
     status_code: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
-    batch: Mapped["PayrollRemittanceBatch"] = relationship(
+    batch: Mapped[PayrollRemittanceBatch] = relationship(
         "PayrollRemittanceBatch", back_populates="lines"
     )
-    payroll_component: Mapped["PayrollComponent | None"] = relationship("PayrollComponent")
-    liability_account: Mapped["Account | None"] = relationship("Account")
+    payroll_component: Mapped[PayrollComponent | None] = relationship("PayrollComponent")
+    liability_account: Mapped[Account | None] = relationship("Account")

@@ -31,13 +31,14 @@ class PayrollRunStateMachineTests(unittest.TestCase):
     def test_approved_only_to_posted(self) -> None:
         self.assertEqual(self.SM.allowed_transitions("approved"), frozenset({"posted"}))
 
-    def test_posted_only_to_reversed(self) -> None:
-        self.assertEqual(self.SM.allowed_transitions("posted"), frozenset({"reversed"}))
+    def test_posted_only_to_reversed_or_settling(self) -> None:  # updated P3.S1
+        self.assertEqual(self.SM.allowed_transitions("posted"), frozenset({"reversed", "settling"}))
 
     def test_terminal_states(self) -> None:
         self.assertTrue(self.SM.is_terminal("voided"))
         self.assertTrue(self.SM.is_terminal("reversed"))
-        for s in ("draft", "calculated", "approved", "posted"):
+        self.assertTrue(self.SM.is_terminal("closed"))   # P3.S1
+        for s in ("draft", "calculated", "approved", "posted", "settling", "paid"):
             self.assertFalse(self.SM.is_terminal(s), s)
 
     def test_unknown_status_has_no_transitions(self) -> None:
@@ -74,17 +75,32 @@ class PayrollRunStateMachineTests(unittest.TestCase):
 
     def test_can_reverse_only_when_posted(self) -> None:
         self.assertTrue(self.SM.can_reverse("posted"))
-        for s in ("draft", "calculated", "approved", "voided", "reversed"):
+        for s in ("draft", "calculated", "approved", "voided", "reversed", "settling", "paid", "closed"):
             self.assertFalse(self.SM.can_reverse(s), s)
+
+    def test_can_settle_only_when_posted(self) -> None:  # P3.S1
+        self.assertTrue(self.SM.can_settle("posted"))
+        for s in ("draft", "calculated", "approved", "voided", "reversed", "settling", "paid", "closed"):
+            self.assertFalse(self.SM.can_settle(s), s)
+
+    def test_can_mark_paid_only_when_settling(self) -> None:  # P3.S1
+        self.assertTrue(self.SM.can_mark_paid("settling"))
+        for s in ("draft", "calculated", "approved", "posted", "voided", "reversed", "paid", "closed"):
+            self.assertFalse(self.SM.can_mark_paid(s), s)
+
+    def test_can_close_only_when_paid(self) -> None:  # P3.S1
+        self.assertTrue(self.SM.can_close("paid"))
+        for s in ("draft", "calculated", "approved", "posted", "voided", "reversed", "settling", "closed"):
+            self.assertFalse(self.SM.can_close(s), s)
 
     def test_can_edit_inclusion_only_when_calculated(self) -> None:
         self.assertTrue(self.SM.can_edit_inclusion("calculated"))
         for s in ("draft", "approved", "posted", "voided", "reversed"):
             self.assertFalse(self.SM.can_edit_inclusion(s), s)
 
-    def test_immutable_when_posted_or_reversed(self) -> None:
-        self.assertTrue(self.SM.is_immutable("posted"))
-        self.assertTrue(self.SM.is_immutable("reversed"))
+    def test_immutable_when_posted_or_later(self) -> None:  # updated P3.S1
+        for s in ("posted", "settling", "paid", "closed", "reversed"):
+            self.assertTrue(self.SM.is_immutable(s), s)
         for s in ("draft", "calculated", "approved", "voided"):
             self.assertFalse(self.SM.is_immutable(s), s)
 
@@ -105,12 +121,21 @@ class PayrollRunStateMachineTests(unittest.TestCase):
         self.assertEqual(
             self.SM.primary_action("approved").target_state, "posted",
         )
+        # P3.S1: posted primary action is now "Begin Settlement", not "Reverse".
         action = self.SM.primary_action("posted")
         assert action is not None
-        self.assertEqual(action.target_state, "reversed")
-        self.assertTrue(action.is_destructive)
+        self.assertEqual(action.target_state, "settling")
+        self.assertFalse(action.is_destructive)
+        # P3.S1: settling → paid, paid → closed.
+        settling_action = self.SM.primary_action("settling")
+        assert settling_action is not None
+        self.assertEqual(settling_action.target_state, "paid")
+        paid_action = self.SM.primary_action("paid")
+        assert paid_action is not None
+        self.assertEqual(paid_action.target_state, "closed")
         self.assertIsNone(self.SM.primary_action("voided"))
         self.assertIsNone(self.SM.primary_action("reversed"))
+        self.assertIsNone(self.SM.primary_action("closed"))
 
     def test_timeline_and_side_states_disjoint(self) -> None:
         self.assertEqual(set(TIMELINE_ORDER) & set(SIDE_STATES), set())

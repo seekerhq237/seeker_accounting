@@ -45,14 +45,12 @@ from seeker_accounting.modules.payroll.repositories.payroll_remittance_repositor
     PayrollRemittanceBatchRepository,
     PayrollRemittanceLineRepository,
 )
-from seeker_accounting.modules.payroll.repositories.payroll_authority_repository import (
-    PayrollAuthorityRepository,
-)
 from seeker_accounting.modules.payroll.repositories.payroll_run_repository import (
     PayrollRunRepository,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
+from seeker_accounting.shared.services.telemetry_service import TelemetryService
 
 _REMITTANCE_DOC_TYPE = "payroll_remittance"
 _EDITABLE_STATUSES = frozenset({"draft", "open"})
@@ -74,7 +72,7 @@ class PayrollRemittanceService:
         numbering_service: NumberingService,
         permission_service: PermissionService,
         audit_service: AuditService,
-        authority_repository_factory: Callable[[Session], PayrollAuthorityRepository] | None = None,
+        telemetry_service: TelemetryService | None = None,
     ) -> None:
         self._uow_factory = unit_of_work_factory
         self._batch_repo_factory = batch_repository_factory
@@ -83,9 +81,7 @@ class PayrollRemittanceService:
         self._numbering_service = numbering_service
         self._permission_service = permission_service
         self._audit_service = audit_service
-        self._authority_repo_factory = (
-            authority_repository_factory or PayrollAuthorityRepository
-        )
+        self._telemetry = telemetry_service
 
     # ── Queries ───────────────────────────────────────────────────────────────
 
@@ -123,32 +119,15 @@ class PayrollRemittanceService:
         actor_user_id: int | None = None,
     ) -> PayrollRemittanceBatchDetailDTO:
         self._permission_service.require_permission(PAYROLL_REMITTANCE_MANAGE)
-        raw_auth = (cmd.remittance_authority_code or "").strip()
-        if not raw_auth:
-            raise ValidationError("Authority code is required.")
+        auth = (cmd.remittance_authority_code or "").lower()
+        if auth not in _ALLOWED_AUTHORITIES:
+            raise ValidationError(
+                f"Invalid authority code '{auth}'. Allowed: {', '.join(sorted(_ALLOWED_AUTHORITIES))}"
+            )
         if cmd.period_start_date > cmd.period_end_date:
             raise ValidationError("Period start date must not be after period end date.")
 
         with self._uow_factory() as uow:
-            # Resolve authority code:
-            #   1. Try registry (case-insensitive) → store canonical code.
-            #   2. Else fall back to legacy lowercase set.
-            authority_repo = self._authority_repo_factory(uow.session)
-            registered = [
-                a
-                for a in authority_repo.list_by_company(company_id, active_only=True)
-                if a.code.lower() == raw_auth.lower()
-            ]
-            if registered:
-                auth = registered[0].code
-            else:
-                auth = raw_auth.lower()
-                if auth not in _ALLOWED_AUTHORITIES:
-                    raise ValidationError(
-                        f"Invalid authority code '{raw_auth}'. "
-                        "Authority must be registered (Payroll → Authorities) "
-                        f"or one of legacy: {', '.join(sorted(_ALLOWED_AUTHORITIES))}"
-                    )
             # Validate linked run if provided
             if cmd.payroll_run_id is not None:
                 run = self._run_repo_factory(uow.session).get_by_id(
@@ -201,6 +180,13 @@ class PayrollRemittanceService:
             )
             uow.commit()
             uow.session.refresh(batch)
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="remittance",
+                    step="batch_created",
+                    event_code="remittance.batch_created",
+                    context={"company_id": company_id, "authority_code": auth},
+                )
             return self._to_detail_dto(batch)
 
     def update_batch(
@@ -276,6 +262,13 @@ class PayrollRemittanceService:
             )
             uow.commit()
             uow.session.refresh(batch)
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="remittance",
+                    step="batch_opened",
+                    event_code="remittance.batch_opened",
+                    context={"company_id": company_id},
+                )
             return self._to_detail_dto(batch)
 
     def record_payment(
@@ -336,6 +329,16 @@ class PayrollRemittanceService:
             )
             uow.commit()
             uow.session.refresh(batch)
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="remittance",
+                    step="payment_recorded",
+                    event_code="remittance.payment_recorded",
+                    context={
+                        "company_id": company_id,
+                        "status_code": batch.status_code,
+                    },
+                )
             return self._to_detail_dto(batch)
 
     def cancel_batch(self, company_id: int, batch_id: int) -> None:

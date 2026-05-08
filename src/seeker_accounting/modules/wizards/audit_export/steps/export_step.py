@@ -22,6 +22,7 @@ from seeker_accounting.platform.wizards import (
     WizardState,
     WizardStep,
 )
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 class ExportStep(WizardStep):
@@ -122,7 +123,7 @@ class ExportStep(WizardStep):
         except Exception as exc:  # noqa: BLE001
             if self._status is not None:
                 self._status.setText(
-                    f"<span style='color:#c44;'>Export failed:</span> {exc}"
+                    f"<span style='color:{_P.status_danger_fg};'>Export failed:</span> {exc}"
                 )
             return
 

@@ -17,9 +17,8 @@ Layout (style-guide compliant):
 """
 from __future__ import annotations
 
-from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtGui import QFont, QPalette
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -42,6 +41,7 @@ from seeker_accounting.platform.wizards.controller import (
     WizardLifecycleStatus,
 )
 from seeker_accounting.platform.wizards.step import WizardStepStatus
+from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 
 
 class WizardHostDialog(QDialog):
@@ -78,17 +78,11 @@ class WizardHostDialog(QDialog):
         if self._intro:
             intro_strip = QFrame(self)
             intro_strip.setObjectName("WizardIntroStrip")
-            intro_strip.setStyleSheet(
-                "#WizardIntroStrip {"
-                "  background-color: #F4F6FA;"
-                "  border-bottom: 1px solid #D4DAE3;"
-                "}"
-            )
             intro_layout = QHBoxLayout(intro_strip)
             intro_layout.setContentsMargins(20, 10, 20, 10)
             intro_label = QLabel(self._intro, intro_strip)
+            intro_label.setObjectName("WizardIntroText")
             intro_label.setWordWrap(True)
-            intro_label.setStyleSheet("color: #4E5866; font-size: 12px;")
             intro_layout.addWidget(intro_label, 1)
             root.addWidget(intro_strip)
 
@@ -105,16 +99,6 @@ class WizardHostDialog(QDialog):
         self._rail.setFixedWidth(220)
         self._rail.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._rail.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        self._rail.setStyleSheet(
-            "#WizardStepRail {"
-            "  background-color: #F4F6FA;"
-            "  border: none;"
-            "  border-right: 1px solid #D4DAE3;"
-            "  padding: 12px 0;"
-            "}"
-            "#WizardStepRail::item { padding: 10px 16px; color: #4E5866; }"
-            "#WizardStepRail::item:selected { background: transparent; }"
-        )
         body_layout.addWidget(self._rail)
 
         # Center: step body
@@ -125,11 +109,11 @@ class WizardHostDialog(QDialog):
         body_layout.addWidget(center, 1)
 
         self._step_title_label = QLabel("", center)
-        self._step_title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #1A2230;")
+        self._step_title_label.setObjectName("WizardStepTitle")
         center_layout.addWidget(self._step_title_label)
 
         self._step_subtitle_label = QLabel("", center)
-        self._step_subtitle_label.setStyleSheet("font-size: 12px; color: #4E5866;")
+        self._step_subtitle_label.setObjectName("WizardStepSubtitle")
         self._step_subtitle_label.setWordWrap(True)
         center_layout.addWidget(self._step_subtitle_label)
 
@@ -137,13 +121,6 @@ class WizardHostDialog(QDialog):
         self._error_strip.setObjectName("WizardErrorStrip")
         self._error_strip.setWordWrap(True)
         self._error_strip.setVisible(False)
-        self._error_strip.setStyleSheet(
-            "#WizardErrorStrip {"
-            "  background: #FBE9E9; color: #8A1F1F;"
-            "  border: 1px solid #E5B4B4; border-radius: 2px;"
-            "  padding: 6px 8px; font-size: 12px;"
-            "}"
-        )
         center_layout.addWidget(self._error_strip)
 
         scroll = QScrollArea(center)
@@ -157,17 +134,11 @@ class WizardHostDialog(QDialog):
         self._advisor_pane = QFrame(body)
         self._advisor_pane.setObjectName("WizardAdvisorPane")
         self._advisor_pane.setFixedWidth(260)
-        self._advisor_pane.setStyleSheet(
-            "#WizardAdvisorPane {"
-            "  background: #FAFBFD;"
-            "  border-left: 1px solid #D4DAE3;"
-            "}"
-        )
         advisor_layout = QVBoxLayout(self._advisor_pane)
         advisor_layout.setContentsMargins(14, 16, 14, 16)
         advisor_layout.setSpacing(10)
         advisor_title = QLabel("Assistant", self._advisor_pane)
-        advisor_title.setStyleSheet("font-size: 13px; font-weight: 600; color: #1A2230;")
+        advisor_title.setObjectName("WizardAdvisorTitle")
         advisor_layout.addWidget(advisor_title)
         self._advisor_messages_layout = QVBoxLayout()
         self._advisor_messages_layout.setSpacing(8)
@@ -177,23 +148,19 @@ class WizardHostDialog(QDialog):
 
         # Status strip -------------------------------------------------------
         status_strip = QFrame(self)
+        status_strip.setObjectName("WizardStatusStrip")
         status_strip.setFixedHeight(22)
-        status_strip.setStyleSheet(
-            "background: #F4F6FA; border-top: 1px solid #D4DAE3;"
-        )
         status_layout = QHBoxLayout(status_strip)
         status_layout.setContentsMargins(20, 0, 20, 0)
         self._status_label = QLabel("", status_strip)
-        self._status_label.setStyleSheet("font-size: 11px; color: #7A8392;")
+        self._status_label.setObjectName("WizardStatusText")
         status_layout.addWidget(self._status_label)
         status_layout.addStretch(1)
         root.addWidget(status_strip)
 
         # Bottom action rail -------------------------------------------------
         action_row = QFrame(self)
-        action_row.setStyleSheet(
-            "background: #FFFFFF; border-top: 1px solid #D4DAE3;"
-        )
+        action_row.setObjectName("WizardActionRail")
         action_layout = QHBoxLayout(action_row)
         action_layout.setContentsMargins(20, 12, 20, 12)
         action_layout.setSpacing(8)
@@ -257,7 +224,7 @@ class WizardHostDialog(QDialog):
                 item.setFont(font)
                 item.setForeground(QPalette().color(QPalette.ColorRole.Text))
             elif step.status == WizardStepStatus.FAILED:
-                item.setForeground(QColor("#B42E2E"))
+                item.setData(Qt.ItemDataRole.UserRole, "failed")
 
     def _render_advisor(self) -> None:
         # Clear existing
@@ -270,24 +237,22 @@ class WizardHostDialog(QDialog):
         messages: list[AdvisorMessage] = self._controller.evaluate_advisor()
         if not messages:
             empty = QLabel("No suggestions for this step.", self._advisor_pane)
-            empty.setStyleSheet("color: #7A8392; font-size: 11px;")
+            empty.setObjectName("WizardAdvisorEmpty")
             empty.setWordWrap(True)
             self._advisor_messages_layout.addWidget(empty)
             return
 
-        color_by_severity = {
-            AdvisorSeverity.BLOCKER: ("#B42E2E", "#FBE9E9", "#E5B4B4"),
-            AdvisorSeverity.WARNING: ("#9A6A17", "#FBF1DD", "#E5D2A2"),
-            AdvisorSeverity.SUGGESTION: ("#1F5BD8", "#E7EFFD", "#B7C9F0"),
-            AdvisorSeverity.INFO: ("#4E5866", "#F4F6FA", "#D4DAE3"),
-        }
-
         for msg in messages:
-            fg, bg, border = color_by_severity.get(msg.severity, ("#4E5866", "#F4F6FA", "#D4DAE3"))
             card = QFrame(self._advisor_pane)
-            card.setStyleSheet(
-                f"background: {bg}; border: 1px solid {border};"
-                "border-radius: 2px;"
+            card.setObjectName("WizardAdvisorCard")
+            card.setProperty(
+                "advisorSeverity",
+                {
+                    AdvisorSeverity.BLOCKER: "blocker",
+                    AdvisorSeverity.WARNING: "warning",
+                    AdvisorSeverity.SUGGESTION: "suggestion",
+                    AdvisorSeverity.INFO: "info",
+                }.get(msg.severity, "info"),
             )
             card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
             v = QVBoxLayout(card)
@@ -295,19 +260,16 @@ class WizardHostDialog(QDialog):
             v.setSpacing(2)
             t = QLabel(msg.title, card)
             t.setWordWrap(True)
-            t.setStyleSheet(f"color: {fg}; font-size: 11px; font-weight: 600;")
+            t.setObjectName("WizardAdvisorCardTitle")
             v.addWidget(t)
             if msg.detail:
                 d = QLabel(msg.detail, card)
                 d.setWordWrap(True)
-                d.setStyleSheet("color: #4E5866; font-size: 11px;")
+                d.setObjectName("WizardAdvisorCardDetail")
                 v.addWidget(d)
             if msg.action_label and msg.action is not None:
                 btn = QPushButton(msg.action_label, card)
-                btn.setStyleSheet(
-                    "padding: 2px 8px; font-size: 11px; border: 1px solid #D4DAE3;"
-                    "background: #FFFFFF; border-radius: 2px;"
-                )
+                btn.setObjectName("WizardAdvisorAction")
                 btn.clicked.connect(msg.action)  # type: ignore[arg-type]
                 v.addWidget(btn)
             self._advisor_messages_layout.addWidget(card)

@@ -20,10 +20,11 @@ from seeker_accounting.modules.administration.dto.user_session_dto import (
     REQUIRES_ADMIN_ATTENTION_CODES,
     UserSessionDTO,
 )
+from seeker_accounting.shared.ui.styles.inline_styles import status_chip_style
 
 _EXPLANATION_LABELS: dict[str, str] = dict(ABNORMAL_EXPLANATION_CHOICES)
 
-_ATTENTION_STYLE = "background-color: #FFF3CD; color: #856404; font-weight: 600; padding: 2px 6px;"
+_ATTENTION_STYLE = status_chip_style("warning", padding="2px 6px")
 _NORMAL_STYLE = "padding: 2px 6px;"
 
 

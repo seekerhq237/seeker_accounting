@@ -206,6 +206,10 @@ class FiscalCalendarService:
                 for period in fiscal_period_repository.list_by_company(company_id, fiscal_year_id=fiscal_year_id)
             ]
 
+    def list_open_periods(self, company_id: int) -> list[FiscalPeriodListItemDTO]:
+        """Return only OPEN fiscal periods for the given company."""
+        return [p for p in self.list_periods(company_id) if p.status_code == "OPEN"]
+
     def get_current_period(self, company_id: int, target_date: date | None = None) -> FiscalPeriodDTO | None:
         self._permission_service.require_permission("fiscal.periods.view")
         target = target_date or date.today()

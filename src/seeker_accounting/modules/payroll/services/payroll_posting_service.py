@@ -69,6 +69,7 @@ from seeker_accounting.platform.exceptions import (
     ValidationError,
 )
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
+from seeker_accounting.shared.services.telemetry_service import TelemetryService
 
 _PAYROLL_PAYABLE_ROLE = "payroll_payable"
 _JOURNAL_DOC_TYPE = "journal_entry"
@@ -97,6 +98,7 @@ class PayrollPostingService:
         numbering_service: NumberingService,
         permission_service: PermissionService,
         audit_service: AuditService,
+        telemetry_service: TelemetryService | None = None,
     ) -> None:
         self._uow_factory = unit_of_work_factory
         self._app_context = app_context
@@ -108,6 +110,7 @@ class PayrollPostingService:
         self._numbering_service = numbering_service
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._telemetry = telemetry_service
 
     def post_run(
         self,
@@ -374,6 +377,18 @@ class PayrollPostingService:
                     "Payroll journal could not be saved. Check for duplicate journal numbers."
                 ) from exc
 
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_posted",
+                    event_code="monthly_run.run_posted",
+                    context={
+                        "company_id": company_id,
+                        "period_year": run.period_year,
+                        "period_month": run.period_month,
+                    },
+                )
+
             # Build result DTO
             journal_line_dtos = tuple(
                 PostingJournalLineDTO(
@@ -622,6 +637,18 @@ class PayrollPostingService:
                 raise ValidationError(
                     "Reversal journal could not be saved. Check for duplicate journal numbers."
                 ) from exc
+
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="monthly_run",
+                    step="run_reversed",
+                    event_code="monthly_run.run_reversed",
+                    context={
+                        "company_id": company_id,
+                        "period_year": run.period_year,
+                        "period_month": run.period_month,
+                    },
+                )
 
             journal_line_dtos = tuple(
                 PostingJournalLineDTO(

@@ -46,7 +46,7 @@ class ReconciliationCheckStep(WizardStep):
             root,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #4E5866; font-size: 11px;")
+        intro.setObjectName("WizardMutedText")
         outer.addWidget(intro)
 
         self._cb_bank = QCheckBox("Bank and cash accounts reconciled to statements.", root)

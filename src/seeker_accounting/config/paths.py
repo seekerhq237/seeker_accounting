@@ -39,6 +39,13 @@ def default_runtime_root() -> Path:
     override = os.getenv("SEEKER_RUNTIME_ROOT")
     if override:
         return Path(override).expanduser()
+    # When frozen (PyInstaller) on Windows the executable may be installed under
+    # C:\Program Files\ which is read-only for normal users (UAC-protected).
+    # Always use %APPDATA%\SeekerAccounting instead so data, logs, and the
+    # database are always in a user-writable location.
+    if _FROZEN and sys.platform == "win32":
+        appdata = os.getenv("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(appdata) / "SeekerAccounting"
     return PROJECT_ROOT / ".seeker_runtime"
 
 

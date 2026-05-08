@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Callable
 
 from sqlalchemy.exc import IntegrityError
@@ -320,4 +321,4 @@ class NumberingSetupService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)  # Audit must not break business operations

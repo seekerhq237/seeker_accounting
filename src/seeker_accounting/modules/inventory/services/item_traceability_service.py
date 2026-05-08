@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from typing import TYPE_CHECKING, Callable
 
@@ -220,7 +221,7 @@ class ItemTraceabilityService:
                 ),
             )
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)
 
     @staticmethod
     def _normalize_code(value: str, label: str) -> str:

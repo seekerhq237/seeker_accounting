@@ -76,6 +76,29 @@ class EmployeePayrollCorrectionRepository:
             stmt = stmt.where(EmployeePayrollCorrection.employee_id.in_(employee_ids))
         return list(self._session.scalars(stmt).all())
 
+    def list_by_employee(
+        self,
+        company_id: int,
+        employee_id: int,
+        status_code: str | None = None,
+    ) -> list[EmployeePayrollCorrection]:
+        stmt = (
+            select(EmployeePayrollCorrection)
+            .where(
+                EmployeePayrollCorrection.company_id == company_id,
+                EmployeePayrollCorrection.employee_id == employee_id,
+            )
+            .options(selectinload(EmployeePayrollCorrection.component))
+            .order_by(
+                EmployeePayrollCorrection.period_year.desc(),
+                EmployeePayrollCorrection.period_month.desc(),
+                EmployeePayrollCorrection.id.desc(),
+            )
+        )
+        if status_code is not None:
+            stmt = stmt.where(EmployeePayrollCorrection.status_code == status_code)
+        return list(self._session.scalars(stmt).all())
+
     def save(self, correction: EmployeePayrollCorrection) -> EmployeePayrollCorrection:
         self._session.add(correction)
         return correction

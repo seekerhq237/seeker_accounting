@@ -206,6 +206,11 @@ def _build_shell(
     main_window = MainWindow(service_registry=service_registry)
     main_window.setWindowIcon(app_icon)
 
+    # Start periodic DB maintenance (PRAGMA optimize + passive WAL checkpoint).
+    # Parented to main_window so it is cleaned up automatically on shell close.
+    from seeker_accounting.platform.db_maintenance_service import DatabaseMaintenanceService
+    DatabaseMaintenanceService(session_context.engine, parent=main_window)  # type: ignore[attr-defined]
+
     # Wire shell-lifetime signals
     main_window.logout_requested.connect(
         lambda: _handle_logout(service_registry, landing_window, main_window)

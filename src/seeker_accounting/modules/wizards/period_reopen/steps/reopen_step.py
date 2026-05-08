@@ -37,7 +37,7 @@ class ReopenStep(WizardStep):
 
         self._summary = QLabel("", root)
         self._summary.setWordWrap(True)
-        self._summary.setStyleSheet("color: #2E3848; font-size: 12px;")
+        self._summary.setObjectName("WizardBodyText")
         outer.addWidget(self._summary)
 
         self._confirm = QCheckBox("I confirm this period should be reopened now.", root)

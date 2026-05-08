@@ -24,6 +24,7 @@ from seeker_accounting.platform.wizards import (
     WizardState,
     WizardStep,
 )
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 class ReviewStep(WizardStep):
@@ -108,10 +109,7 @@ def _fmt(value: Decimal | None) -> str:
 def _build_section_card(section: ControlAccountReconciliationDTO) -> QWidget:
     card = QFrame()
     card.setFrameShape(QFrame.Shape.StyledPanel)
-    card.setObjectName("reconCard")
-    card.setStyleSheet(
-        "#reconCard { border: 1px solid #d0d0d8; border-radius: 6px; padding: 10px; }"
-    )
+    card.setObjectName("WizardReviewPanel")
     layout = QVBoxLayout(card)
     layout.setContentsMargins(10, 8, 10, 8)
     layout.setSpacing(6)
@@ -119,10 +117,10 @@ def _build_section_card(section: ControlAccountReconciliationDTO) -> QWidget:
     # Header
     if section.account_mapped:
         status_text = "Reconciled" if section.is_reconciled else "Variance"
-        status_color = "#2a7" if section.is_reconciled else "#c44"
+        status_color = _P.status_success_fg if section.is_reconciled else _P.status_danger_fg
     else:
         status_text = "Not configured"
-        status_color = "#888"
+        status_color = _P.text_muted
 
     header_row = QHBoxLayout()
     title = QLabel(f"<b>{section.role_label}</b>")
@@ -198,7 +196,7 @@ def _kv_row(label: str, value: str) -> QWidget:
     h.setContentsMargins(0, 0, 0, 0)
     h.setSpacing(8)
     lbl = QLabel(label)
-    lbl.setStyleSheet("color: #666;")
+    lbl.setStyleSheet(f"color: {_P.text_secondary};")
     h.addWidget(lbl)
     h.addStretch(1)
     val = QLabel(value)

@@ -69,7 +69,7 @@ class PeriodAndCalculateStep(WizardStep):
             root,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #4E5866; font-size: 11px;")
+        intro.setObjectName("WizardMutedText")
         outer.addWidget(intro)
 
         form = QFormLayout()

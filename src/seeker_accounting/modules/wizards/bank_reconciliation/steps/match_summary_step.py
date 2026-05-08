@@ -42,7 +42,7 @@ class MatchSummaryStep(WizardStep):
             root,
         )
         self._tip.setWordWrap(True)
-        self._tip.setStyleSheet("color: #4E5866; font-size: 11px;")
+        self._tip.setObjectName("WizardMutedText")
         outer.addWidget(self._tip)
 
         form = QFormLayout()
@@ -51,7 +51,7 @@ class MatchSummaryStep(WizardStep):
         self._unmatched = QLabel("0", root)
         self._total = QLabel("0.00", root)
         for w in (self._matched, self._unmatched, self._total):
-            w.setStyleSheet("color: #2E3848; font-size: 12px; font-weight: 600;")
+            w.setObjectName("WizardBodyTextStrong")
         form.addRow(QLabel("Matched lines:", root), self._matched)
         form.addRow(QLabel("Unmatched lines:", root), self._unmatched)
         form.addRow(QLabel("Total matched amount:", root), self._total)

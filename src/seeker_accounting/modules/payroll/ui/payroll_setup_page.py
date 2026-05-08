@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSortFilterProxyModel, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QDialog,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
     QStackedWidget,
     QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -57,7 +57,12 @@ from seeker_accounting.modules.payroll.ui.wizards.payroll_activation_wizard impo
     PayrollActivationWizardDialog,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.components.read_only_table_model import (
+    ReadOnlyTableModel,
+    selected_user_data,
+)
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
@@ -148,10 +153,24 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         self._tabs.setDocumentMode(True)
         self._tabs.currentChanged.connect(lambda *_: self._notify_ribbon_context_changed())
 
-        self._tabs.addTab(self._build_settings_tab(), "Company Settings")
-        self._tabs.addTab(self._build_employees_tab(), "Employees")
-        self._tabs.addTab(self._build_components_tab(), "Payroll components")
-        self._tabs.addTab(self._build_rules_tab(), "Payroll Rules")
+        from seeker_accounting.shared.ui.help_button import install_help_button
+
+        settings_tab = self._build_settings_tab()
+        install_help_button(settings_tab, "payroll_setup.company_settings")
+        self._tabs.addTab(settings_tab, "Company Settings")
+
+        employees_tab = self._build_employees_tab()
+        install_help_button(employees_tab, "payroll_setup.employees")
+        self._tabs.addTab(employees_tab, "Employees")
+
+        components_tab = self._build_components_tab()
+        install_help_button(components_tab, "payroll_setup.components")
+        self._tabs.addTab(components_tab, "Payroll components")
+
+        rules_tab = self._build_rules_tab()
+        install_help_button(rules_tab, "payroll_setup.rules")
+        self._tabs.addTab(rules_tab, "Payroll Rules")
+
         return self._tabs
 
     # ── Settings tab ──────────────────────────────────────────────────────────
@@ -268,7 +287,11 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         fl.setSpacing(8)
         self._emp_search = QLineEdit(filter_bar)
         self._emp_search.setPlaceholderText("Search by number or name...")
-        self._emp_search.textChanged.connect(self._reload_employees)
+        self._emp_debounce = QTimer(filter_bar)
+        self._emp_debounce.setSingleShot(True)
+        self._emp_debounce.setInterval(400)
+        self._emp_debounce.timeout.connect(self._reload_employees)
+        self._emp_search.textChanged.connect(self._emp_debounce.start)
         fl.addWidget(self._emp_search, 1)
         self._emp_inactive_cb = QCheckBox("Show inactive", filter_bar)
         self._emp_inactive_cb.stateChanged.connect(self._reload_employees)
@@ -310,14 +333,22 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         card.setObjectName("PageCard")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._emp_table = QTableWidget(card)
-        self._emp_table.setColumnCount(7)
-        self._emp_table.setHorizontalHeaderLabels(
-            ("Employee No.", "Name", "Department", "Position", "Hire Date", "Currency", "Status")
+        self._emp_model = ReadOnlyTableModel(
+            ["Employee No.", "Name", "Department", "Position", "Hire Date", "Currency", "Status"]
         )
+        self._emp_proxy = QSortFilterProxyModel(card)
+        self._emp_proxy.setSourceModel(self._emp_model)
+        self._emp_table = QTableView(card)
         configure_compact_table(self._emp_table)
-        self._emp_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._emp_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._emp_table.setModel(self._emp_proxy)
+        hdr = self._emp_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         self._emp_table.doubleClicked.connect(lambda _: self._on_open_employee_hub())
         self._emp_table.selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
@@ -373,15 +404,23 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         card.setObjectName("PageCard")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._comp_table = QTableWidget(card)
-        self._comp_table.setColumnCount(8)
-        self._comp_table.setHorizontalHeaderLabels(
-            ("Code", "Name", "Type", "Method", "Taxable", "Pensionable",
-             "Expense Account", "Status")
+        self._comp_model = ReadOnlyTableModel(
+            ["Code", "Name", "Type", "Method", "Taxable", "Pensionable", "Expense Account", "Status"]
         )
+        self._comp_proxy = QSortFilterProxyModel(card)
+        self._comp_proxy.setSourceModel(self._comp_model)
+        self._comp_table = QTableView(card)
         configure_compact_table(self._comp_table)
-        self._comp_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._comp_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._comp_table.setModel(self._comp_proxy)
+        hdr = self._comp_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
         self._comp_table.doubleClicked.connect(lambda _: self._on_edit_component())
         self._comp_table.selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
@@ -441,14 +480,22 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         card.setObjectName("PageCard")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._rule_table = QTableWidget(card)
-        self._rule_table.setColumnCount(7)
-        self._rule_table.setHorizontalHeaderLabels(
-            ("Code", "Name", "Type", "Effective From", "Effective To", "Brackets", "Status")
+        self._rule_model = ReadOnlyTableModel(
+            ["Code", "Name", "Type", "Effective From", "Effective To", "Brackets", "Status"]
         )
+        self._rule_proxy = QSortFilterProxyModel(card)
+        self._rule_proxy.setSourceModel(self._rule_model)
+        self._rule_table = QTableView(card)
         configure_compact_table(self._rule_table)
-        self._rule_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self._rule_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._rule_table.setModel(self._rule_proxy)
+        hdr = self._rule_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         self._rule_table.doubleClicked.connect(lambda _: self._on_edit_brackets())
         self._rule_table.selectionModel().selectionChanged.connect(
             lambda *_: self._notify_ribbon_context_changed()
@@ -533,21 +580,31 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
     def _reload_employees(self) -> None:
         company = self._active_company()
         if company is None:
-            self._emp_table.setRowCount(0)
+            self._emp_model.reset_data([], [])
             self._emp_stack.setCurrentWidget(self._emp_no_company)
             return
+        company_id = company.company_id
         query = self._emp_search.text().strip() or None
         active_only = not self._emp_inactive_cb.isChecked()
-        try:
-            rows = self._sr.employee_service.list_employees(
-                company.company_id, active_only=active_only, query=query
-            )
-        except Exception:
-            _log.exception("Failed to load employees for company %s", company.company_id)
+        task = run_with_progress(
+            parent=self,
+            title="Employees",
+            message="Loading employees…",
+            worker=lambda: list(
+                self._sr.employee_service.list_employees(
+                    company_id, active_only=active_only, query=query
+                )
+            ),
+        )
+        if task.cancelled:
+            return
+        if task.error is not None:
+            _log.warning("Failed to load employees for company %s: %s", company_id, task.error)
             show_error(self, "Employees", "Could not load employees. See application log for details.")
-            self._emp_table.setRowCount(0)
+            self._emp_model.reset_data([], [])
             self._emp_stack.setCurrentWidget(self._emp_empty)
             return
+        rows = task.value
         self._populate_employees(rows)
         self._emp_stack.setCurrentWidget(
             self._emp_table_surface if rows else self._emp_empty
@@ -556,20 +613,30 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
     def _reload_components(self) -> None:
         company = self._active_company()
         if company is None:
-            self._comp_table.setRowCount(0)
+            self._comp_model.reset_data([], [])
             self._comp_stack.setCurrentWidget(self._comp_no_company)
             return
+        company_id = company.company_id
         active_only = not self._comp_inactive_cb.isChecked()
-        try:
-            rows = self._sr.payroll_component_service.list_components(
-                company.company_id, active_only=active_only
-            )
-        except Exception:
-            _log.exception("Failed to load payroll components for company %s", company.company_id)
+        task = run_with_progress(
+            parent=self,
+            title="Payroll components",
+            message="Loading payroll components…",
+            worker=lambda: list(
+                self._sr.payroll_component_service.list_components(
+                    company_id, active_only=active_only
+                )
+            ),
+        )
+        if task.cancelled:
+            return
+        if task.error is not None:
+            _log.warning("Failed to load payroll components for company %s: %s", company_id, task.error)
             show_error(self, "Payroll components", "Could not load components. See application log for details.")
-            self._comp_table.setRowCount(0)
+            self._comp_model.reset_data([], [])
             self._comp_stack.setCurrentWidget(self._comp_empty)
             return
+        rows = task.value
         self._populate_components(rows)
         self._comp_stack.setCurrentWidget(
             self._comp_table_surface if rows else self._comp_empty
@@ -578,20 +645,30 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
     def _reload_rules(self) -> None:
         company = self._active_company()
         if company is None:
-            self._rule_table.setRowCount(0)
+            self._rule_model.reset_data([], [])
             self._rule_stack.setCurrentWidget(self._rule_no_company)
             return
+        company_id = company.company_id
         active_only = not self._rule_inactive_cb.isChecked()
-        try:
-            rows = self._sr.payroll_rule_service.list_rule_sets(
-                company.company_id, active_only=active_only
-            )
-        except Exception:
-            _log.exception("Failed to load payroll rule sets for company %s", company.company_id)
+        task = run_with_progress(
+            parent=self,
+            title="Payroll Rules",
+            message="Loading payroll rule sets…",
+            worker=lambda: list(
+                self._sr.payroll_rule_service.list_rule_sets(
+                    company_id, active_only=active_only
+                )
+            ),
+        )
+        if task.cancelled:
+            return
+        if task.error is not None:
+            _log.warning("Failed to load payroll rule sets for company %s: %s", company_id, task.error)
             show_error(self, "Payroll Rules", "Could not load rule sets. See application log for details.")
-            self._rule_table.setRowCount(0)
+            self._rule_model.reset_data([], [])
             self._rule_stack.setCurrentWidget(self._rule_empty)
             return
+        rows = task.value
         self._populate_rules(rows)
         self._rule_stack.setCurrentWidget(
             self._rule_table_surface if rows else self._rule_empty
@@ -600,79 +677,50 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
     # ── Populate helpers ──────────────────────────────────────────────────────
 
     def _populate_employees(self, rows: list) -> None:
-        self._emp_table.setSortingEnabled(False)
-        self._emp_table.setRowCount(0)
-        for row in rows:
-            ri = self._emp_table.rowCount()
-            self._emp_table.insertRow(ri)
-            num_item = QTableWidgetItem(row.employee_number)
-            num_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._emp_table.setItem(ri, 0, num_item)
-            self._emp_table.setItem(ri, 1, QTableWidgetItem(row.display_name))
-            self._emp_table.setItem(ri, 2, QTableWidgetItem(row.department_name or "—"))
-            self._emp_table.setItem(ri, 3, QTableWidgetItem(row.position_name or "—"))
-            self._emp_table.setItem(ri, 4, QTableWidgetItem(str(row.hire_date)))
-            self._emp_table.setItem(ri, 5, QTableWidgetItem(row.base_currency_code))
-            self._emp_table.setItem(ri, 6, QTableWidgetItem("Active" if row.is_active else "Inactive"))
-        self._emp_table.resizeColumnsToContents()
-        hdr = self._emp_table.horizontalHeader()
-        hdr.setSectionResizeMode(1, hdr.ResizeMode.Stretch)
-        self._emp_table.setSortingEnabled(True)
+        data = [
+            [
+                row.employee_number,
+                row.display_name,
+                row.department_name or "—",
+                row.position_name or "—",
+                str(row.hire_date),
+                row.base_currency_code,
+                "Active" if row.is_active else "Inactive",
+            ]
+            for row in rows
+        ]
+        self._emp_model.reset_data(data, [row.id for row in rows])
 
     def _populate_components(self, rows: list) -> None:
-        self._comp_table.setSortingEnabled(False)
-        self._comp_table.setRowCount(0)
-        for row in rows:
-            ri = self._comp_table.rowCount()
-            self._comp_table.insertRow(ri)
-            code_item = QTableWidgetItem(row.component_code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._comp_table.setItem(ri, 0, code_item)
-            self._comp_table.setItem(ri, 1, QTableWidgetItem(row.component_name))
-            self._comp_table.setItem(ri, 2, QTableWidgetItem(
-                _COMP_TYPE_LABELS.get(row.component_type_code, row.component_type_code)
-            ))
-            self._comp_table.setItem(ri, 3, QTableWidgetItem(
-                _CALC_METHOD_LABELS.get(row.calculation_method_code, row.calculation_method_code)
-            ))
-            self._comp_table.setItem(ri, 4, QTableWidgetItem("Yes" if row.is_taxable else "No"))
-            self._comp_table.setItem(ri, 5, QTableWidgetItem("Yes" if row.is_pensionable else "No"))
-            self._comp_table.setItem(ri, 6, QTableWidgetItem(
-                row.expense_account_code or "—"
-            ))
-            self._comp_table.setItem(ri, 7, QTableWidgetItem(
-                "Active" if row.is_active else "Inactive"
-            ))
-        self._comp_table.resizeColumnsToContents()
-        hdr = self._comp_table.horizontalHeader()
-        hdr.setSectionResizeMode(1, hdr.ResizeMode.Stretch)
-        self._comp_table.setSortingEnabled(True)
+        data = [
+            [
+                row.component_code,
+                row.component_name,
+                _COMP_TYPE_LABELS.get(row.component_type_code, row.component_type_code),
+                _CALC_METHOD_LABELS.get(row.calculation_method_code, row.calculation_method_code),
+                "Yes" if row.is_taxable else "No",
+                "Yes" if row.is_pensionable else "No",
+                row.expense_account_code or "—",
+                "Active" if row.is_active else "Inactive",
+            ]
+            for row in rows
+        ]
+        self._comp_model.reset_data(data, [row.id for row in rows])
 
     def _populate_rules(self, rows: list) -> None:
-        self._rule_table.setSortingEnabled(False)
-        self._rule_table.setRowCount(0)
-        for row in rows:
-            ri = self._rule_table.rowCount()
-            self._rule_table.insertRow(ri)
-            code_item = QTableWidgetItem(row.rule_code)
-            code_item.setData(Qt.ItemDataRole.UserRole, row.id)
-            self._rule_table.setItem(ri, 0, code_item)
-            self._rule_table.setItem(ri, 1, QTableWidgetItem(row.rule_name))
-            self._rule_table.setItem(ri, 2, QTableWidgetItem(
-                _RULE_TYPE_LABELS.get(row.rule_type_code, row.rule_type_code)
-            ))
-            self._rule_table.setItem(ri, 3, QTableWidgetItem(str(row.effective_from)))
-            self._rule_table.setItem(ri, 4, QTableWidgetItem(
-                str(row.effective_to) if row.effective_to else "Open-ended"
-            ))
-            self._rule_table.setItem(ri, 5, QTableWidgetItem(str(row.bracket_count)))
-            self._rule_table.setItem(ri, 6, QTableWidgetItem(
-                "Active" if row.is_active else "Inactive"
-            ))
-        self._rule_table.resizeColumnsToContents()
-        hdr = self._rule_table.horizontalHeader()
-        hdr.setSectionResizeMode(1, hdr.ResizeMode.Stretch)
-        self._rule_table.setSortingEnabled(True)
+        data = [
+            [
+                row.rule_code,
+                row.rule_name,
+                _RULE_TYPE_LABELS.get(row.rule_type_code, row.rule_type_code),
+                str(row.effective_from),
+                str(row.effective_to) if row.effective_to else "Open-ended",
+                str(row.bracket_count),
+                "Active" if row.is_active else "Inactive",
+            ]
+            for row in rows
+        ]
+        self._rule_model.reset_data(data, [row.id for row in rows])
 
     # ── Actions — Settings ────────────────────────────────────────────────────
 
@@ -859,14 +907,11 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._emp_table.currentRow()
-        if row < 0:
+        src_row = self._proxy_src_row(self._emp_table, self._emp_proxy)
+        if src_row < 0:
             return
-        item = self._emp_table.item(row, 0)
-        if item is None:
-            return
-        emp_id = item.data(Qt.ItemDataRole.UserRole)
-        emp_name = self._emp_table.item(row, 1).text() if self._emp_table.item(row, 1) else ""
+        emp_id = self._emp_model.user_data_at(src_row)
+        emp_name = self._emp_model.data(self._emp_model.index(src_row, 1), Qt.ItemDataRole.DisplayRole) or ""
         reply = QMessageBox.question(
             self, "Deactivate Employee",
             f"Deactivate employee '{emp_name}'?",
@@ -929,14 +974,11 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._comp_table.currentRow()
-        if row < 0:
+        src_row = self._proxy_src_row(self._comp_table, self._comp_proxy)
+        if src_row < 0:
             return
-        item = self._comp_table.item(row, 0)
-        if item is None:
-            return
-        comp_id = item.data(Qt.ItemDataRole.UserRole)
-        comp_code = item.text()
+        comp_id = self._comp_model.user_data_at(src_row)
+        comp_code = self._comp_model.data(self._comp_model.index(src_row, 0), Qt.ItemDataRole.DisplayRole) or ""
         reply = QMessageBox.question(
             self, "Deactivate payroll component",
             f"Deactivate payroll component '{comp_code}'?",
@@ -998,8 +1040,8 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         rule_id = self._selected_id(self._rule_table)
         if rule_id is None:
             return
-        row = self._rule_table.currentRow()
-        rule_code = self._rule_table.item(row, 0).text() if self._rule_table.item(row, 0) else ""
+        src_row = self._proxy_src_row(self._rule_table, self._rule_proxy)
+        rule_code = self._rule_model.data(self._rule_model.index(src_row, 0), Qt.ItemDataRole.DisplayRole) if src_row >= 0 else ""
         dialog = PayrollRuleBracketsDialog(
             self._sr, company.company_id, rule_id, rule_code, parent=self
         )
@@ -1010,14 +1052,11 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         company = self._active_company()
         if company is None:
             return
-        row = self._rule_table.currentRow()
-        if row < 0:
+        src_row = self._proxy_src_row(self._rule_table, self._rule_proxy)
+        if src_row < 0:
             return
-        item = self._rule_table.item(row, 0)
-        if item is None:
-            return
-        rule_id = item.data(Qt.ItemDataRole.UserRole)
-        rule_code = item.text()
+        rule_id = self._rule_model.user_data_at(src_row)
+        rule_code = self._rule_model.data(self._rule_model.index(src_row, 0), Qt.ItemDataRole.DisplayRole) or ""
         reply = QMessageBox.question(
             self, "Deactivate Rule Set",
             f"Deactivate rule set '{rule_code}'?",
@@ -1141,31 +1180,31 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
         return self._selected_id(self._emp_table) is not None
 
     def _selected_employee_is_active(self) -> bool:
-        row = self._emp_table.currentRow()
-        if row < 0:
+        src_row = self._proxy_src_row(self._emp_table, self._emp_proxy)
+        if src_row < 0:
             return False
-        item = self._emp_table.item(row, 6)
-        return (item.text().strip().lower() if item is not None else "") == "active"
+        val = self._emp_model.data(self._emp_model.index(src_row, 6), Qt.ItemDataRole.DisplayRole)
+        return (val or "").strip().lower() == "active"
 
     def _has_component_selected(self) -> bool:
         return self._selected_id(self._comp_table) is not None
 
     def _selected_component_is_active(self) -> bool:
-        row = self._comp_table.currentRow()
-        if row < 0:
+        src_row = self._proxy_src_row(self._comp_table, self._comp_proxy)
+        if src_row < 0:
             return False
-        item = self._comp_table.item(row, 7)
-        return (item.text().strip().lower() if item is not None else "") == "active"
+        val = self._comp_model.data(self._comp_model.index(src_row, 7), Qt.ItemDataRole.DisplayRole)
+        return (val or "").strip().lower() == "active"
 
     def _has_rule_selected(self) -> bool:
         return self._selected_id(self._rule_table) is not None
 
     def _selected_rule_is_active(self) -> bool:
-        row = self._rule_table.currentRow()
-        if row < 0:
+        src_row = self._proxy_src_row(self._rule_table, self._rule_proxy)
+        if src_row < 0:
             return False
-        item = self._rule_table.item(row, 6)
-        return (item.text().strip().lower() if item is not None else "") == "active"
+        val = self._rule_model.data(self._rule_model.index(src_row, 6), Qt.ItemDataRole.DisplayRole)
+        return (val or "").strip().lower() == "active"
 
     def _open_validation_workspace(self) -> None:
         self._sr.navigation_service.navigate(
@@ -1179,9 +1218,13 @@ class PayrollSetupPage(RibbonHostMixin, QWidget):
             context={"payroll_tab": "profiles"},
         )
 
-    def _selected_id(self, table: QTableWidget) -> int | None:
-        row = table.currentRow()
-        if row < 0:
-            return None
-        item = table.item(row, 0)
-        return item.data(Qt.ItemDataRole.UserRole) if item else None
+    def _selected_id(self, view: QTableView) -> int | None:
+        """Return the UserRole integer stored at the current row, or None."""
+        return selected_user_data(view)
+
+    def _proxy_src_row(self, view: QTableView, proxy: QSortFilterProxyModel) -> int:
+        """Return the source-model row for the view's current index, or -1."""
+        idx = view.selectionModel().currentIndex()
+        if not idx.isValid():
+            return -1
+        return proxy.mapToSource(idx).row()

@@ -14,13 +14,15 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 _STATUS_COLORS = {
-    "posted": "#1a7a2e",
-    "approved": "#2471a3",
-    "calculated": "#7d6608",
-    "draft": "#555",
-    "voided": "#c0392b",
+    "posted": _P.success,
+    "approved": _P.info,
+    "calculated": _P.warning,
+    "draft": _P.text_muted,
+    "voided": _P.danger,
 }
 
 
@@ -65,7 +67,7 @@ class PayrollRunPostingDetailDialog(QDialog):
         title.setStyleSheet("font-weight: 700; font-size: 14px;")
         h_layout.addWidget(title)
 
-        status_color = _STATUS_COLORS.get(run_dto.status_code, "#555")
+        status_color = _STATUS_COLORS.get(run_dto.status_code, _P.text_muted)
         meta = QLabel(
             f"Status: <b style='color:{status_color}'>{run_dto.status_code.upper()}</b>  "
             f"|  Period: {run_dto.period_month:02d}/{run_dto.period_year}  "
@@ -77,7 +79,7 @@ class PayrollRunPostingDetailDialog(QDialog):
 
         if run_dto.posted_journal_entry_id:
             je_label = QLabel(f"Journal Entry ID: {run_dto.posted_journal_entry_id}")
-            je_label.setStyleSheet("font-size: 11px; color: #555;")
+            je_label.setStyleSheet(f"font-size: 11px; color: {_P.text_muted};")
             h_layout.addWidget(je_label)
 
         layout.addWidget(header)
@@ -89,7 +91,7 @@ class PayrollRunPostingDetailDialog(QDialog):
             "Posting creates one balanced journal entry linked to this run.\n"
             "Navigate to Journals to view the full journal entry and GL lines."
         )
-        info.setStyleSheet("font-size: 11px; color: #555;")
+        info.setStyleSheet(text_style("secondary", font_size="11px"))
         info.setWordWrap(True)
         layout.addWidget(info)
 

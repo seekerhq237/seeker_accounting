@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker_accounting.shared.ui.styles.inline_styles import solid_button_style, text_style
+
 
 class CompanyPurgeExportDialog(QDialog):
     """Checkpoint dialog shown before permanently deleting a company's data.
@@ -50,13 +52,13 @@ class CompanyPurgeExportDialog(QDialog):
 
         icon_label = QLabel("⚠")
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon_label.setStyleSheet("font-size: 32px; color: #D97706;")
+        icon_label.setStyleSheet(text_style("warning", font_size="32px"))
         root.addWidget(icon_label)
 
         heading = QLabel(f"Permanently deleting: <b>{self._company_name}</b>")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
         heading.setWordWrap(True)
-        heading.setStyleSheet("font-size: 14px; color: #1F2937;")
+        heading.setStyleSheet(text_style("primary", font_size="14px"))
         root.addWidget(heading)
 
         body = QLabel(
@@ -65,7 +67,7 @@ class CompanyPurgeExportDialog(QDialog):
         )
         body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         body.setWordWrap(True)
-        body.setStyleSheet("font-size: 12px; color: #6B7280;")
+        body.setStyleSheet(text_style("secondary", font_size="12px"))
         root.addWidget(body)
 
         root.addSpacing(4)
@@ -75,21 +77,13 @@ class CompanyPurgeExportDialog(QDialog):
 
         export_btn = QPushButton("Export Data")
         export_btn.setFixedHeight(36)
-        export_btn.setStyleSheet(
-            "QPushButton { background: #3B82F6; color: #fff; border: none; "
-            "border-radius: 4px; font-size: 13px; padding: 0 20px; }"
-            "QPushButton:hover { background: #2563EB; }"
-        )
+        export_btn.setStyleSheet(solid_button_style("accent"))
         export_btn.clicked.connect(self._on_export)
         btn_row.addWidget(export_btn)
 
         delete_btn = QPushButton("Delete Without Export")
         delete_btn.setFixedHeight(36)
-        delete_btn.setStyleSheet(
-            "QPushButton { background: #EF4444; color: #fff; border: none; "
-            "border-radius: 4px; font-size: 13px; padding: 0 20px; }"
-            "QPushButton:hover { background: #DC2626; }"
-        )
+        delete_btn.setStyleSheet(solid_button_style("danger"))
         delete_btn.clicked.connect(self.accept)
         btn_row.addWidget(delete_btn)
 

@@ -17,6 +17,7 @@ from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
     PayrollRunEmployeeDetailDTO,
 )
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
 _TYPE_LABELS = {
     "earning": "Earning",
@@ -64,7 +65,7 @@ class PayrollRunEmployeeDetailDialog(QDialog):
             col = QVBoxLayout()
             col.setSpacing(2)
             title = QLabel(key)
-            title.setStyleSheet("font-size: 10px; color: #666;")
+            title.setStyleSheet(text_style("secondary", font_size="10px"))
             val = QLabel("—")
             val.setStyleSheet("font-weight: 600; font-size: 12px;")
             val.setAlignment(Qt.AlignmentFlag.AlignRight)

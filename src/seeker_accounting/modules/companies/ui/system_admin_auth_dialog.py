@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.modules.companies.services.system_admin_service import SystemAdminService
+from seeker_accounting.shared.ui.styles.inline_styles import line_edit_style, solid_button_style, text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 class SystemAdminAuthDialog(QDialog):
@@ -63,18 +65,18 @@ class SystemAdminAuthDialog(QDialog):
 
         icon = QLabel("⚙")
         icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        icon.setStyleSheet("font-size: 30px; color: #374151;")
+        icon.setStyleSheet(text_style("secondary", font_size="30px"))
         root.addWidget(icon)
 
         heading = QLabel("System Administration")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        heading.setStyleSheet("font-size: 16px; font-weight: 600; color: #111827;")
+        heading.setStyleSheet(text_style("primary", font_size="16px", font_weight=600))
         root.addWidget(heading)
 
         sub = QLabel("Enter system administrator credentials to continue.")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sub.setWordWrap(True)
-        sub.setStyleSheet("font-size: 11px; color: #6B7280;")
+        sub.setStyleSheet(text_style("secondary", font_size="11px"))
         root.addWidget(sub)
 
         root.addSpacing(4)
@@ -96,11 +98,7 @@ class SystemAdminAuthDialog(QDialog):
 
         unlock_btn = QPushButton("Unlock")
         unlock_btn.setFixedHeight(38)
-        unlock_btn.setStyleSheet(
-            "QPushButton { background: #1D4ED8; color: #fff; border: none; "
-            "border-radius: 4px; font-size: 13px; font-weight: 600; }"
-            "QPushButton:hover { background: #1E40AF; }"
-        )
+        unlock_btn.setStyleSheet(solid_button_style("accent"))
         unlock_btn.clicked.connect(self._on_unlock)
         root.addWidget(unlock_btn)
 
@@ -108,8 +106,8 @@ class SystemAdminAuthDialog(QDialog):
         cancel_btn.setFlat(True)
         cancel_btn.setFixedHeight(32)
         cancel_btn.setStyleSheet(
-            "QPushButton { color: #6B7280; border: none; font-size: 12px; }"
-            "QPushButton:hover { color: #374151; }"
+            f"QPushButton {{ color: {_P.text_secondary}; border: none; font-size: 12px; }}"
+            f"QPushButton:hover {{ color: {_P.text_primary}; }}"
         )
         cancel_btn.clicked.connect(self.reject)
         root.addWidget(cancel_btn)
@@ -138,8 +136,4 @@ class SystemAdminAuthDialog(QDialog):
 
     @staticmethod
     def _field_style() -> str:
-        return (
-            "QLineEdit { border: 1px solid #D1D5DB; border-radius: 4px; "
-            "padding: 0 10px; font-size: 13px; color: #111827; background: #F9FAFB; }"
-            "QLineEdit:focus { border-color: #3B82F6; background: #fff; }"
-        )
+        return line_edit_style()

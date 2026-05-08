@@ -153,6 +153,8 @@ SIDEBAR_MODULES: tuple[SidebarModule, ...] = (
         key="payroll",
         label="Payroll",
         children=(
+            # Feature gating decides whether the workbench or legacy payroll pages are visible.
+            SidebarChild(nav_id=nav_ids.PAYROLL_WORKBENCH, label="Payroll"),
             SidebarChild(nav_id=nav_ids.PAYROLL_SETUP, label="Payroll Setup"),
             SidebarChild(nav_id=nav_ids.PAYROLL_CALCULATION, label="Payroll Runs"),
             SidebarChild(nav_id=nav_ids.PAYROLL_ACCOUNTING, label="Payroll Accounting"),
@@ -537,6 +539,13 @@ NAVIGATION_SECTIONS: tuple[NavigationSection, ...] = (
         title="Payroll",
         items=(
             NavigationItem(
+                nav_id=nav_ids.PAYROLL_WORKBENCH,
+                label="Payroll",
+                section_label="Payroll",
+                description="Unified payroll workbench",
+                module_code=ModuleCode.PAYROLL,
+            ),
+            NavigationItem(
                 nav_id=nav_ids.PAYROLL_SETUP,
                 label="Payroll Setup",
                 section_label="Payroll",
@@ -873,6 +882,21 @@ PLACEHOLDER_PAGES = {
             "Posting orchestration",
         ),
     ),
+    nav_ids.DEFERRALS: PlaceholderPageModel(
+        nav_id=nav_ids.DEFERRALS,
+        title="Deferrals",
+        summary="Manage prepaid expense and unearned revenue deferral schedules with automatic recognition postings.",
+        status_code=StatusCode.READY,
+        available_now=(
+            "Create and manage deferral schedules",
+            "View recognition lines and posted status",
+            "Activate, cancel, and post recognition entries",
+        ),
+        next_slice=(
+            "Bulk period recognition runs",
+            "Deferral dashboard and analytics",
+        ),
+    ),
     nav_ids.SALES_INVOICES: PlaceholderPageModel(
         nav_id=nav_ids.SALES_INVOICES,
         title="Sales Invoices",
@@ -1175,6 +1199,32 @@ PLACEHOLDER_PAGES = {
             "Cost codes and budgets",
             "Project cost reporting",
         ),
+    ),
+    nav_ids.PAYROLL_WORKBENCH: PlaceholderPageModel(
+        nav_id=nav_ids.PAYROLL_WORKBENCH,
+        title="Payroll",
+        summary="Unified payroll workbench — setup, runs, accounting, operations, and reporting in one place.",
+        status_code=StatusCode.READY,
+        available_now=(
+            "Payroll setup: employees, components, statutory packs",
+            "Payroll runs: calculation, approval, payslips",
+            "Payroll accounting: GL posting, remittances",
+            "Payroll operations: validation, imports, audit log",
+        ),
+        next_slice=(),
+    ),
+    nav_ids.PAYROLL: PlaceholderPageModel(
+        nav_id=nav_ids.PAYROLL,
+        title="Payroll",
+        summary="Unified payroll workbench — setup, runs, accounting, operations, and reporting in one place.",
+        status_code=StatusCode.READY,
+        available_now=(
+            "Payroll setup: employees, components, statutory packs",
+            "Payroll runs: calculation, approval, payslips",
+            "Payroll accounting: GL posting, remittances",
+            "Payroll operations: validation, imports, audit log",
+        ),
+        next_slice=(),
     ),
     nav_ids.PAYROLL_SETUP: PlaceholderPageModel(
         nav_id=nav_ids.PAYROLL_SETUP,

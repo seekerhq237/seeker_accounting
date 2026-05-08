@@ -49,6 +49,7 @@ from seeker_accounting.shared.ui.components import (
     KpiTileData,
     WorkbenchHeader,
 )
+from seeker_accounting.shared.ui.keyboard_shortcuts import install_shortcut, shortcut_map
 from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,17 @@ class PayrollWorkbenchPage(QWidget):
 
         # Default to Dashboard.
         self._rail.setCurrentRow(0)
+
+        # Global payroll shortcuts (P13.S2). Active anywhere within the
+        # workbench page; route to the appropriate pane and trigger its
+        # primary create action.
+        _gsc = shortcut_map("payroll")
+        if "new_run" in _gsc:
+            install_shortcut(self, _gsc["new_run"], self._trigger_global_new_run)
+        if "hire_employee" in _gsc:
+            install_shortcut(
+                self, _gsc["hire_employee"], self._trigger_global_hire_employee
+            )
 
     def _build_kpi_strip(self) -> QWidget:
         host = QFrame(self)
@@ -225,6 +237,30 @@ class PayrollWorkbenchPage(QWidget):
         self._stack.setCurrentWidget(widget)
         self._current_pane_key = key
         self.pane_changed.emit(key)
+
+    # ── Global shortcut handlers (P13.S2) ────────────────────────────
+
+    def _trigger_global_new_run(self) -> None:
+        """Switch to the run pane and invoke its new-run action."""
+        self.select_pane(PANE_RUN)
+        pane = self._panes.get(PANE_RUN)
+        handler = getattr(pane, "_on_new_run", None)
+        if callable(handler):
+            try:
+                handler()
+            except Exception:  # pragma: no cover — defensive
+                logger.warning("global new_run shortcut failed", exc_info=True)
+
+    def _trigger_global_hire_employee(self) -> None:
+        """Switch to the people pane and invoke its hire action."""
+        self.select_pane(PANE_PEOPLE)
+        pane = self._panes.get(PANE_PEOPLE)
+        handler = getattr(pane, "_on_hire", None)
+        if callable(handler):
+            try:
+                handler()
+            except Exception:  # pragma: no cover — defensive
+                logger.warning("global hire_employee shortcut failed", exc_info=True)
 
     # ── Pane factories ───────────────────────────────────────────────
 

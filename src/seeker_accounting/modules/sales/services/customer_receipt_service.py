@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
@@ -745,4 +746,4 @@ class CustomerReceiptService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

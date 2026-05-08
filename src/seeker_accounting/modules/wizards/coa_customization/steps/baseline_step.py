@@ -47,7 +47,7 @@ class BaselineStep(WizardStep):
         outer.addWidget(self._apply)
 
         self._result = QLabel(root)
-        self._result.setStyleSheet("color: #2a7;")
+        self._result.setObjectName("WizardSuccessText")
         self._result.setWordWrap(True)
         outer.addWidget(self._result)
         outer.addStretch(1)

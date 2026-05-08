@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import uuid
 from datetime import datetime
@@ -421,7 +422,7 @@ class StockCountService:
                 ),
             )
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:

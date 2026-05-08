@@ -187,8 +187,10 @@ class FiscalPeriodsPage(RibbonHostMixin, QWidget):
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
-        layout.addWidget(self._build_years_card(), 1)
+        layout.setSpacing(6)
+        years_card = self._build_years_card()
+        years_card.setMaximumHeight(210)
+        layout.addWidget(years_card, 0)
         layout.addWidget(self._build_periods_card(), 1)
         return container
 

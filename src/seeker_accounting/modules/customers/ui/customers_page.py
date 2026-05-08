@@ -32,6 +32,7 @@ from seeker_accounting.modules.parties.dto.control_account_foundation_dto import
     ControlAccountFoundationStatusDTO,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.components import (
     DataTable,
     DataTableColumn,
@@ -135,16 +136,27 @@ class CustomersPage(RibbonHostMixin, QWidget):
         if reset_page:
             self._pager.reset()
 
+        # Capture all parameters before handing off to the worker thread.
+        company_id = active_company.company_id
         search_text = self._search_edit.text().strip() or None
-        try:
-            page_result = self._service_registry.customer_service.list_customers_page(
-                active_company.company_id,
+        page = self._pager.page
+        page_size = self._pager.page_size
+
+        task = run_with_progress(
+            parent=self,
+            title="Customers",
+            message="Loading customers…",
+            worker=lambda: self._service_registry.customer_service.list_customers_page(
+                company_id,
                 active_only=False,
                 query=search_text,
-                page=self._pager.page,
-                page_size=self._pager.page_size,
-            )
-        except Exception as exc:
+                page=page,
+                page_size=page_size,
+            ),
+        )
+        if task.cancelled:
+            return
+        if task.error is not None:
             self._customers = []
             self._total_count = 0
             self._customers_model.removeRows(0, self._customers_model.rowCount())
@@ -152,9 +164,10 @@ class CustomersPage(RibbonHostMixin, QWidget):
             self._pager.reset()
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
-            show_error(self, "Customers", f"Customer data could not be loaded.\n\n{exc}")
+            show_error(self, "Customers", f"Customer data could not be loaded.\n\n{task.error}")
             return
 
+        page_result = task.value
         self._customers = list(page_result.items)
         self._total_count = page_result.total_count
         self._pager.apply_result(page_result)

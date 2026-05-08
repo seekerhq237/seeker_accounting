@@ -68,7 +68,7 @@ class AccountRoleMappingsStep(WizardStep):
             root,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #4E5866; font-size: 11px;")
+        intro.setObjectName("WizardMutedText")
         outer.addWidget(intro)
 
         form = QFormLayout()
@@ -80,7 +80,7 @@ class AccountRoleMappingsStep(WizardStep):
             combo.setMinimumWidth(280)
             self._combos[role_code] = combo
             label = QLabel(self._format_role_label(role_code), root)
-            label.setStyleSheet("color: #2E3848; font-size: 12px;")
+            label.setObjectName("WizardBodyText")
             form.addRow(label, combo)
         outer.addLayout(form)
         outer.addStretch(1)

@@ -303,6 +303,7 @@ from seeker_accounting.modules.inventory.services.price_list_service import Pric
 from seeker_accounting.modules.inventory.services.reorder_planning_service import ReorderPlanningService
 from seeker_accounting.modules.inventory.services.inventory_dashboard_service import InventoryDashboardService
 from seeker_accounting.modules.inventory.services.item_barcode_service import ItemBarcodeService
+from seeker_accounting.modules.inventory.services.inventory_invariant_checker_service import InventoryInvariantCheckerService
 from seeker_accounting.modules.reporting.services.inventory_kardex_report_service import InventoryKardexReportService
 from seeker_accounting.modules.reporting.services.inventory_aging_report_service import InventoryAgeingReportService
 from seeker_accounting.modules.reporting.services.inventory_abc_analysis_service import InventoryAbcAnalysisService
@@ -340,6 +341,7 @@ from seeker_accounting.modules.payroll.services.payroll_posting_validation_servi
 from seeker_accounting.modules.payroll.services.payroll_posting_service import PayrollPostingService
 from seeker_accounting.modules.payroll.services.payroll_payment_tracking_service import PayrollPaymentTrackingService
 from seeker_accounting.modules.payroll.services.payroll_remittance_service import PayrollRemittanceService
+from seeker_accounting.modules.payroll.services.payroll_correction_service import PayrollCorrectionService
 from seeker_accounting.modules.payroll.services.payroll_summary_service import PayrollSummaryService
 from seeker_accounting.modules.payroll.services.payroll_pack_version_service import PayrollPackVersionService
 from seeker_accounting.modules.payroll.services.payroll_validation_dashboard_service import PayrollValidationDashboardService
@@ -348,6 +350,7 @@ from seeker_accounting.modules.payroll.services.payroll_print_service import Pay
 from seeker_accounting.modules.payroll.services.payroll_export_service import PayrollExportService
 from seeker_accounting.modules.payroll.services.payroll_output_warning_service import PayrollOutputWarningService
 from seeker_accounting.modules.payroll.services.payroll_remittance_deadline_service import PayrollRemittanceDeadlineService
+from seeker_accounting.modules.payroll.services.employee_onboarding_service import EmployeeOnboardingService
 from seeker_accounting.modules.audit.services.audit_export_service import AuditExportService
 from seeker_accounting.modules.audit.services.audit_service import AuditService
 from seeker_accounting.modules.dashboard.services.dashboard_service import DashboardService
@@ -357,6 +360,7 @@ from seeker_accounting.modules.administration.services.user_auth_service import 
 from seeker_accounting.modules.administration.services.user_avatar_service import UserAvatarService
 from seeker_accounting.modules.administration.services.user_session_service import UserSessionService
 from seeker_accounting.platform.code_suggestion import CodeSuggestionService
+from seeker_accounting.platform.feature_flags import FeatureFlagService
 from seeker_accounting.platform.printing.print_engine import PrintEngine
 from seeker_accounting.platform.session.session_idle_watcher_service import SessionIdleWatcherService
 from seeker_accounting.shared.ui.styles.theme_manager import ThemeManager
@@ -499,6 +503,7 @@ class ServiceRegistry:
     reorder_planning_service: ReorderPlanningService
     inventory_dashboard_service: InventoryDashboardService
     item_barcode_service: ItemBarcodeService
+    inventory_invariant_checker_service: InventoryInvariantCheckerService
     inventory_kardex_report_service: InventoryKardexReportService
     inventory_aging_report_service: InventoryAgeingReportService
     inventory_abc_analysis_service: InventoryAbcAnalysisService
@@ -534,6 +539,7 @@ class ServiceRegistry:
     payroll_posting_service: PayrollPostingService
     payroll_payment_tracking_service: PayrollPaymentTrackingService
     payroll_remittance_service: PayrollRemittanceService
+    payroll_correction_service: PayrollCorrectionService
     payroll_summary_service: PayrollSummaryService
     payroll_pack_version_service: PayrollPackVersionService
     payroll_validation_dashboard_service: PayrollValidationDashboardService
@@ -542,6 +548,7 @@ class ServiceRegistry:
     payroll_export_service: PayrollExportService
     payroll_output_warning_service: PayrollOutputWarningService
     payroll_remittance_deadline_service: PayrollRemittanceDeadlineService
+    employee_onboarding_service: EmployeeOnboardingService
     dashboard_service: DashboardService
     audit_service: AuditService
     permission_service: PermissionService
@@ -571,6 +578,7 @@ class ServiceRegistry:
     license_service: LicenseService
     wizard_run_service: WizardRunService
     deferral_service: DeferralService
+    feature_flag_service: FeatureFlagService
 
     # Shell subsystems introduced with the Sage-style ribbon / child-window
     # UX. These use ``default_factory`` so no existing construction site

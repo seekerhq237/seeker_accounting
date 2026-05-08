@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import uuid
 from decimal import Decimal
@@ -299,4 +300,4 @@ class TreasuryTransferService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

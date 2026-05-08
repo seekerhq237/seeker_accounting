@@ -50,7 +50,7 @@ class AllocateStep(WizardStep):
         outer.setSpacing(8)
 
         self._amount_label = QLabel("", root)
-        self._amount_label.setStyleSheet("color: #2E3848; font-size: 12px; font-weight: 600;")
+        self._amount_label.setObjectName("WizardBodyTextStrong")
         outer.addWidget(self._amount_label)
 
         self._table = QTableWidget(0, 5, root)
@@ -71,7 +71,7 @@ class AllocateStep(WizardStep):
         outer.addWidget(self._auto_btn)
 
         self._allocated_label = QLabel("Allocated: 0.00", root)
-        self._allocated_label.setStyleSheet("color: #2E3848; font-size: 12px;")
+        self._allocated_label.setObjectName("WizardBodyText")
         outer.addWidget(self._allocated_label)
         return root
 

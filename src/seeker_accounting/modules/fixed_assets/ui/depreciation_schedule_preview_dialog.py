@@ -28,6 +28,7 @@ from seeker_accounting.modules.fixed_assets.dto.depreciation_dto import (
 )
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 _SCHEDULE_COLUMNS: tuple[DataTableColumn, ...] = (
     DataTableColumn(key="period", title="Period"),
@@ -378,22 +379,22 @@ class DepreciationSchedulePreviewDialog(QDialog):
 <head>
 <meta charset="utf-8"/>
 <style>
-  body {{ font-family: Arial, sans-serif; font-size: 10pt; color: #1a1a1a; margin: 20px; }}
+    body {{ font-family: Arial, sans-serif; font-size: 10pt; color: {_P.text_primary}; margin: 20px; }}
   h2 {{ font-size: 13pt; margin: 0 0 4px 0; }}
-  .subtitle {{ font-size: 9pt; color: #555; margin-bottom: 14px; }}
+    .subtitle {{ font-size: 9pt; color: {_P.text_secondary}; margin-bottom: 14px; }}
   .meta-grid {{ display: table; border-collapse: collapse; margin-bottom: 18px; width: 100%; }}
   .meta-cell {{ display: table-cell; padding: 6px 16px 6px 0; min-width: 100px; }}
-  .meta-label {{ font-size: 8pt; color: #777; text-transform: uppercase; letter-spacing: 0.5px; }}
+    .meta-label {{ font-size: 8pt; color: {_P.text_muted}; text-transform: uppercase; letter-spacing: 0.5px; }}
   .meta-value {{ font-size: 10pt; font-weight: bold; }}
   table {{ border-collapse: collapse; width: 100%; font-size: 9pt; margin-top: 4px; }}
-  th {{ background-color: #1e3a5f; color: #fff; padding: 7px 12px;
+    th {{ background-color: {_P.accent}; color: {_P.accent_text}; padding: 7px 12px;
         font-size: 8.5pt; font-weight: 600; text-align: left; }}
   th.num {{ text-align: right; }}
-  td {{ padding: 5px 12px; border-bottom: 1px solid #e8e8e8; }}
+    td {{ padding: 5px 12px; border-bottom: 1px solid {_P.divider_subtle}; }}
   td.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
-  tr.even {{ background: #ffffff; }}
-  tr.odd {{ background: #f6f8fb; }}
-  .footer {{ margin-top: 10px; font-size: 9pt; color: #444; text-align: right; font-weight: 600; }}
+    tr.even {{ background: {_P.workspace_surface}; }}
+    tr.odd {{ background: {_P.data_table_row_alt}; }}
+    .footer {{ margin-top: 10px; font-size: 9pt; color: {_P.text_secondary}; text-align: right; font-weight: 600; }}
 </style>
 </head>
 <body>

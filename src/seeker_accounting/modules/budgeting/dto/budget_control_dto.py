@@ -13,8 +13,8 @@ class BudgetControlCheckDTO:
     budget_total: Decimal
     control_mode: str  # "none", "warn", "hard_stop"
     requested_amount: Decimal
-    committed_amount: Decimal  # placeholder — zero until commitments exist
-    actual_amount: Decimal  # placeholder — zero until actual-cost integration exists
+    committed_amount: Decimal  # sum of open commitment lines from ProjectCommitmentLineRepository
+    actual_amount: Decimal  # sum of posted actuals from ProjectActualsQueryRepository
     remaining_before_request: Decimal
     remaining_after_request: Decimal
     would_exceed_budget: bool

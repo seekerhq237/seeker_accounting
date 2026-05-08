@@ -62,6 +62,8 @@ from seeker_accounting.platform.exceptions import (
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.styles.inline_styles import status_chip_style, text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 from seeker_accounting.modules.taxation.ui.vat_line_drilldown_dialog import (
     VATLineDrillDownDialog,
 )
@@ -76,13 +78,12 @@ def _money(value: Decimal | None) -> str:
     return f"{Decimal(value):,.2f}"
 
 
-def _status_palette(status_code: str) -> tuple[str, str]:
-    """Return (background, text) colours for a status pill."""
+def _status_family(status_code: str) -> str:
     if status_code == RETURN_STATUS_DRAFT:
-        return ("#FEF3C7", "#92400E")  # amber-100 / amber-800
+        return "warning"
     if status_code == RETURN_STATUS_FILED:
-        return ("#DCFCE7", "#166534")  # green-100 / green-800
-    return ("#E5E7EB", "#374151")      # gray-200 / gray-700
+        return "success"
+    return "neutral"
 
 
 class TaxReturnDetailDialog(BaseDialog):
@@ -177,23 +178,21 @@ class TaxReturnDetailDialog(BaseDialog):
         f.setPointSize(14)
         f.setBold(True)
         company.setFont(f)
-        company.setStyleSheet("color: #111827;")
+        company.setStyleSheet(text_style("primary"))
         left.addWidget(company)
 
         title = QLabel(
             f"Tax Return — {self._tax_return.tax_type_code}", card
         )
-        title.setStyleSheet("color: #6B7280; font-size: 11pt;")
+        title.setStyleSheet(text_style("secondary", font_size="11pt"))
         left.addWidget(title)
 
         h.addLayout(left, 1)
 
         status_pill = QLabel(self._tax_return.status_code, card)
-        bg, fg = _status_palette(self._tax_return.status_code)
         status_pill.setStyleSheet(
-            f"background-color: {bg}; color: {fg}; "
-            "padding: 4px 12px; border-radius: 10px; "
-            "font-weight: 600; font-size: 10pt;"
+            status_chip_style(_status_family(self._tax_return.status_code), padding="4px 12px")
+            + " font-size: 10pt;"
         )
         status_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
         h.addWidget(status_pill, 0, Qt.AlignmentFlag.AlignTop)
@@ -238,9 +237,9 @@ class TaxReturnDetailDialog(BaseDialog):
         for i, (k, v) in enumerate(rows):
             row, col = divmod(i, 2)
             label = QLabel(k, card)
-            label.setStyleSheet("color: #6B7280; font-size: 10pt;")
+            label.setStyleSheet(text_style("secondary", font_size="10pt"))
             value = QLabel(v, card)
-            value.setStyleSheet("color: #111827; font-size: 11pt;")
+            value.setStyleSheet(text_style("primary", font_size="11pt"))
             value.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
@@ -256,9 +255,7 @@ class TaxReturnDetailDialog(BaseDialog):
 
     def _build_unmapped_warning(self, parent: QWidget) -> QFrame:
         card = QFrame(parent)
-        card.setStyleSheet(
-            "background-color: #FEF3C7; border-left: 3px solid #F59E0B;"
-        )
+        card.setObjectName("WarningPanel")
         h = QHBoxLayout(card)
         h.setContentsMargins(12, 8, 12, 8)
         msg = QLabel(
@@ -268,7 +265,8 @@ class TaxReturnDetailDialog(BaseDialog):
             card,
         )
         msg.setWordWrap(True)
-        msg.setStyleSheet("color: #92400E; font-size: 10pt;")
+        msg.setObjectName("WarningPanelText")
+        msg.setStyleSheet("font-size: 10pt;")
         h.addWidget(msg)
         return card
 
@@ -289,7 +287,7 @@ class TaxReturnDetailDialog(BaseDialog):
             f"Section {section.number} — {section.title}", card
         )
         heading.setStyleSheet(
-            "font-weight: 600; color: #111827; font-size: 12pt;"
+            text_style("primary", font_size="12pt", font_weight=600)
         )
         v.addWidget(heading)
 
@@ -420,25 +418,24 @@ class TaxReturnDetailDialog(BaseDialog):
         card = QFrame(parent)
         card.setObjectName("DialogSection")
         card.setProperty("card", True)
-        card.setStyleSheet("background-color: #F9FAFB;")
 
         h = QHBoxLayout(card)
         h.setContentsMargins(16, 12, 16, 12)
         h.setSpacing(32)
 
         for label_text, amount_text, accent in (
-            ("Total due", _money(layout.total_due), "#111827"),
-            ("Total paid", _money(layout.total_paid), "#111827"),
+            ("Total due", _money(layout.total_due), _P.text_primary),
+            ("Total paid", _money(layout.total_paid), _P.text_primary),
             (
                 "Outstanding",
                 _money(layout.outstanding),
-                "#B91C1C" if layout.outstanding > 0 else "#166534",
+                _P.status_danger_fg if layout.outstanding > 0 else _P.status_success_fg,
             ),
         ):
             block = QVBoxLayout()
             block.setSpacing(2)
             lab = QLabel(label_text, card)
-            lab.setStyleSheet("color: #6B7280; font-size: 10pt;")
+            lab.setStyleSheet(text_style("secondary", font_size="10pt"))
             val = QLabel(amount_text, card)
             f = QFont()
             f.setBold(True)
@@ -465,7 +462,7 @@ class TaxReturnDetailDialog(BaseDialog):
 
         heading = QLabel("Assessed Amount", card)
         heading.setStyleSheet(
-            "font-weight: 600; color: #111827; font-size: 12pt;"
+            text_style("primary", font_size="12pt", font_weight=600)
         )
         v.addWidget(heading)
 
@@ -476,7 +473,7 @@ class TaxReturnDetailDialog(BaseDialog):
             card,
         )
         info.setWordWrap(True)
-        info.setStyleSheet("color: #6B7280; font-size: 10pt;")
+        info.setStyleSheet(text_style("secondary", font_size="10pt"))
         v.addWidget(info)
 
         amount = QLabel(_money(self._tax_return.total_due_amount), card)
@@ -484,7 +481,7 @@ class TaxReturnDetailDialog(BaseDialog):
         f.setPointSize(20)
         f.setBold(True)
         amount.setFont(f)
-        amount.setStyleSheet("color: #111827; margin-top: 8px;")
+        amount.setStyleSheet(text_style("primary", extra="margin-top: 8px"))
         v.addWidget(amount)
         return card
 
@@ -492,19 +489,17 @@ class TaxReturnDetailDialog(BaseDialog):
 
     def _build_notes_card(self, parent: QWidget) -> QFrame:
         card = QFrame(parent)
-        card.setStyleSheet(
-            "background-color: #F9FAFB; border-left: 3px solid #D1D5DB;"
-        )
+        card.setObjectName("NotesPanel")
         v = QVBoxLayout(card)
         v.setContentsMargins(12, 8, 12, 8)
 
         heading = QLabel("Notes", card)
-        heading.setStyleSheet("font-weight: 600; color: #374151;")
+        heading.setStyleSheet(text_style("secondary", font_weight=600))
         v.addWidget(heading)
 
         body = QLabel(self._tax_return.notes or "", card)
         body.setWordWrap(True)
-        body.setStyleSheet("color: #4B5563; font-size: 10pt;")
+        body.setStyleSheet(text_style("secondary", font_size="10pt"))
         v.addWidget(body)
         return card
 

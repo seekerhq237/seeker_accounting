@@ -47,7 +47,7 @@ class TypeStep(WizardStep):
 
         self._desc = QLabel(root)
         self._desc.setWordWrap(True)
-        self._desc.setStyleSheet("color: #555;")
+        self._desc.setObjectName("WizardMutedText")
         form.addRow(QLabel("", root), self._desc)
 
         outer.addLayout(form)

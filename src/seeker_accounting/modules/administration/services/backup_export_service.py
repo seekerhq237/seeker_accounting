@@ -17,11 +17,12 @@ system_admin_credentials is stripped from the exported database — it is a
 machine-local secret and must never travel.
 """
 from __future__ import annotations
+import logging
 
 import io
 import json
 import os
-import shutil
+import sqlite3
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -29,6 +30,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError as SAOperationalError
 
 from seeker_accounting.config.settings import AppSettings
@@ -128,7 +130,7 @@ class BackupExportService:
     def _build_inner_zip(self) -> bytes:
         """Return in-memory ZIP bytes containing the sanitised DB + assets."""
         data_dir = self._settings.runtime_paths.data
-        db_file = self._settings.runtime_paths.database_file
+        db_file = self._database_file()
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as inner:
@@ -148,12 +150,25 @@ class BackupExportService:
 
         return buf.getvalue()
 
+    def _database_file(self) -> Path:
+        """Resolve the active SQLite database file from settings.database_url."""
+        url = make_url(self._settings.database_url)
+        backend = url.drivername.split("+", maxsplit=1)[0]
+        if backend != "sqlite":
+            raise RuntimeError("Backup export currently supports only SQLite database URLs.")
+        if not url.database or url.database == ":memory:":
+            raise RuntimeError("Backup export requires a file-backed SQLite database.")
+        db_file = Path(url.database).expanduser()
+        if not db_file.exists():
+            raise RuntimeError(f"Database file does not exist: {db_file}")
+        return db_file
+
     @staticmethod
     def _sanitised_db_bytes(db_file: Path) -> bytes:
         """Return bytes of a copy of the DB with sensitive tables emptied."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             sanitised_path = Path(tmp_dir) / "export.db"
-            shutil.copy2(db_file, sanitised_path)
+            BackupExportService._snapshot_sqlite_db(db_file, sanitised_path)
 
             engine = create_engine(f"sqlite:///{sanitised_path.as_posix()}")
             try:
@@ -167,6 +182,17 @@ class BackupExportService:
                 engine.dispose()
 
             return sanitised_path.read_bytes()
+
+    @staticmethod
+    def _snapshot_sqlite_db(db_file: Path, target_path: Path) -> None:
+        """Copy a live SQLite database, including committed WAL state."""
+        source = sqlite3.connect(str(db_file))
+        target = sqlite3.connect(str(target_path))
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
 
     def _record_audit(self, output_path: str) -> None:
         if self._audit_service is None:
@@ -188,4 +214,4 @@ class BackupExportService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

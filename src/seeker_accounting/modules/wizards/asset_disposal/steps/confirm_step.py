@@ -40,7 +40,7 @@ class ConfirmStep(WizardStep):
         self._summary.setTextFormat(Qt.TextFormat.RichText)
         outer.addWidget(self._summary)
         self._result = QLabel(root)
-        self._result.setStyleSheet("color: #2a7;")
+        self._result.setObjectName("WizardSuccessText")
         self._result.setWordWrap(True)
         self._result.setTextFormat(Qt.TextFormat.RichText)
         outer.addWidget(self._result)

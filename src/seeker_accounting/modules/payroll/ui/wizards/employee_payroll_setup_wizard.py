@@ -69,6 +69,7 @@ from seeker_accounting.platform.exceptions import (
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block, create_label_value_row
 from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
 
 _log = logging.getLogger(__name__)
@@ -355,7 +356,7 @@ class EmployeePayrollSetupWizardDialog(BaseDialog):
         for row, (label, ok) in enumerate(items):
             status = QLabel("✓ OK" if ok else "⚠ Missing", card)
             status.setStyleSheet(
-                "color:#1a7a2e;" if ok else "color:#b25503;"
+                text_style("success" if ok else "warning")
             )
             grid.addWidget(QLabel(label, card), row, 0)
             grid.addWidget(status, row, 1)

@@ -25,7 +25,7 @@ from seeker_accounting.modules.payroll.dto.payroll_setup_commands import (
     PositionDTO,
     UpdatePositionCommand,
 )
-from seeker_accounting.platform.exceptions import ConflictError, NotFoundError, ValidationError
+from seeker_accounting.platform.exceptions import AppError, ConflictError, NotFoundError, ValidationError
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, apply_status_chip_to_column
 from seeker_accounting.shared.ui.message_boxes import show_error
 

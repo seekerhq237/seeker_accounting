@@ -1006,13 +1006,7 @@ class TaxReturnService:
         except ImportError:
             return _ZERO
 
-        # Status code constant for posted invoices.
-        try:
-            from seeker_accounting.modules.sales.constants import (
-                INVOICE_STATUS_POSTED,
-            )
-        except ImportError:
-            INVOICE_STATUS_POSTED = "POSTED"  # type: ignore[assignment]
+        INVOICE_STATUS_POSTED = "posted"
 
         stmt = (
             _select(_func.coalesce(_func.sum(SalesInvoice.withheld_vat_amount), _ZERO))

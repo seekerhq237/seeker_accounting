@@ -41,7 +41,7 @@ class PeriodSelectionStep(WizardStep):
             root,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #4E5866; font-size: 11px;")
+        intro.setObjectName("WizardMutedText")
         outer.addWidget(intro)
 
         form = QFormLayout()
@@ -53,7 +53,7 @@ class PeriodSelectionStep(WizardStep):
         outer.addLayout(form)
 
         self._summary = QLabel("", root)
-        self._summary.setStyleSheet("color: #2E3848; font-size: 12px;")
+        self._summary.setObjectName("WizardBodyText")
         self._summary.setWordWrap(True)
         outer.addWidget(self._summary)
         outer.addStretch(1)

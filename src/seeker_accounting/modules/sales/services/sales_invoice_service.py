@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
@@ -426,11 +427,7 @@ class SalesInvoiceService:
             allocation_repository = self._require_allocation_repository(uow.session)
 
             self._require_customer(customer_repository, company_id, customer_id)
-            invoices = [
-                invoice
-                for invoice in invoice_repository.list_by_company(company_id, status_code="posted")
-                if invoice.customer_id == customer_id
-            ]
+            invoices = invoice_repository.list_posted_for_customer(company_id, customer_id)
             allocated_totals = allocation_repository.get_allocated_totals_for_invoice_ids(
                 company_id,
                 [invoice.id for invoice in invoices],
@@ -695,17 +692,12 @@ class SalesInvoiceService:
 
     def _require_currency(self, currency_repository: CurrencyRepository, company: object, currency_code: str) -> Currency:
         company_base_currency_code = getattr(company, "base_currency_code", None)
-        with self._unit_of_work_factory() as uow:
-            session = uow.session
-            if session is None:
-                raise RuntimeError("Unit of work has no active session.")
-            currency = session.get(Currency, currency_code)
-            if currency is None:
-                raise ValidationError("Currency must exist in the reference data.")
-            if company_base_currency_code != currency_code and not currency.is_active:
-                raise ValidationError("Currency must reference an active currency code.")
-            _ = currency_repository
-            return currency
+        currency = currency_repository.get_by_code(currency_code)
+        if currency is None:
+            raise ValidationError("Currency must exist in the reference data.")
+        if company_base_currency_code != currency_code and not currency.is_active:
+            raise ValidationError("Currency must reference an active currency code.")
+        return currency
 
     def _require_revenue_account(
         self,
@@ -985,4 +977,4 @@ class SalesInvoiceService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

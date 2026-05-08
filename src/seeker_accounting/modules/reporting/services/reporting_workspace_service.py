@@ -112,15 +112,11 @@ _WORKSPACE_TABS: tuple[ReportTabDTO, ...] = (
     ),
     ReportTabDTO(
         tab_key="analytics",
-        label="Analytics",
-        description="Financial analysis and comparative views derived from posted statement truth.",
-        is_launcher=True,
-        tiles=_ANALYTICS_TILES,
-    ),
-    ReportTabDTO(
-        tab_key="insights",
-        label="Insights",
-        description="Rule-based management insights and executive financial review over reporting truth.",
+        label="Analytics & Insights",
+        description=(
+            "Financial analysis, comparative views, and rule-based management "
+            "insights derived from posted statement truth."
+        ),
         is_launcher=True,
         tiles=_ANALYTICS_TILES,
     ),

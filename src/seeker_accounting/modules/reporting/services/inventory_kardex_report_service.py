@@ -73,7 +73,7 @@ class InventoryKardexReportService:
     # ------------------------------------------------------------------
     def _build(self, session: Session, f: KardexFilterDTO) -> KardexReportDTO:
         from seeker_accounting.modules.inventory.models.item import Item
-        from seeker_accounting.modules.inventory.models.stock_location import StockLocation
+        from seeker_accounting.modules.inventory.models.inventory_location import InventoryLocation
 
         item = session.get(Item, f.item_id)
         item_code = item.item_code if item else str(f.item_id)
@@ -81,8 +81,8 @@ class InventoryKardexReportService:
 
         loc_name: str | None = None
         if f.location_id:
-            loc = session.get(StockLocation, f.location_id)
-            loc_name = loc.location_name if loc else None
+            loc = session.get(InventoryLocation, f.location_id)
+            loc_name = loc.name if loc else None
 
         # All entries up to period start for opening balance
         open_stmt = (

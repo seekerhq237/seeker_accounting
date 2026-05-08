@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, PrimaryKeyConstraint
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Integer, Numeric, PrimaryKeyConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from seeker_accounting.db.base import Base, TimestampMixin
@@ -34,6 +34,7 @@ class StockLedgerBalance(TimestampMixin, Base):
         ),
         Index("ix_stock_ledger_balances_company_id", "company_id"),
         Index("ix_stock_ledger_balances_item_id", "item_id"),
+        CheckConstraint("quantity >= 0", name="ck_slb_quantity_nonneg"),
     )
 
     company_id: Mapped[int] = mapped_column(

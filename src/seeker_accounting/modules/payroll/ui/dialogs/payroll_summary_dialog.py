@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 from seeker_accounting.shared.ui.message_boxes import show_error
 
 _MONTHS = [
@@ -178,7 +179,7 @@ class PayrollSummaryDialog(QDialog):
         row = QHBoxLayout(w)
         row.setContentsMargins(0, 0, 0, 0)
         lbl = QLabel(label + ":")
-        lbl.setStyleSheet("font-size: 11px; color: #555;")
+        lbl.setStyleSheet(text_style("secondary", font_size="11px"))
         val = QLabel(value)
         val.setStyleSheet("font-size: 11px;")
         val.setAlignment(Qt.AlignmentFlag.AlignRight)

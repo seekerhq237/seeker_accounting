@@ -52,6 +52,7 @@ from seeker_accounting.platform.exceptions import (
 from seeker_accounting.shared.ui.dialogs import BaseDialog
 from seeker_accounting.shared.ui.forms import create_field_block
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 _log = logging.getLogger(__name__)
@@ -281,7 +282,7 @@ class BudgetEditorDialog(BaseDialog):
         outer.addLayout(grid)
 
         self._reason_label = QLabel("Revision reason", card)
-        self._reason_label.setStyleSheet("color: #6b7280; font-size: 11px;")
+        self._reason_label.setStyleSheet(text_style("secondary", font_size="11px"))
         self._reason_edit = QPlainTextEdit(card)
         self._reason_edit.setFixedHeight(52)
         self._reason_edit.setPlaceholderText("Why is this version being created?")

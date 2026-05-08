@@ -59,15 +59,17 @@ from seeker_accounting.modules.payroll.services.payroll_remittance_deadline_serv
 from seeker_accounting.platform.exceptions import AppError
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 _log = logging.getLogger(__name__)
 
 _STATUS_COLORS = {
-    "posted": "#1a7a2e",
-    "approved": "#2471a3",
-    "calculated": "#7d6608",
-    "draft": "#555",
-    "voided": "#c0392b",
+    "posted": _P.success,
+    "approved": _P.info,
+    "calculated": _P.warning,
+    "draft": _P.text_muted,
+    "voided": _P.danger,
 }
 
 _MONTHS = {
@@ -131,7 +133,7 @@ class PayrollAccountingWorkspace(RibbonHostMixin, QWidget):
         topbar.addStretch()
 
         self._company_label = QLabel("No company selected")
-        self._company_label.setStyleSheet("color: #666; font-size: 11px;")
+        self._company_label.setStyleSheet(text_style("secondary", font_size="11px"))
         topbar.addWidget(self._company_label)
         root.addLayout(topbar)
 

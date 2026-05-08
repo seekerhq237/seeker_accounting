@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.styles.inline_styles import panel_style, text_style
 
 _log = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ class PayrollExportDialog(QDialog):
         # ── Warning banner ────────────────────────────────────────────
         self._warning_frame = QFrame(self)
         self._warning_frame.setStyleSheet(
-            "QFrame { background: #fff8e1; border-left: 3px solid #f9a825; padding: 8px 10px; }"
+            f"QFrame {{ {panel_style('warning', left_border=True)} padding: 8px 10px; }}"
         )
         self._warning_layout = QVBoxLayout(self._warning_frame)
         self._warning_layout.setContentsMargins(8, 4, 8, 4)
@@ -91,7 +92,7 @@ class PayrollExportDialog(QDialog):
         ctx_label = QLabel(
             f"<b>Run:</b> {run_reference} &nbsp;&bull;&nbsp; <b>Period:</b> {period_label}"
         )
-        ctx_label.setStyleSheet("font-size: 11px; color: #555;")
+        ctx_label.setStyleSheet(text_style("secondary", font_size="11px"))
         layout.addWidget(ctx_label)
 
         # ── Format selection ──────────────────────────────────────────
@@ -107,7 +108,7 @@ class PayrollExportDialog(QDialog):
         else:
             info = QLabel(self._mode_description())
             info.setWordWrap(True)
-            info.setStyleSheet("font-size: 11px; color: #444;")
+            info.setStyleSheet(text_style("secondary", font_size="11px"))
             layout.addWidget(info)
 
         # ── Buttons ───────────────────────────────────────────────────
@@ -166,7 +167,7 @@ class PayrollExportDialog(QDialog):
         for w in warnings:
             lbl = QLabel(f"<b>{w.title}:</b> {w.message}")
             lbl.setWordWrap(True)
-            lbl.setStyleSheet("font-size: 10px; color: #6d4c00;")
+            lbl.setStyleSheet(text_style("warning", font_size="10px"))
             self._warning_layout.addWidget(lbl)
 
     def _get_warning_lines(self) -> list[str]:

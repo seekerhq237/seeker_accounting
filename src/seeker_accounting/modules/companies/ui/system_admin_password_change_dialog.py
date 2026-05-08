@@ -13,6 +13,12 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.modules.companies.services.system_admin_service import SystemAdminService
 from seeker_accounting.platform.exceptions.app_exceptions import ValidationError
+from seeker_accounting.shared.ui.styles.inline_styles import (
+    line_edit_style,
+    panel_style,
+    solid_button_style,
+    text_style,
+)
 
 
 class SystemAdminPasswordChangeDialog(QDialog):
@@ -71,7 +77,7 @@ class SystemAdminPasswordChangeDialog(QDialog):
 
         heading = QLabel("Security Setup Required" if self._is_initial_setup else "Password Change Required")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        heading.setStyleSheet("font-size: 15px; font-weight: 700; color: #111827;")
+        heading.setStyleSheet(text_style("primary", font_size="15px", font_weight=700))
         root.addWidget(heading)
 
         notice = QLabel(
@@ -83,15 +89,14 @@ class SystemAdminPasswordChangeDialog(QDialog):
         notice.setAlignment(Qt.AlignmentFlag.AlignCenter)
         notice.setWordWrap(True)
         notice.setStyleSheet(
-            "font-size: 11px; color: #B45309; background: #FFFBEB; "
-            "border: 1px solid #FDE68A; border-radius: 4px; padding: 8px;"
+            panel_style("warning") + " border-radius: 4px; padding: 8px; font-size: 11px;"
         )
         root.addWidget(notice)
 
         root.addSpacing(4)
 
         new_lbl = QLabel("New Password")
-        new_lbl.setStyleSheet("font-size: 12px; color: #374151; font-weight: 600;")
+        new_lbl.setStyleSheet(text_style("secondary", font_size="12px", font_weight=600))
         root.addWidget(new_lbl)
 
         self._new_password_field = QLineEdit()
@@ -102,7 +107,7 @@ class SystemAdminPasswordChangeDialog(QDialog):
         root.addWidget(self._new_password_field)
 
         confirm_lbl = QLabel("Confirm New Password")
-        confirm_lbl.setStyleSheet("font-size: 12px; color: #374151; font-weight: 600;")
+        confirm_lbl.setStyleSheet(text_style("secondary", font_size="12px", font_weight=600))
         root.addWidget(confirm_lbl)
 
         self._confirm_field = QLineEdit()
@@ -115,11 +120,7 @@ class SystemAdminPasswordChangeDialog(QDialog):
 
         save_btn = QPushButton("Set Password")
         save_btn.setFixedHeight(38)
-        save_btn.setStyleSheet(
-            "QPushButton { background: #059669; color: #fff; border: none; "
-            "border-radius: 4px; font-size: 13px; font-weight: 600; }"
-            "QPushButton:hover { background: #047857; }"
-        )
+        save_btn.setStyleSheet(solid_button_style("success"))
         save_btn.clicked.connect(self._on_save)
         root.addWidget(save_btn)
 
@@ -127,11 +128,7 @@ class SystemAdminPasswordChangeDialog(QDialog):
 
     @staticmethod
     def _field_style() -> str:
-        return (
-            "QLineEdit { border: 1px solid #D1D5DB; border-radius: 4px; "
-            "padding: 0 10px; font-size: 13px; color: #111827; background: #F9FAFB; }"
-            "QLineEdit:focus { border-color: #3B82F6; background: #fff; }"
-        )
+        return line_edit_style()
 
     # ── Slot ──────────────────────────────────────────────────────────────────
 

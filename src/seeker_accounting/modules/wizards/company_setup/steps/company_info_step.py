@@ -81,7 +81,7 @@ class CompanyInfoStep(WizardStep):
             root,
         )
         self._helper.setWordWrap(True)
-        self._helper.setStyleSheet("color: #4E5866; font-size: 11px;")
+        self._helper.setObjectName("WizardMutedText")
         layout.addWidget(self._helper)
         layout.addStretch(1)
         return root

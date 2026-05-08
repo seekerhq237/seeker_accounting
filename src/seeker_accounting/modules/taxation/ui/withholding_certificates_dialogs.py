@@ -76,7 +76,7 @@ def _section_frame(parent: QWidget, title: str) -> QFrame:
     grid.setHorizontalSpacing(16)
     grid.setVerticalSpacing(8)
     header = QLabel(title, frame)
-    header.setStyleSheet("font-weight: 600; color: #111827;")
+    header.setObjectName("DialogSectionTitle")
     grid.addWidget(header, 0, 0, 1, 2)
     grid.setColumnStretch(1, 1)
     return frame
@@ -644,7 +644,7 @@ class LinkWithholdingCertificateDialog(BaseDialog):
             )
         cgrid.addWidget(QLabel("Currently linked"), 2, 0)
         current_label = QLabel(current_text, chooser_frame)
-        current_label.setStyleSheet("color: #6B7280;")
+        current_label.setObjectName("DialogSectionSummary")
         cgrid.addWidget(current_label, 2, 1)
 
         self.body_layout.addWidget(chooser_frame)

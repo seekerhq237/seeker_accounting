@@ -67,6 +67,55 @@ class InventoryDocumentRepository:
         )
         return self._session.scalar(stmt)
 
+    def list_lines_by_ids(
+        self,
+        company_id: int,
+        line_ids: list[int],
+    ) -> list[InventoryDocumentLine]:
+        if not line_ids:
+            return []
+        stmt = (
+            select(InventoryDocumentLine)
+            .join(InventoryDocument, InventoryDocument.id == InventoryDocumentLine.inventory_document_id)
+            .where(
+                InventoryDocument.company_id == company_id,
+                InventoryDocumentLine.id.in_(line_ids),
+            )
+            .options(
+                selectinload(InventoryDocumentLine.inventory_document),
+                selectinload(InventoryDocumentLine.item),
+            )
+            .order_by(InventoryDocumentLine.id.asc())
+        )
+        return list(self._session.scalars(stmt))
+
+    def list_posted_goods_receipt_lines(
+        self,
+        company_id: int,
+        purchase_order_id: int | None = None,
+    ) -> list[InventoryDocumentLine]:
+        stmt = (
+            select(InventoryDocumentLine)
+            .join(InventoryDocument, InventoryDocument.id == InventoryDocumentLine.inventory_document_id)
+            .where(
+                InventoryDocument.company_id == company_id,
+                InventoryDocument.document_type_code == "goods_receipt_purchase",
+                InventoryDocument.status_code == "posted",
+            )
+            .options(
+                selectinload(InventoryDocumentLine.inventory_document),
+                selectinload(InventoryDocumentLine.item),
+            )
+            .order_by(
+                InventoryDocument.document_date.asc(),
+                InventoryDocument.document_number.asc(),
+                InventoryDocumentLine.line_number.asc(),
+            )
+        )
+        if purchase_order_id is not None:
+            stmt = stmt.where(InventoryDocument.purchase_order_id == purchase_order_id)
+        return list(self._session.scalars(stmt))
+
     def add(self, entity: InventoryDocument) -> InventoryDocument:
         self._session.add(entity)
         return entity

@@ -60,15 +60,16 @@ Processing order respects FK dependency:
                       pools, pool_members
   28.    Project budgets & commitments
   29.    Audit events
-  30.    Asset files copied after DB commit
+  30.    Asset files copied before DB commit
 """
 from __future__ import annotations
+import logging
 
 import io
 import shutil
 import tempfile
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Callable
 
 from sqlalchemy import create_engine, text
@@ -140,8 +141,9 @@ class BackupMergeService:
     ) -> MergeResultDTO:
         """Decrypt *backup_path* and merge into the live database.
 
-        All work runs inside a single transaction; on any error the whole
-        operation is rolled back.
+        Database writes run inside a single transaction. Asset files are staged
+        from the archive and copied before the database commit so copy failures
+        abort the database merge.
         """
         if not password:
             raise ValidationError("Backup password must not be empty.")
@@ -153,16 +155,13 @@ class BackupMergeService:
             tmp_db = tmp_path / "backup.db"
             BackupAnalysisService._extract_db(inner_zip_bytes, tmp_db)
 
-            # Also extract asset files so we can copy them after DB commit
+            # Also extract asset files so we can copy them before DB commit.
             self._extract_assets(inner_zip_bytes, tmp_path)
 
             warnings: list[str] = []
             companies_imported, users_imported, tables_processed = self._merge_db(
-                tmp_db, decision, warnings
+                tmp_db, decision, warnings, tmp_path
             )
-
-            # Copy asset files (after successful DB commit)
-            self._copy_assets(tmp_path)
 
         result = MergeResultDTO(
             companies_imported=companies_imported,
@@ -198,20 +197,30 @@ class BackupMergeService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)
 
     # ── Asset helpers ─────────────────────────────────────────────────────────
 
     @staticmethod
     def _extract_assets(inner_zip_bytes: bytes, dest_dir: Path) -> None:
         """Extract assets/ subtree from the inner ZIP to dest_dir."""
+        allowed_subdirs = {"user_avatars", "company_logos"}
+        root = dest_dir.resolve()
         try:
             with zipfile.ZipFile(io.BytesIO(inner_zip_bytes), "r") as inner:
                 for name in inner.namelist():
-                    if name.startswith("assets/") and not name.endswith("/"):
-                        dest = dest_dir / name
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        dest.write_bytes(inner.read(name))
+                    member = PurePosixPath(name)
+                    if not member.parts or member.parts[0] != "assets" or name.endswith("/"):
+                        continue
+                    if member.is_absolute() or any(part in {"", ".", ".."} for part in member.parts):
+                        raise ValidationError("Backup archive contains an unsafe asset path.")
+                    if len(member.parts) != 3 or member.parts[1] not in allowed_subdirs:
+                        continue
+                    dest = (dest_dir / Path(*member.parts)).resolve()
+                    if not dest.is_relative_to(root):
+                        raise ValidationError("Backup archive contains an unsafe asset path.")
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(inner.read(name))
         except zipfile.BadZipFile:
             pass  # assets may be missing in older backups — not fatal
 
@@ -228,6 +237,8 @@ class BackupMergeService:
             dest_dir = data_dir / subdir
             dest_dir.mkdir(parents=True, exist_ok=True)
             for asset_file in src_dir.iterdir():
+                if not asset_file.is_file():
+                    continue
                 dest = dest_dir / asset_file.name
                 if not dest.exists():
                     shutil.copy2(asset_file, dest)
@@ -239,6 +250,7 @@ class BackupMergeService:
         src_db_path: Path,
         decision: MergeDecisionDTO,
         warnings: list[str],
+        asset_tmp_dir: Path | None = None,
     ) -> tuple[int, int, int]:
         """Open src DB and target DB connections and run the full merge."""
         src_engine = create_engine(f"sqlite:///{src_db_path.as_posix()}")
@@ -249,6 +261,8 @@ class BackupMergeService:
                     companies_imported, users_imported, tables_processed = self._run_merge(
                         src, tgt, decision, warnings
                     )
+                    if asset_tmp_dir is not None:
+                        self._copy_assets(asset_tmp_dir)
                     uow.commit()
         finally:
             src_engine.dispose()
@@ -1539,8 +1553,10 @@ class BackupMergeService:
 
             try:
                 tgt.execute(sql, dict(zip(columns, values)))
-            except SAIntegrityError:
-                pass  # constraint conflict -- skip row, add warning later if needed
+            except SAIntegrityError as exc:
+                raise ValidationError(
+                    f"Backup merge could not import a row into {table} due to a data conflict."
+                ) from exc
 
         return 1
 
@@ -1646,7 +1662,9 @@ class BackupMergeService:
                 tgt.execute(sql, dict(zip(columns, values)))
                 if not has_id:
                     existing[src_code] = src_code
-            except SAIntegrityError:
-                pass
+            except SAIntegrityError as exc:
+                raise ValidationError(
+                    f"Backup merge could not import a row into {table} due to a data conflict."
+                ) from exc
 
         return id_map

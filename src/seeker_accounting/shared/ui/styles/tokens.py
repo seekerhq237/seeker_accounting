@@ -6,14 +6,14 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class TypographyTokens:
     family_primary: str = "Segoe UI"
-    size_app_title: int = 18
-    size_section_title: int = 13
-    size_card_title: int = 12
+    size_app_title: int = 20
+    size_section_title: int = 14
+    size_card_title: int = 13
     size_landing_wordmark: int = 50
     size_landing_tagline: int = 13
-    size_body: int = 11
-    size_small: int = 10
-    size_dense: int = 10
+    size_body: int = 12
+    size_small: int = 11
+    size_dense: int = 11
     size_caption: int = 10
     weight_regular: int = 400
     weight_medium: int = 500
@@ -96,7 +96,7 @@ class SizeTokens:
     # Status chip (Phase 1)
     chip_height: int = 18
     chip_padding_h: int = 8
-    chip_radius: int = 9
+    chip_radius: int = 2
     chip_dot_size: int = 6
     # Adaptive command bar (Phase 1)
     command_bar_height: int = 36

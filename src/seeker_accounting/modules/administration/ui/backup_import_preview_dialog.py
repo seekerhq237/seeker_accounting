@@ -33,6 +33,8 @@ from seeker_accounting.modules.administration.dto.backup_dto import (
     UserImportItem,
 )
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
+from seeker_accounting.shared.ui.styles.inline_styles import solid_button_style, text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 # ── Worker ────────────────────────────────────────────────────────────────────
@@ -108,18 +110,18 @@ class BackupImportPreviewDialog(QDialog):
         # Header
         header = QWidget()
         header.setFixedHeight(52)
-        header.setStyleSheet("background:#1E3A5F;")
+        header.setStyleSheet(f"background:{_P.accent};")
         hr = QHBoxLayout(header)
         hr.setContentsMargins(20, 0, 20, 0)
         title = QLabel("Import Backup — Review Conflicts")
-        title.setStyleSheet("font-size:14px;font-weight:600;color:#F9FAFB;")
+        title.setStyleSheet(f"font-size:14px;font-weight:600;color:{_P.accent_text};")
         hr.addWidget(title)
         hr.addStretch()
         meta_lbl = QLabel(
             f"Exported: {self._analysis.manifest.export_date[:10]}  |  "
             f"Version: {self._analysis.manifest.app_version}"
         )
-        meta_lbl.setStyleSheet("font-size:11px;color:#93C5FD;")
+        meta_lbl.setStyleSheet(f"font-size:11px;color:{_P.accent_soft_strong};")
         hr.addWidget(meta_lbl)
         root.addWidget(header)
 
@@ -159,12 +161,12 @@ class BackupImportPreviewDialog(QDialog):
 
         # Status / progress area
         self._status_label = QLabel("")
-        self._status_label.setStyleSheet("font-size:11px;color:#6B7280;padding:4px 20px;")
+        self._status_label.setStyleSheet(text_style("secondary", font_size="11px", extra="padding:4px 20px"))
         root.addWidget(self._status_label)
 
         # Footer buttons
         footer = QWidget()
-        footer.setStyleSheet("border-top:1px solid #E5E7EB;")
+        footer.setStyleSheet(f"border-top:1px solid {_P.border_default};")
         fr = QHBoxLayout(footer)
         fr.setContentsMargins(20, 10, 20, 10)
         fr.setSpacing(10)
@@ -175,10 +177,7 @@ class BackupImportPreviewDialog(QDialog):
         fr.addWidget(self._cancel_btn)
 
         self._confirm_btn = QPushButton("Confirm Import")
-        self._confirm_btn.setStyleSheet(
-            "background:#1E3A5F;color:white;padding:6px 18px;"
-            "border-radius:4px;font-weight:600;"
-        )
+        self._confirm_btn.setStyleSheet(solid_button_style("accent"))
         self._confirm_btn.clicked.connect(self._start_import)
         fr.addWidget(self._confirm_btn)
 
@@ -191,9 +190,9 @@ class BackupImportPreviewDialog(QDialog):
         l.setContentsMargins(0, 0, 0, 0)
         l.setSpacing(2)
         val_lbl = QLabel(value)
-        val_lbl.setStyleSheet("font-size:18px;font-weight:700;color:#1E3A5F;")
+        val_lbl.setStyleSheet(text_style("accent", font_size="18px", font_weight=700))
         lbl_lbl = QLabel(label)
-        lbl_lbl.setStyleSheet("font-size:10px;color:#6B7280;")
+        lbl_lbl.setStyleSheet(text_style("secondary", font_size="10px"))
         l.addWidget(val_lbl)
         l.addWidget(lbl_lbl)
         return w

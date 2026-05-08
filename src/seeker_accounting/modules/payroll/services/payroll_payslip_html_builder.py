@@ -17,9 +17,11 @@ import base64
 import html
 from decimal import Decimal
 from pathlib import Path
+from string import Template
 from typing import Callable
 
 from seeker_accounting.modules.payroll.dto.payroll_print_dto import PayslipPrintDataDTO
+from seeker_accounting.platform.printing.colors import PRINT_PALETTE as _P
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -66,20 +68,20 @@ def _logo_data_uri(logo_storage_path: str | None, resolver: Callable | None) -> 
 # At 7.5pt (≈2.65mm) per detail row with 2px padding ≈ 3.5mm effective height,
 # that leaves room for ~30 detail rows after all structural blocks.
 
-_CSS = """/* ── Tokens ─────────────────────────────────────── */
+_CSS = Template("""/* ── Tokens ─────────────────────────────────────── */
 :root {
-  --c-primary: #2F4F6F;
-  --c-primary-dark: #1E3A5F;
-  --c-accent: #2E7D4F;
-  --c-accent-bg: #EDF7F1;
-  --c-accent-border: #C3DFD0;
-  --c-tint: #EAF1F7;
-  --c-border: #D6E0EA;
-  --c-text: #1F2933;
-  --c-muted: #6B7280;
-  --c-faint: #9CA3AF;
-  --c-stripe: #F6F8FB;
-  --c-bg: #ffffff;
+  --c-primary: $primary;
+  --c-primary-dark: $primary_dark;
+  --c-accent: $success_fg;
+  --c-accent-bg: $success_bg;
+  --c-accent-border: $success_border;
+  --c-tint: $accent_soft;
+  --c-border: $border_default;
+  --c-text: $text_primary;
+  --c-muted: $text_secondary;
+  --c-faint: $text_muted;
+  --c-stripe: $row_alt;
+  --c-bg: $workspace_surface;
 }
 
 /* ── Reset & base ───────────────────────────────── */
@@ -195,7 +197,7 @@ table.detail {
 }
 table.detail td {
   padding: 1.5px 6px;
-  border-bottom: 1px solid #EEF1F4;
+  border-bottom: 1px solid $divider_subtle;
 }
 table.detail td.num {
   text-align: right; width: 110px;
@@ -257,21 +259,21 @@ table.detail tr.subtotal-row td {
 /* ── Footer ─────────────────────────────────────── */
 .footer {
   font-size: 6.5pt; color: var(--c-faint); text-align: right;
-  margin-top: 8px; border-top: 1px solid #EEF1F4; padding-top: 3px;
+  margin-top: 8px; border-top: 1px solid $divider_subtle; padding-top: 3px;
 }
 
 /* ── Warning bar ────────────────────────────────── */
 .warning-bar {
-  padding: 4px 8px; background: #FFF8E1;
-  border-left: 3px solid #F9A825;
-  font-size: 7pt; color: #6D4C00; margin-bottom: 6px;
+  padding: 4px 8px; background: $warning_bg;
+  border-left: 3px solid $warning_border;
+  font-size: 7pt; color: $warning_fg; margin-bottom: 6px;
 }
 
 /* ── Print helpers ──────────────────────────────── */
 .no-break { break-inside: avoid; }
 
 @media print {
-  body { background: #ffffff; }
+  body { background: $workspace_surface; }
   .no-print { display: none; }
   table.detail tr:nth-child(even) td { background: var(--c-stripe) !important; }
   table.detail tr.subtotal-row td { background: var(--c-tint) !important; }
@@ -280,7 +282,24 @@ table.detail tr.subtotal-row td {
   .context-bar { background: var(--c-tint) !important; }
   .id-card-header { background: var(--c-tint) !important; }
 }
-"""
+""").substitute(
+  primary=_P.accent,
+  primary_dark=_P.accent_hover,
+  success_fg=_P.status_success_fg,
+  success_bg=_P.status_success_bg,
+  success_border=_P.status_success_border,
+  warning_fg=_P.status_warning_fg,
+  warning_bg=_P.status_warning_bg,
+  warning_border=_P.status_warning_border,
+  accent_soft=_P.accent_soft,
+  border_default=_P.border_default,
+  divider_subtle=_P.divider_subtle,
+  text_primary=_P.text_primary,
+  text_secondary=_P.text_secondary,
+  text_muted=_P.text_muted,
+  row_alt=_P.data_table_row_alt,
+  workspace_surface=_P.workspace_surface,
+)
 
 
 # ── Builder ────────────────────────────────────────────────────────────────────────

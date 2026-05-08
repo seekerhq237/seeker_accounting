@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from datetime import datetime
 from decimal import Decimal
@@ -389,4 +390,4 @@ class SalesCreditNotePostingService:
                 ),
             )
         except Exception:
-            pass
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

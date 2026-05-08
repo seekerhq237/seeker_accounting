@@ -522,10 +522,10 @@ class ProjectVarianceAnalysisPage(QWidget):
 
     def _update_status_chip(self, status: str, palette: object) -> None:
         color_map = {
-            "On Track": (palette.success, "#E6F7F1" if palette.name == "light" else "#0D3326"),
-            "Watch": (palette.warning, "#FFF8E6" if palette.name == "light" else "#332D12"),
-            "Over Budget": (palette.danger, "#FEF0F0" if palette.name == "light" else "#331414"),
-            "Critical": (palette.danger, "#FEF0F0" if palette.name == "light" else "#331414"),
+            "On Track": (palette.status_success_fg, palette.status_success_bg),
+            "Watch": (palette.status_warning_fg, palette.status_warning_bg),
+            "Over Budget": (palette.status_danger_fg, palette.status_danger_bg),
+            "Critical": (palette.status_danger_fg, palette.status_danger_bg),
         }
         fg, bg = color_map.get(status, (palette.text_primary, palette.secondary_surface))
         self._status_chip.setText(status)

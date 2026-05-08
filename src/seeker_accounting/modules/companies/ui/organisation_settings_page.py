@@ -18,6 +18,8 @@ from seeker_accounting.modules.companies.ui.company_form_dialog import CompanyFo
 from seeker_accounting.modules.companies.ui.company_preferences_dialog import CompanyPreferencesDialog
 from seeker_accounting.modules.companies.ui.system_admin_auth_dialog import SystemAdminAuthDialog
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.inline_styles import status_chip_style, text_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 class OrganisationSettingsPage(QWidget):
@@ -107,8 +109,8 @@ class OrganisationSettingsPage(QWidget):
         self._logo_label.setFixedSize(96, 96)
         self._logo_label.setText("Logo")
         self._logo_label.setStyleSheet(
-            "QLabel { border: 1px solid #E5E7EB; border-radius: 8px; "
-            "background: #F9FAFB; color: #9CA3AF; font-size: 11px; }"
+            f"QLabel {{ border: 1px solid {_P.border_default}; border-radius: 8px; "
+            f"background: {_P.secondary_surface}; color: {_P.text_muted}; font-size: 11px; }}"
         )
         header.addWidget(self._logo_label, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -117,13 +119,13 @@ class OrganisationSettingsPage(QWidget):
 
         self._display_name_label = QLabel(card)
         self._display_name_label.setObjectName("OrgDisplayName")
-        self._display_name_label.setStyleSheet("font-size: 20px; font-weight: 700; color: #111827;")
+        self._display_name_label.setStyleSheet(text_style("primary", font_size="20px", font_weight=700))
         self._display_name_label.setWordWrap(True)
         identity.addWidget(self._display_name_label)
 
         self._legal_name_label = QLabel(card)
         self._legal_name_label.setObjectName("OrgLegalName")
-        self._legal_name_label.setStyleSheet("font-size: 13px; color: #6B7280;")
+        self._legal_name_label.setStyleSheet(text_style("secondary", font_size="13px"))
         identity.addWidget(self._legal_name_label)
 
         self._status_label = QLabel(card)
@@ -139,7 +141,7 @@ class OrganisationSettingsPage(QWidget):
         # Divider
         divider = QFrame(card)
         divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setStyleSheet("color: #E5E7EB;")
+        divider.setStyleSheet(f"color: {_P.divider_subtle};")
         outer.addWidget(divider)
 
         # Fields: two columns
@@ -192,13 +194,13 @@ class OrganisationSettingsPage(QWidget):
         row.setSpacing(8)
 
         lbl = QLabel(label_text + ":", parent)
-        lbl.setStyleSheet("font-size: 11px; color: #9CA3AF; font-weight: 500;")
+        lbl.setStyleSheet(text_style("muted", font_size="11px", font_weight=500))
         lbl.setFixedWidth(120)
         lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
         row.addWidget(lbl)
 
         val = QLabel("\u2014", parent)
-        val.setStyleSheet("font-size: 12px; color: #111827;")
+        val.setStyleSheet(text_style("primary", font_size="12px"))
         val.setWordWrap(True)
         val.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         row.addWidget(val, 1)
@@ -264,14 +266,12 @@ class OrganisationSettingsPage(QWidget):
         if detail.is_active:
             self._status_label.setText("Active")
             self._status_label.setStyleSheet(
-                "font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; "
-                "background: #D1FAE5; color: #065F46;"
+                status_chip_style("success", padding="2px 8px") + " font-size: 11px;"
             )
         else:
             self._status_label.setText("Inactive")
             self._status_label.setStyleSheet(
-                "font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; "
-                "background: #FEE2E2; color: #991B1B;"
+                status_chip_style("danger", padding="2px 8px") + " font-size: 11px;"
             )
 
         self._reg_row[1].setText(detail.registration_number or "\u2014")

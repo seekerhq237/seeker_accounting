@@ -45,6 +45,9 @@ from seeker_accounting.modules.administration.models.user_session import UserSes
 from seeker_accounting.modules.companies.models.company import Company
 from seeker_accounting.modules.companies.models.company_fiscal_default import CompanyFiscalDefault
 from seeker_accounting.modules.taxation.models.company_tax_profile import CompanyTaxProfile
+from seeker_accounting.modules.taxation.models.company_pro_rata_history import (
+    CompanyProRataHistory,
+)
 from seeker_accounting.modules.taxation.models.tax_obligation import TaxObligation
 from seeker_accounting.modules.taxation.models.tax_return import TaxReturn
 from seeker_accounting.modules.taxation.models.tax_return_line import TaxReturnLine
@@ -116,6 +119,9 @@ from seeker_accounting.modules.inventory.models.uom_category import UomCategory
 from seeker_accounting.modules.inventory.models.item_category import ItemCategory
 from seeker_accounting.modules.inventory.models.inventory_location import InventoryLocation
 from seeker_accounting.modules.inventory.models.item import Item
+from seeker_accounting.modules.inventory.models.item_barcode import ItemBarcode
+from seeker_accounting.modules.inventory.models.item_reorder_profile import ItemReorderProfile
+from seeker_accounting.modules.inventory.models.item_supplier import ItemSupplier
 from seeker_accounting.modules.inventory.models.inventory_document import InventoryDocument
 from seeker_accounting.modules.inventory.models.inventory_document_line import InventoryDocumentLine
 from seeker_accounting.modules.inventory.models.inventory_cost_layer import InventoryCostLayer
@@ -141,6 +147,17 @@ from seeker_accounting.modules.inventory.models.stock_count_line import StockCou
 from seeker_accounting.modules.inventory.models.stock_count_variance import StockCountVariance
 from seeker_accounting.modules.inventory.models.inventory_import_job import InventoryImportJob, InventoryImportJobRow
 from seeker_accounting.modules.inventory.models.production_order import ProductionOrder
+from seeker_accounting.modules.inventory.models.landed_cost_voucher import (
+    LandedCostVoucher,
+    LandedCostVoucherReceipt,
+)
+from seeker_accounting.modules.inventory.models.purchase_receipt_link import (
+    PurchaseBillLineReceiptLink,
+    PurchaseOrderLineReceiptLink,
+)
+from seeker_accounting.modules.inventory.models.stock_impairment_provision import (
+    StockImpairmentProvision,
+)
 from seeker_accounting.modules.fixed_assets.models.asset_category import AssetCategory
 from seeker_accounting.modules.fixed_assets.models.asset import Asset
 from seeker_accounting.modules.fixed_assets.models.asset_depreciation_run import AssetDepreciationRun
@@ -205,6 +222,7 @@ MODEL_REGISTRY = (
     CompanyPreference,
     CompanyFiscalDefault,
     CompanyTaxProfile,
+    CompanyProRataHistory,
     CompanyProjectPreference,
     Currency,
     Country,
@@ -277,6 +295,9 @@ MODEL_REGISTRY = (
     PriceListLine,
     InventoryLocation,
     Item,
+    ItemBarcode,
+    ItemReorderProfile,
+    ItemSupplier,
     InventoryDocument,
     InventoryDocumentLine,
     InventoryCostLayer,
@@ -285,6 +306,11 @@ MODEL_REGISTRY = (
     ItemUomConversion,
     ItemAccountOverride,
     PriceList,
+    LandedCostVoucher,
+    LandedCostVoucherReceipt,
+    PurchaseOrderLineReceiptLink,
+    PurchaseBillLineReceiptLink,
+    StockImpairmentProvision,
     AssetCategory,
     Asset,
     AssetDepreciationRun,

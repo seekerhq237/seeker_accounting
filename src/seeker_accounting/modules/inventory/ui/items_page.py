@@ -23,6 +23,7 @@ from seeker_accounting.modules.companies.dto.company_dto import ActiveCompanyDTO
 from seeker_accounting.modules.inventory.dto.item_dto import ItemListItemDTO
 from seeker_accounting.modules.inventory.ui.item_dialog import ItemDialog
 from seeker_accounting.platform.exceptions import NotFoundError, PermissionDeniedError, ValidationError
+from seeker_accounting.shared.ui.background_task import run_with_progress
 from seeker_accounting.shared.ui.components import (
     DataTable,
     DataTableColumn,
@@ -80,21 +81,31 @@ class ItemsPage(QWidget):
             self._update_action_state()
             return
 
-        try:
-            type_filter = self._type_filter_value()
-            self._items = self._service_registry.item_service.list_items(
-                active_company.company_id,
-                active_only=self._active_only_filter(),
+        company_id = active_company.company_id
+        type_filter = self._type_filter_value()
+        active_only = self._active_only_filter()
+        task = run_with_progress(
+            parent=self,
+            title="Items",
+            message="Loading items…",
+            worker=lambda: self._service_registry.item_service.list_items(
+                company_id,
+                active_only=active_only,
                 item_type_code=type_filter,
-            )
-        except Exception as exc:
+            ),
+        )
+        if task.cancelled:
+            return
+        if task.error is not None:
             self._items = []
             self._model.removeRows(0, self._model.rowCount())
             self._record_count_label.setText("Unable to load")
             self._stack.setCurrentWidget(self._empty_state)
             self._update_action_state()
-            show_error(self, "Items", f"Item data could not be loaded.\n\n{exc}")
+            show_error(self, "Items", f"Item data could not be loaded.\n\n{task.error}")
             return
+
+        self._items = task.value
 
         self._populate_table()
         self._sync_surface_state(active_company)

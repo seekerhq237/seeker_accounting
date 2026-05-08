@@ -37,7 +37,7 @@ class FinalizeStep(WizardStep):
 
         self._summary = QLabel("", root)
         self._summary.setWordWrap(True)
-        self._summary.setStyleSheet("color: #2E3848; font-size: 12px;")
+        self._summary.setObjectName("WizardBodyText")
         outer.addWidget(self._summary)
 
         warn = QLabel(
@@ -46,7 +46,7 @@ class FinalizeStep(WizardStep):
             root,
         )
         warn.setWordWrap(True)
-        warn.setStyleSheet("color: #6B5500; font-size: 11px;")
+        warn.setObjectName("WizardWarningText")
         outer.addWidget(warn)
 
         self._confirm = QCheckBox("I confirm the reconciliation is complete.", root)

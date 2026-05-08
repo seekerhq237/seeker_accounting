@@ -33,6 +33,8 @@ from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn
+from seeker_accounting.shared.ui.styles.inline_styles import status_chip_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 def _fmt_date(value: datetime | date | None) -> str:
@@ -69,26 +71,22 @@ def _status_label(code: str | None) -> str:
     return code.replace("_", " ").title()
 
 
-_STATUS_COLORS = {
-    "active":    ("#dcfce7", "#166534"),
-    "draft":     ("#e0f2fe", "#075985"),
-    "on_hold":   ("#fef3c7", "#92400e"),
-    "completed": ("#ede9fe", "#5b21b6"),
-    "closed":    ("#e5e7eb", "#374151"),
-    "cancelled": ("#fee2e2", "#991b1b"),
-    "submitted": ("#e0f2fe", "#075985"),
-    "approved":  ("#dcfce7", "#166534"),
-    "superseded":("#e5e7eb", "#374151"),
-    "inactive":  ("#e5e7eb", "#374151"),
+_STATUS_FAMILIES = {
+    "active": "success",
+    "draft": "info",
+    "on_hold": "warning",
+    "completed": "accent",
+    "closed": "neutral",
+    "cancelled": "danger",
+    "submitted": "info",
+    "approved": "success",
+    "superseded": "neutral",
+    "inactive": "neutral",
 }
 
 
 def _status_style(code: str | None) -> str:
-    bg, fg = _STATUS_COLORS.get((code or "").lower(), ("#e5e7eb", "#374151"))
-    return (
-        f"padding: 2px 10px; border-radius: 10px; background: {bg}; "
-        f"color: {fg}; font-weight: 600;"
-    )
+    return status_chip_style(_STATUS_FAMILIES.get((code or "").lower(), "neutral"))
 
 
 class ProjectWorkspaceWindow(ChildWindowBase):
@@ -174,8 +172,7 @@ class ProjectWorkspaceWindow(ChildWindowBase):
 
         self._type_chip = QLabel("", hero)
         self._type_chip.setStyleSheet(
-            "padding: 2px 8px; border-radius: 8px; background: #eef1f5; "
-            "color: #374151; font-weight: 500;"
+            status_chip_style("neutral", padding="2px 8px", font_weight=500)
         )
         title_row.addWidget(self._type_chip)
 
@@ -198,9 +195,9 @@ class ProjectWorkspaceWindow(ChildWindowBase):
             block = QVBoxLayout()
             block.setSpacing(0)
             caption = QLabel(label_text.upper(), hero)
-            caption.setStyleSheet("color: #6b7280; font-size: 10px; font-weight: 600; letter-spacing: 0.5px;")
+            caption.setObjectName("FieldCaption")
             value = QLabel("—", hero)
-            value.setStyleSheet("color: #111827; font-size: 12px;")
+            value.setObjectName("FieldValue")
             self._hero_facts[key] = value
             block.addWidget(caption)
             block.addWidget(value)
@@ -228,27 +225,24 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         ):
             tile = self._build_kpi_tile(caption)
             row.addWidget(tile, 1)
-            self._kpi_labels[key] = tile.findChild(QLabel, "KpiValue")
+            self._kpi_labels[key] = tile.findChild(QLabel, "MetricValue")
 
         return frame
 
     def _build_kpi_tile(self, caption: str) -> QWidget:
         tile = QFrame()
-        tile.setStyleSheet(
-            "QFrame { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 8px; }"
-        )
+        tile.setObjectName("MetricTile")
         layout = QVBoxLayout(tile)
         layout.setContentsMargins(12, 8, 12, 10)
         layout.setSpacing(2)
         cap = QLabel(caption.upper(), tile)
-        cap.setStyleSheet("color: #6b7280; font-size: 10px; font-weight: 600; letter-spacing: 0.5px;")
+        cap.setObjectName("MetricCaption")
         value = QLabel("—", tile)
-        value.setObjectName("KpiValue")
+        value.setObjectName("MetricValue")
         vf = QFont(value.font())
         vf.setPointSize(max(vf.pointSize() + 4, 15))
         vf.setBold(True)
         value.setFont(vf)
-        value.setStyleSheet("color: #111827;")
         layout.addWidget(cap)
         layout.addWidget(value)
         return tile
@@ -275,7 +269,7 @@ class ProjectWorkspaceWindow(ChildWindowBase):
     def _build_jobs_card(self) -> QWidget:
         card, outer, header = self._build_card("Jobs")
         self._jobs_subtitle = QLabel("0 jobs", card)
-        self._jobs_subtitle.setStyleSheet("color: #6b7280; font-size: 11px;")
+        self._jobs_subtitle.setObjectName("MutedHelpText")
         header.insertWidget(1, self._jobs_subtitle)
 
         open_btn = QPushButton("Manage", card)
@@ -308,7 +302,7 @@ class ProjectWorkspaceWindow(ChildWindowBase):
     def _build_budgets_card(self) -> QWidget:
         card, outer, header = self._build_card("Budget")
         self._budgets_subtitle = QLabel("No budget", card)
-        self._budgets_subtitle.setStyleSheet("color: #6b7280; font-size: 11px;")
+        self._budgets_subtitle.setObjectName("MutedHelpText")
         header.insertWidget(1, self._budgets_subtitle)
 
         self._new_budget_btn = QPushButton("New Budget", card)
@@ -353,7 +347,7 @@ class ProjectWorkspaceWindow(ChildWindowBase):
     def _build_commitments_card(self) -> QWidget:
         card, outer, header = self._build_card("Commitments")
         self._commitments_subtitle = QLabel("0 commitments", card)
-        self._commitments_subtitle.setStyleSheet("color: #6b7280; font-size: 11px;")
+        self._commitments_subtitle.setObjectName("MutedHelpText")
         header.insertWidget(1, self._commitments_subtitle)
 
         open_btn = QPushButton("Manage", card)
@@ -386,7 +380,7 @@ class ProjectWorkspaceWindow(ChildWindowBase):
     def _build_costs_card(self) -> QWidget:
         card, outer, header = self._build_card("Actual Costs")
         self._costs_subtitle = QLabel("0.00", card)
-        self._costs_subtitle.setStyleSheet("color: #6b7280; font-size: 11px;")
+        self._costs_subtitle.setObjectName("MutedHelpText")
         header.insertWidget(1, self._costs_subtitle)
 
         record_btn = QPushButton("Record Cost", card)
@@ -753,13 +747,13 @@ class ProjectWorkspaceWindow(ChildWindowBase):
         variance_label = self._kpi_labels["variance"]
         variance_label.setText(_fmt_percent(variance_pct))
         if variance_pct is None:
-            variance_label.setStyleSheet("color: #111827;")
+            variance_label.setStyleSheet(f"color: {_P.text_primary};")
         else:
             try:
                 val = Decimal(variance_pct)
-                color = "#166534" if val >= 0 else "#991b1b"
+                color = _P.status_success_fg if val >= 0 else _P.status_danger_fg
             except Exception:
-                color = "#111827"
+                color = _P.text_primary
             variance_label.setStyleSheet(f"color: {color};")
 
     @staticmethod

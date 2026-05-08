@@ -94,9 +94,9 @@ Neutral operational grays. The app_background is slightly cooler than the worksp
 | `sidebar_surface` | `#E8ECF2` | Sidebar rail |
 | `sidebar_hover` | `#DCE2EB` | Sidebar hover |
 | `topbar_surface` | `#F4F6FA` | Command band |
-| `border_default` | `#D4DAE3` | Hairline panel border |
-| `border_strong` | `#B6BFCC` | Panel header separator, focused input |
-| `divider_subtle` | `#E4E8EE` | In-panel separators |
+| `border_default` | `#C6CEDA` | Hairline panel border |
+| `border_strong` | `#AEB8C6` | Panel header separator, focused input |
+| `divider_subtle` | `#DDE3EA` | In-panel separators |
 | `text_primary` | `#1A2230` | Body |
 | `text_secondary` | `#4E5866` | Secondary labels |
 | `text_muted` | `#7A8392` | Meta / placeholders |
@@ -176,6 +176,8 @@ These are the **only** sanctioned primary-surface primitives. New features must 
 
 **Legacy compatibility:** `QFrame#PageCard`, `QFrame#InfoCard`, `QFrame#PageToolbar`, `DashboardPanel`, `MoneyCard` remain in the QSS but now inherit the flat framing. They are kept only for migration continuity. All new work uses the primitives above.
 
+**Dashboard semantic hierarchy:** Dashboard KPI cards may use soft semantic fills because the color communicates state (`info`, `warning`, `success`, `danger`) rather than decoration. Dashboard panel headers use a neutral header fill plus a restrained accent edge for scan hierarchy. Quick actions use a slim accent edge and only take stronger accent color on hover/press.
+
 ---
 
 ## 9. Tables
@@ -209,7 +211,7 @@ Adopt `configure_dense_table(table)` for register tables; existing `configure_co
 
 ## 11. Status chips
 
-Flat. Hairline. Weight 500. Size 10. Radius 2 px. Text uppercase.
+Flat. Hairline. Weight 500. Size 10. Radius 2 px. Text uppercase where the table delegate renders text directly; `StatusChip` itself title-cases the label to preserve legibility in dense rows.
 
 | State | Text color | Background |
 |---|---|---|

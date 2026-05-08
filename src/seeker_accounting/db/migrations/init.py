@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import ast
 import logging
 import sqlite3
 import sys
 from pathlib import Path
 
+import seeker_accounting.db.migrations as migrations_package
 from seeker_accounting.config.paths import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
@@ -13,19 +15,21 @@ _FROZEN = getattr(sys, "frozen", False)
 
 if _FROZEN:
     _BUNDLE_DIR = Path(sys._MEIPASS)  # type: ignore[attr-defined]
-    ALEMBIC_INI_PATH = _BUNDLE_DIR / "alembic.ini"
+    ALEMBIC_INI_PATH: Path | None = _BUNDLE_DIR / "alembic.ini"
     MIGRATIONS_PATH = _BUNDLE_DIR / "seeker_accounting" / "db" / "migrations"
 else:
-    ALEMBIC_INI_PATH = PROJECT_ROOT / "alembic.ini"
-    MIGRATIONS_PATH = PROJECT_ROOT / "src" / "seeker_accounting" / "db" / "migrations"
+    _SOURCE_ALEMBIC_INI = PROJECT_ROOT / "alembic.ini"
+    ALEMBIC_INI_PATH = _SOURCE_ALEMBIC_INI if _SOURCE_ALEMBIC_INI.exists() else None
+    MIGRATIONS_PATH = Path(migrations_package.__file__).resolve().parent
 
 
 def build_alembic_config(database_url: str) -> "Config":
     from alembic.config import Config
 
-    config = Config(str(ALEMBIC_INI_PATH))
+    config = Config(str(ALEMBIC_INI_PATH)) if ALEMBIC_INI_PATH is not None else Config()
     config.set_main_option("script_location", str(MIGRATIONS_PATH))
     config.set_main_option("sqlalchemy.url", database_url)
+    config.attributes["seeker_database_url"] = database_url
     return config
 
 
@@ -52,19 +56,69 @@ def _try_fast_sentinel_check(database_url: str) -> bool:
         if not expected_head:
             return False
 
+        script_heads = _migration_script_heads()
+        if script_heads != {expected_head}:
+            return False
+
         conn = sqlite3.connect(db_path)
         try:
-            cursor = conn.execute("SELECT version_num FROM alembic_version LIMIT 1")
-            row = cursor.fetchone()
+            cursor = conn.execute("SELECT version_num FROM alembic_version")
+            current_revisions = {row[0] for row in cursor.fetchall() if row[0]}
         finally:
             conn.close()
 
-        if row is None:
-            return False
-
-        return row[0] == expected_head
+        return current_revisions == {expected_head}
     except Exception:
         return False
+
+
+def _migration_script_heads() -> set[str]:
+    """Return migration heads by reading revision metadata without importing Alembic."""
+    versions_path = MIGRATIONS_PATH / "versions"
+    if not versions_path.exists():
+        return set()
+
+    revisions: set[str] = set()
+    down_revisions: set[str] = set()
+    for path in versions_path.glob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except Exception:
+            return set()
+
+        revision: str | None = None
+        down_revision: object = None
+        for node in tree.body:
+            target_names: set[str]
+            value_node: ast.AST | None
+            if isinstance(node, ast.Assign):
+                target_names = {
+                    target.id for target in node.targets if isinstance(target, ast.Name)
+                }
+                value_node = node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                target_names = {node.target.id}
+                value_node = node.value
+            else:
+                continue
+            if value_node is None:
+                continue
+
+            if "revision" in target_names:
+                value = ast.literal_eval(value_node)
+                if isinstance(value, str):
+                    revision = value
+            elif "down_revision" in target_names:
+                down_revision = ast.literal_eval(value_node)
+
+        if revision:
+            revisions.add(revision)
+        if isinstance(down_revision, str):
+            down_revisions.add(down_revision)
+        elif isinstance(down_revision, (tuple, list, set)):
+            down_revisions.update(value for value in down_revision if isinstance(value, str))
+
+    return revisions - down_revisions
 
 
 def _write_sentinel(database_url: str, head_rev: str) -> None:

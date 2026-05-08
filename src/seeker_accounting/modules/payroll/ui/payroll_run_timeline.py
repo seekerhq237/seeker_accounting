@@ -27,6 +27,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from seeker_accounting.shared.ui.styles.palette import ThemePalette, get_palette
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 # ── Step definitions ────────────────────────────────────────────────────────
 
@@ -238,11 +239,11 @@ class RunTimelineWidget(QWidget):
             branch_y = node_y + self._NODE_R * 2 + 8
 
             # Arm from the anchor node down to the branch node
-            painter.setPen(QPen(QColor("#e34343"), 1.5, Qt.PenStyle.DotLine))
+            painter.setPen(QPen(QColor(_P.danger), 1.5, Qt.PenStyle.DotLine))
             painter.drawLine(QPointF(bx, node_y + self._NODE_R), QPointF(bx, branch_y - self._NODE_R))
 
             # Branch circle (danger red)
-            branch_color = QColor("#e34343")
+            branch_color = QColor(_P.danger)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(branch_color)
             painter.drawEllipse(QPointF(bx, branch_y), self._NODE_R - 1, self._NODE_R - 1)

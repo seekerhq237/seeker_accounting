@@ -34,10 +34,13 @@ from seeker_accounting.modules.purchases.dto.purchase_bill_dto import (
     PurchaseBillLineDTO,
 )
 from seeker_accounting.modules.purchases.dto.supplier_payment_dto import BillPaymentRowDTO
-from seeker_accounting.platform.exceptions import NotFoundError
+from seeker_accounting.modules.purchases.ui.purchase_bill_grn_match_dialog import (
+    PurchaseBillGrnMatchDialog,
+)
+from seeker_accounting.platform.exceptions import AppError, NotFoundError
 from seeker_accounting.shared.ui.entity_detail.entity_detail_page import EntityDetailPage
 from seeker_accounting.shared.ui.entity_detail.money_bar import MoneyBarItem
-from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.message_boxes import show_error, show_info
 _log = logging.getLogger(__name__)
 
 _CURRENCY_FMT = "{:,.2f}"
@@ -96,6 +99,12 @@ class PurchaseBillDetailPage(EntityDetailPage):
         self._post_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._post_button.clicked.connect(self._go_to_bills_for_posting)
         self._action_row_layout.addWidget(self._post_button)
+
+        self._match_grn_button = QPushButton("Match GRNs", self)
+        self._match_grn_button.setObjectName("SecondaryButton")
+        self._match_grn_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._match_grn_button.clicked.connect(self._match_bill_to_grns)
+        self._action_row_layout.addWidget(self._match_grn_button)
 
         # Build tabs
         self._lines_tab = self._build_lines_tab()
@@ -473,6 +482,9 @@ class PurchaseBillDetailPage(EntityDetailPage):
         self._edit_button.setEnabled(enabled and is_draft)
         self._post_button.setEnabled(enabled and not is_posted)
         self._post_button.setVisible(enabled and not is_posted)
+        can_match = self._service_registry.permission_service.has_permission("purchases.bills.post")
+        self._match_grn_button.setEnabled(enabled and is_posted and can_match)
+        self._match_grn_button.setVisible(enabled and is_posted)
 
     def _open_edit_dialog(self) -> None:
         if self._bill is None:
@@ -498,3 +510,36 @@ class PurchaseBillDetailPage(EntityDetailPage):
             nav_ids.PURCHASE_BILLS,
             context={"select_bill_id": self._bill.id},
         )
+
+    def _match_bill_to_grns(self) -> None:
+        if self._bill is None:
+            return
+        active_company = self._service_registry.company_context_service.get_active_company()
+        if active_company is None:
+            return
+        try:
+            result = PurchaseBillGrnMatchDialog.match_bill(
+                self._service_registry,
+                active_company.company_id,
+                self._bill.id,
+                parent=self,
+            )
+        except AppError as exc:
+            show_error(self, "Match GRNs", str(exc))
+            return
+        except Exception:
+            _log.exception("Match GRNs")
+            show_error(self, "Match GRNs", "An unexpected error occurred. See application log for details.")
+            return
+        if result is None:
+            return
+        show_info(
+            self,
+            "GRNs Matched",
+            (
+                f"Matched {result.matched_line_count} receipt line(s).\n"
+                f"GRNI cleared: {result.grni_cleared_amount:,.2f}\n"
+                f"PPV: {result.purchase_price_variance_amount:,.2f}"
+            ),
+        )
+        self._load_data()

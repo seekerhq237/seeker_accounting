@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from seeker_accounting.modules.payroll.dto.payroll_validation_dashboard_dto import ValidationCheckDTO
 from seeker_accounting.shared.ui.layout_constraints import apply_window_size
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 # ── Remediation guidance keyed by check_code ─────────────────────────────────
 
@@ -281,9 +282,9 @@ _REMEDIATION: dict[str, str] = {
 }
 
 _SEVERITY_META: dict[str, tuple[str, str]] = {
-    "error":   ("ERROR",   "#dc3545"),
-    "warning": ("WARNING", "#fd7e14"),
-    "info":    ("INFO",    "#0d6efd"),
+    "error":   ("ERROR",   _P.danger),
+    "warning": ("WARNING", _P.warning),
+    "info":    ("INFO",    _P.info),
 }
 
 _CATEGORY_LABELS: dict[str, str] = {
@@ -327,7 +328,7 @@ class ValidationCheckDetailDialog(QDialog):
         header_row = QHBoxLayout()
         header_row.setSpacing(10)
 
-        sev_label, sev_color = _SEVERITY_META.get(check.severity, ("INFO", "#0d6efd"))
+        sev_label, sev_color = _SEVERITY_META.get(check.severity, ("INFO", _P.info))
         badge = QLabel(sev_label)
         badge.setFixedSize(70, 22)
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -354,7 +355,7 @@ class ValidationCheckDetailDialog(QDialog):
         meta_layout.addWidget(_meta_row("Category", cat_display))
 
         if check.entity_label:
-            etype = f" <span style='color:#888; font-size:11px;'>({check.entity_type})</span>" \
+            etype = f" <span style='color:{_P.text_muted}; font-size:11px;'>({check.entity_type})</span>" \
                 if check.entity_type else ""
             meta_layout.addWidget(_meta_row("Entity", check.entity_label + etype))
 
@@ -399,7 +400,7 @@ class ValidationCheckDetailDialog(QDialog):
             body_layout.addWidget(fix_card)
         else:
             no_fix = QLabel(
-                "<i style='color:#888;'>No specific remediation guide is available for "
+                f"<i style='color:{_P.text_muted};'>No specific remediation guide is available for "
                 "this check code. Review the details above and consult your payroll "
                 "administrator.</i>"
             )
@@ -413,7 +414,7 @@ class ValidationCheckDetailDialog(QDialog):
 
         # ── Bottom bar with Close button ──────────────────────────────────────
         btn_bar = QWidget()
-        btn_bar.setStyleSheet("border-top: 1px solid #e0e0e0;")
+        btn_bar.setStyleSheet(f"border-top: 1px solid {_P.border_default};")
         btn_bar_layout = QHBoxLayout(btn_bar)
         btn_bar_layout.setContentsMargins(16, 8, 16, 8)
         btn_bar_layout.addStretch()

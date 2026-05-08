@@ -7,6 +7,7 @@ exposed through CRUD on the UI in this slice.
 """
 
 from __future__ import annotations
+import logging
 
 from typing import TYPE_CHECKING, Callable
 
@@ -343,5 +344,5 @@ class InventoryReferenceDataService:
                     description=description,
                 ),
             )
-        except Exception:  # pragma: no cover - audit must not break business ops
-            pass
+        except Exception:  # pragma: no cover
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

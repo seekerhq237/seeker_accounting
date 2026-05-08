@@ -263,6 +263,7 @@ class PayrollRunEmployeeListItemDTO:
     employer_cost_base: Decimal
     status_code: str
     exclusion_reason: str | None = None
+    payment_status_code: str = "unpaid"
 
 
 @dataclass(frozen=True, slots=True)

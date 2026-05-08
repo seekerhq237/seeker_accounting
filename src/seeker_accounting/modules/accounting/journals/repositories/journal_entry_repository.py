@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from seeker_accounting.modules.accounting.journals.models.journal_entry import JournalEntry
@@ -20,6 +20,48 @@ class JournalEntryRepository:
         statement = statement.options(selectinload(JournalEntry.lines))
         statement = statement.order_by(JournalEntry.entry_date.desc(), JournalEntry.id.desc())
         return list(self._session.scalars(statement))
+
+    def list_filtered_page(
+        self,
+        company_id: int,
+        query: str | None = None,
+        status_code: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[JournalEntry]:
+        stmt = self._build_filter(company_id, query, status_code)
+        stmt = stmt.offset(max(offset, 0)).limit(max(limit, 1))
+        return list(self._session.scalars(stmt))
+
+    def count_filtered(
+        self,
+        company_id: int,
+        query: str | None = None,
+        status_code: str | None = None,
+    ) -> int:
+        inner = self._build_filter(company_id, query, status_code)
+        count_stmt = select(func.count()).select_from(inner.subquery())
+        return self._session.scalar(count_stmt) or 0
+
+    def _build_filter(
+        self,
+        company_id: int,
+        query: str | None = None,
+        status_code: str | None = None,
+    ):
+        stmt = select(JournalEntry).where(JournalEntry.company_id == company_id)
+        if status_code is not None:
+            stmt = stmt.where(JournalEntry.status_code == status_code)
+        if query:
+            pattern = f"%{query}%"
+            stmt = stmt.where(
+                or_(
+                    JournalEntry.entry_number.ilike(pattern),
+                    JournalEntry.reference.ilike(pattern),
+                    JournalEntry.memo.ilike(pattern),
+                )
+            )
+        return stmt.order_by(JournalEntry.entry_date.desc(), JournalEntry.id.desc())
 
     def list_posted_between(
         self,

@@ -43,7 +43,7 @@ class PickPeriodStep(WizardStep):
             root,
         )
         intro.setWordWrap(True)
-        intro.setStyleSheet("color: #6B5500; font-size: 11px;")
+        intro.setObjectName("WizardWarningText")
         outer.addWidget(intro)
 
         form = QFormLayout()
@@ -53,7 +53,7 @@ class PickPeriodStep(WizardStep):
 
         self._info = QLabel("", root)
         self._info.setWordWrap(True)
-        self._info.setStyleSheet("color: #4E5866; font-size: 11px;")
+        self._info.setObjectName("WizardMutedText")
         outer.addWidget(self._info)
         outer.addStretch(1)
         return root

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
+
 
 @dataclass(frozen=True, slots=True)
 class HelpArticle:
@@ -1405,6 +1407,365 @@ _register(
     <p><b>Recommended setup order:</b> Departments &rarr; Positions &rarr;
     Components &rarr; Rule Sets &rarr; Company Settings &rarr; Employees.
     Once all five are complete, you can create your first payroll run.</p>
+    """,
+)
+
+# ── Payroll Setup — per-tab help ──────────────────────────────────────────
+
+_register(
+    "payroll_setup.company_settings",
+    "Company Settings — Payroll Configuration",
+    "The company-wide defaults that control how payroll runs are created, calculated, and numbered.",
+    """
+    <p>Every payroll calculation relies on a small set of company-wide
+    defaults stored here.  You only set these once — or adjust them when
+    your business circumstances change.</p>
+
+    <p><b>Pay Frequency</b></p>
+    <p>How often employees are paid.  This drives the period start/end
+    dates when you create a payroll run and affects how the system
+    pro-rates partial periods.</p>
+    <ul>
+      <li><b>Monthly</b> — one run covers a calendar month.  The most
+          common choice for salaried staff in Cameroon.</li>
+      <li><b>Bi-Monthly</b> — two runs per month (1st–15th and
+          16th–last day).</li>
+      <li><b>Bi-Weekly / Weekly / Daily</b> — for hourly or casual
+          workforces.</li>
+    </ul>
+    <p><em>Important:</em> Changing pay frequency after runs have been
+    created does not retroactively alter existing runs — only new runs
+    pick up the new setting.</p>
+
+    <p><b>Default Currency</b></p>
+    <p>The currency pre-filled when you create a new compensation profile
+    or component.  Employees can still be paid in a different currency
+    if their own profile overrides it.  For Cameroon operations, this
+    is normally <b>XAF</b>.</p>
+
+    <p><b>Statutory Pack Version</b></p>
+    <p>Identifies which version of the statutory calculation rules
+    (CNPS rates, IRPP brackets, levy rates) was last applied via
+    <em>Apply Statutory Pack</em>.  This is informational — use the
+    <b>Apply statutory pack…</b> toolbar button to actually update
+    the rules to a newer version.</p>
+
+    <p><b>CNPS Regime</b></p>
+    <p>Determines the CNPS (Caisse Nationale de Prévoyance Sociale)
+    contribution table applied during calculation.
+    The two regimes are <b>General</b> and <b>Agricultural</b> —
+    they carry different salary ceilings and rates.  Most urban
+    enterprises use the General regime.</p>
+    <p><em>Example:</em> A general-regime employee earning
+    1&thinsp;200&thinsp;000&nbsp;XAF/month pays CNPS on capped
+    earnings only.  If your company switches from agricultural to
+    general operations, update this field and verify employee CNPS
+    amounts on the next run.</p>
+
+    <p><b>Accident Risk Class</b></p>
+    <p>Sets the default accident-risk premium class (A, B, or C) for
+    employees who do not have a class overridden on their own profile.
+    Class A (Standard) carries the lowest rate; Class B and C reflect
+    higher-risk work environments.  The rate difference affects the
+    employer's CNPS accident-risk line on every payslip.</p>
+
+    <p><b>Overtime Policy Mode</b></p>
+    <p>Controls how the system calculates overtime pay.</p>
+    <ul>
+      <li><b>Standard</b> — overtime is a manual fixed amount entered
+          as a variable input each month.</li>
+      <li><b>Rate-based</b> — overtime is computed from hours × an
+          hourly rate derived from the employee's base salary.</li>
+    </ul>
+
+    <p><b>Benefits in Kind (BIK) Policy</b></p>
+    <p>Determines how non-cash benefits (housing provided by employer,
+    company vehicle, electricity, domestic staff) are valued and
+    included in the taxable-income base.</p>
+    <ul>
+      <li><b>Statutory valuation</b> — the system uses the DGI/CNPS
+          prescribed percentages of gross salary.</li>
+      <li><b>Actual cost</b> — you enter the real cost of each benefit
+          as a variable input.</li>
+    </ul>
+
+    <p><b>Payroll Number Prefix and Padding</b></p>
+    <p>Controls how payroll run reference numbers are formatted, for
+    example <b>PAY-2026-001</b> (prefix = <em>PAY</em>, padding = 3).
+    Choose a prefix that is distinct from your invoice or journal
+    sequences to avoid any confusion in audit trails.</p>
+
+    <p><b>What happens if I do not configure these settings?</b></p>
+    <p>Until settings are saved, the system shows an empty state on
+    this tab and blocks payroll run creation.  Use
+    <em>Configure Settings</em> (or the Activation Wizard for a
+    first-time setup) to complete the configuration before moving to
+    the Employees tab.</p>
+    """,
+)
+
+_register(
+    "payroll_setup.employees",
+    "Employees — Payroll Setup",
+    "Register the people your company pays and organise them by department and position.",
+    """
+    <p>The <b>Employees</b> tab is your central register of everyone on
+    your payroll.  Each record is company-scoped, so employees at one
+    entity do not appear in another company's payroll.</p>
+
+    <p><b>Creating an employee</b></p>
+    <p>Click <em>New Employee</em> to open the employee form.  At a
+    minimum, provide:</p>
+    <ul>
+      <li><b>Full name</b> — as it appears on official documents.</li>
+      <li><b>Employee Number</b> — a unique identifier within the
+          company (e.g. <em>EMP-001</em>).  This appears on payslips
+          and remittance reports.</li>
+      <li><b>Department</b> — the organisational unit the employee
+          belongs to.  Use the <em>Departments…</em> button to create
+          or rename departments before hiring.</li>
+      <li><b>Position</b> — the job title.  Positions can carry a
+          default pay grade so the system pre-fills salary defaults
+          when you create the employee's first compensation profile.
+          Manage positions using the <em>Positions…</em> button.</li>
+      <li><b>Hire date and contract type</b> — permanent, fixed-term,
+          or casual.  Fixed-term employees show a contract end date.</li>
+      <li><b>Currency</b> — the currency the employee is paid in.
+          Defaults to the company setting but can be overridden
+          per-employee (e.g. an expatriate paid in EUR).</li>
+    </ul>
+
+    <p><em>Example 1:</em> You hire Jean-Marie Foko on 03/02/2026 as a
+    permanent Accountant in the Finance department.  Employee number
+    <em>EMP-012</em> is assigned automatically or you type it in.
+    His hire date is recorded so the system can calculate a partial
+    first month correctly if payroll is run mid-month.</p>
+
+    <p><em>Example 2:</em> A casual driver, Thierry Ngo, is engaged
+    for three months.  Contract type = Fixed-term, end date =
+    30/04/2026.  After that date, his status automatically becomes
+    Inactive and he is excluded from future runs unless reactivated.</p>
+
+    <p><b>After creating the employee record</b></p>
+    <p>Double-click the employee (or use <em>Open Hub</em> in the
+    ribbon) to go to the <b>Employee Hub</b>, where you set up their
+    compensation profile — their base salary, the components that
+    apply to them, and their bank account for payment.  An employee
+    with no active compensation profile will be excluded from
+    payroll runs with a validation warning.</p>
+
+    <p><b>Departments and Positions</b></p>
+    <p>These are managed via the dedicated buttons in the toolbar
+    above the employee list.  You can create, rename, and merge
+    departments at any time — the change flows through immediately
+    to reporting and journal cost allocation.  Positions can carry
+    a pay-grade that pre-fills salary; if two positions share the
+    same grade, update the grade in one place and both benefit.</p>
+
+    <p><b>Deactivating an employee</b></p>
+    <p>Deactivation (not deletion) is the correct action when someone
+    leaves.  Their historical payslips are preserved and remain
+    accessible in reports.  They are simply excluded from the
+    employee selector when creating new payroll runs.  You can
+    reactivate them at any time if they return.</p>
+    """,
+)
+
+_register(
+    "payroll_setup.components",
+    "Payroll Components — Payroll Setup",
+    "Define the individual earnings, deductions, and contributions that appear on every payslip.",
+    """
+    <p>A <b>payroll component</b> is one line on a payslip — Base
+    Salary, Housing Allowance, CNPS Employee Share, IRPP Withholding
+    Tax, Transport Allowance, and so on.  You define each component
+    once here, then assign the relevant ones to each employee in their
+    compensation profile.</p>
+
+    <p><b>Component types</b></p>
+    <ul>
+      <li><b>Earning</b> — adds to the employee's gross pay.
+          Examples: Base Salary, Housing Allowance, Transport
+          Allowance, Performance Bonus, Overtime Pay.</li>
+      <li><b>Deduction</b> — reduces take-home pay (net payable).
+          Examples: CNPS Employee Share, IRPP (income tax),
+          Salary Advance Recovery, Health Insurance Premium,
+          Union Dues.</li>
+      <li><b>Employer Contribution</b> — a cost borne by the company
+          but not visible as a deduction on the employee's payslip.
+          Examples: CNPS Employer Share, Accident Risk Premium,
+          FNE Patronale.  These appear on payroll cost reports
+          and are posted to the employer-burden expense account.</li>
+      <li><b>Tax</b> — a dedicated type for income tax (IRPP/PIT)
+          components that drive specific statutory reporting.</li>
+      <li><b>Informational</b> — shown on payslips for reference
+          only; not included in any calculation total.  Useful for
+          communicating figures like "Taxable Income Base" that
+          employees find useful but which are derived, not additive.</li>
+    </ul>
+
+    <p><b>Calculation methods</b></p>
+    <ul>
+      <li><b>Fixed Amount</b> — a flat amount that never changes
+          unless you edit the component or the employee's override.
+          Example: a fixed transport allowance of
+          25&thinsp;000&nbsp;XAF/month.</li>
+      <li><b>Percentage</b> — calculated as a percentage of another
+          component or of gross pay.  Example: an employer health
+          contribution at 1.5% of gross.</li>
+      <li><b>Rule-Based</b> — calculated using a bracket or rate
+          table defined in the <em>Payroll Rules</em> tab.  The CNPS
+          pension and IRPP income tax are both rule-based.</li>
+      <li><b>Manual Input</b> — the amount is entered fresh each
+          month as a variable input (used for overtime pay,
+          one-off bonuses, or ad-hoc advances).</li>
+      <li><b>Hourly</b> — quantity × hourly rate; the hours are
+          supplied as a variable input.</li>
+    </ul>
+
+    <p><em>Example 1:</em> You create a component
+    <em>HOUSING_ALLOW</em> (Housing Allowance), type = Earning,
+    method = Fixed Amount.  You then assign it to every salaried
+    employee with their individual amount.  On every monthly run
+    the system adds their specific amount to gross without any
+    further action from payroll staff.</p>
+
+    <p><em>Example 2:</em> You create <em>IRPP_TAX</em> (IRPP Income
+    Tax), type = Tax, method = Rule-Based, linked to the
+    <em>DGI_IRPP_MAIN</em> rule set.  Each month the system looks
+    up the employee's taxable income, finds the correct IRPP bracket
+    in the rule table, and computes the exact tax automatically.
+    No manual formula needed.</p>
+
+    <p><b>Taxable and Pensionable flags</b></p>
+    <ul>
+      <li><b>Taxable</b> — when checked, the component's amount is
+          included in the taxable-income base used to compute IRPP.
+          Base Salary and most allowances are taxable; reimbursements
+          of professional expenses are typically not.</li>
+      <li><b>Pensionable</b> — when checked, the component's amount
+          is included in the CNPS pension contribution base.  Base
+          Salary is pensionable; most allowances are not.</li>
+    </ul>
+    <p><em>Consequence:</em> Getting these flags wrong has a direct
+    monetary effect.  If Housing Allowance is mistakenly marked as
+    pensionable, every employee will have slightly too much CNPS
+    withheld every month — and the employer will overpay their
+    contribution as well.</p>
+
+    <p><b>Expense Account</b></p>
+    <p>The GL account to which this component's cost is posted when
+    payroll is posted to accounting.  The account must belong to your
+    Chart of Accounts.  Employer contributions use a separate expense
+    account from employee earnings — the system enforces this through
+    the role-mapping configuration.</p>
+
+    <p><b>Deactivating a component</b></p>
+    <p>Deactivation removes the component from the selector when
+    assigning to employees, but does not affect historical payslips
+    or existing employee assignments that are already active.  Those
+    existing assignments must be deactivated separately on each
+    employee's profile if you want to stop the component from
+    appearing on future runs.</p>
+    """,
+)
+
+_register(
+    "payroll_setup.rules",
+    "Payroll Rules — Payroll Setup",
+    "Define the calculation tables and bracket schedules for statutory and rate-based payroll components.",
+    """
+    <p>Some payroll components cannot be calculated with a simple fixed
+    amount or percentage — their value depends on where the employee's
+    income falls within a set of bands.  <b>Payroll Rule Sets</b> hold
+    those calculation tables, and are referenced by rule-based
+    components during every payroll run.</p>
+
+    <p><b>Rule types</b></p>
+    <ul>
+      <li><b>PIT / IRPP</b> — the progressive income-tax brackets
+          defined by the DGI.  Different rates apply to different
+          slices of annual taxable income.</li>
+      <li><b>Pension — Employee / Pension — Employer</b> — CNPS
+          pension contribution rates and the salary ceiling above
+          which no further contribution is due.</li>
+      <li><b>Accident Risk</b> — the CNPS accident-risk premium
+          rate for each risk class (A, B, C).</li>
+      <li><b>Levy</b> — flat-rate levies such as FNE (Fonds National
+          de l'Emploi), CRTV (Redevance Audiovisuelle), or CFC
+          (Crédit Foncier du Cameroun).  Even a "flat" levy may have
+          a bracket table when it varies by salary band.</li>
+      <li><b>BIK</b> — benefit-in-kind valuation rates (e.g. housing
+          benefit expressed as a percentage of gross salary).</li>
+      <li><b>Abattement</b> — professional-expense deduction
+          (abattement forfaitaire) rates used to reduce the taxable
+          base before applying IRPP brackets.</li>
+    </ul>
+
+    <p><b>Effective dates — why they matter</b></p>
+    <p>Every rule set has an <b>Effective From</b> and
+    <b>Effective To</b> date.  When the system calculates payroll for
+    a given period, it selects the rule whose effective window covers
+    the period end date.  This means:</p>
+    <ul>
+      <li>Old rules remain intact for historical recalculations.
+          Recalculating January&nbsp;2025 payroll will use the rule
+          that was active in January&nbsp;2025, not the current one.</li>
+      <li>New statutory rates (e.g. a budget-law change) are applied
+          by creating a <em>new</em> rule version with a future
+          Effective From, without editing or deleting the old one.</li>
+    </ul>
+    <p><em>Example 1 (rate change):</em> The DGI announces that the
+    first IRPP bracket ceiling rises from 2&thinsp;000&thinsp;000 to
+    2&thinsp;500&thinsp;000&nbsp;XAF effective 01/01/2027.  You
+    create a new <em>DGI_IRPP_MAIN</em> rule with
+    Effective&nbsp;From&nbsp;=&nbsp;01/01/2027 and enter the updated
+    brackets.  The 2024 rule stays in place for any January–December
+    2026 payroll run; the new rule fires for January 2027 onwards.
+    No historical payslips are touched.</p>
+
+    <p><b>Brackets</b></p>
+    <p>Click <em>Edit Brackets</em> to open the bracket schedule for
+    a rule set.  Each bracket defines:</p>
+    <ul>
+      <li><b>From / To</b> — the income range this bracket covers
+          (in the component's currency).</li>
+      <li><b>Rate</b> — the percentage applied to the portion of
+          income within this range.</li>
+      <li><b>Fixed Amount</b> — used for flat-rate brackets where a
+          fixed amount applies rather than (or in addition to) a
+          percentage.</li>
+    </ul>
+    <p><em>Example 2 (IRPP brackets):</em> The Cameroon PIT table
+    for a salaried employee might read:</p>
+    <ul>
+      <li>0 – 2&thinsp;000&thinsp;000 XAF/year: 10%</li>
+      <li>2&thinsp;000&thinsp;001 – 3&thinsp;000&thinsp;000: 15%</li>
+      <li>3&thinsp;000&thinsp;001 – 5&thinsp;000&thinsp;000: 25%</li>
+      <li>above 5&thinsp;000&thinsp;000: 35%</li>
+    </ul>
+    <p>An employee earning 3&thinsp;600&thinsp;000&nbsp;XAF per year
+    would pay: 200&thinsp;000 (10% of 2M) + 150&thinsp;000 (15% of
+    1M) + 150&thinsp;000 (25% of 600K) = <b>500&thinsp;000&nbsp;XAF
+    IRPP</b>.  The system computes this automatically from the bracket
+    table every month by annualising the monthly taxable income.</p>
+
+    <p><b>Editing brackets on an active rule</b></p>
+    <p>If you edit the brackets of a currently active rule set
+    (rather than creating a new versioned rule), the change takes
+    effect on the <em>next</em> payroll run immediately — including
+    any runs for the current period that have not yet been calculated.
+    Already-approved runs are unaffected.  For audit-trail integrity,
+    prefer creating a new rule version over editing an existing one
+    for statutory rate changes.</p>
+
+    <p><b>Using "Apply Statutory Pack"</b></p>
+    <p>Rather than entering all the standard Cameroon statutory rules
+    manually, use the <em>Apply statutory pack…</em> button in the
+    toolbar to load or update all the standard rules (CNPS, IRPP,
+    FNE, CRTV, CFC, accident risk) in one step.  The wizard shows
+    you exactly what will be added or updated before any changes
+    are made.</p>
     """,
 )
 
@@ -3890,7 +4251,7 @@ _register(
     "dialog.asset",
     "Asset",
     "Create or edit a fixed asset record.",
-    """
+    f"""
     <p>Use this dialog to register a new fixed asset or edit an existing one.
     Selecting a category pre-fills default depreciation parameters and GL
     accounts, but every field can be overridden per asset.</p>
@@ -4003,7 +4364,7 @@ _register(
     <hr/>
     <p><b>Which method should I choose?</b></p>
     <table cellpadding="4" cellspacing="0" style="border-collapse:collapse;">
-      <tr style="background:#f0f0f0;"><td><b>Situation</b></td><td><b>Recommended method</b></td></tr>
+            <tr style="background:{_P.secondary_surface};"><td><b>Situation</b></td><td><b>Recommended method</b></td></tr>
       <tr><td>Steady, predictable usage</td><td>Straight-Line</td></tr>
       <tr><td>Loses value fastest when new</td><td>Reducing Balance or SYD</td></tr>
       <tr><td>Value depends on how much it's used</td><td>Units of Production</td></tr>

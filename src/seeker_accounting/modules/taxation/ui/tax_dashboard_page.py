@@ -206,7 +206,7 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(6)
         h = QLabel("By tax type", by_type_section)
-        h.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
+        h.setObjectName("DialogSectionTitle")
         v.addWidget(h)
         self._by_type_model, self._by_type_table = self._build_table(by_type_section, self.BY_TYPE_COLUMNS, min_height=140)
         v.addWidget(self._by_type_table)
@@ -219,7 +219,7 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         v2.setContentsMargins(0, 0, 0, 0)
         v2.setSpacing(6)
         h2 = QLabel("Upcoming obligations (top 10)", upcoming_section)
-        h2.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
+        h2.setObjectName("DialogSectionTitle")
         v2.addWidget(h2)
         self._upcoming_model, self._upcoming_table = self._build_table(upcoming_section, self.UPCOMING_COLUMNS, min_height=220)
         v2.addWidget(self._upcoming_table)
@@ -241,7 +241,7 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         v.setSpacing(8)
 
         heading = QLabel(title, section)
-        heading.setStyleSheet("font-size: 14px; font-weight: 600; color: #111827;")
+        heading.setObjectName("DialogSectionTitle")
         v.addWidget(heading)
 
         grid = QGridLayout()
@@ -249,19 +249,16 @@ class TaxDashboardPage(RibbonHostMixin, QWidget):
         grid.setVerticalSpacing(8)
         for idx, (label_text, key) in enumerate(labels):
             tile = QFrame(section)
-            tile.setObjectName("PageCard")
+            tile.setObjectName("MetricTile")
             tile.setProperty("card", True)
-            tile.setStyleSheet(
-                "QFrame { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 6px; }"
-            )
             t = QVBoxLayout(tile)
             t.setContentsMargins(10, 8, 10, 8)
             t.setSpacing(2)
             cap = QLabel(label_text, tile)
-            cap.setStyleSheet("color: #6B7280; font-size: 11px;")
+            cap.setObjectName("MetricCaption")
             t.addWidget(cap)
             value = QLabel(_DASH, tile)
-            value.setStyleSheet("color: #111827; font-size: 18px; font-weight: 600;")
+            value.setObjectName("MetricValue")
             t.addWidget(value)
             store[key] = value
             row = idx // 4

@@ -31,6 +31,7 @@ from seeker_accounting.platform.printing.print_data_protocol import (
     PrintExportResult,
     PrintFormat,
 )
+from seeker_accounting.platform.printing.colors import PRINT_PALETTE as _P
 
 if TYPE_CHECKING:
     from seeker_accounting.modules.companies.services.company_logo_service import CompanyLogoService
@@ -198,7 +199,7 @@ class PurchaseBillPrintService:
         if bill.notes:
             parts.append(build_section_title("Notes"))
             parts.append(
-                f'<p style="font-size:9pt;color:#444;margin:4px 0;">{h(bill.notes)}</p>'
+                f'<p style="font-size:9pt;color:{_P.text_secondary};margin:4px 0;">{h(bill.notes)}</p>'
             )
 
         return wrap_html("".join(parts), page_size=page_size)
@@ -213,16 +214,16 @@ class PurchaseBillPrintService:
 
         left = (
             '<div style="font-size:7pt;text-transform:uppercase;font-weight:700;'
-            'color:#6b7280;letter-spacing:0.5px;margin-bottom:4px;">Supplier</div>'
-            f'<div style="font-weight:700;font-size:11pt;color:#1a1a1a;margin-bottom:2px;">'
+            f'color:{_P.text_muted};letter-spacing:0.5px;margin-bottom:4px;">Supplier</div>'
+            f'<div style="font-weight:700;font-size:11pt;color:{_P.text_primary};margin-bottom:2px;">'
             f'{h(bill.supplier_name)}</div>'
-            f'<div style="font-size:9pt;color:#6b7280;">{h(bill.supplier_code)}</div>'
+            f'<div style="font-size:9pt;color:{_P.text_muted};">{h(bill.supplier_code)}</div>'
         )
         detail_rows = "".join(
             f'<tr>'
-            f'<td style="font-size:7.5pt;color:#6b7280;text-transform:uppercase;'
+            f'<td style="font-size:7.5pt;color:{_P.text_muted};text-transform:uppercase;'
             f'letter-spacing:0.3px;padding:2px 10px 2px 0;white-space:nowrap;width:38%;">{h(k)}</td>'
-            f'<td style="font-size:9pt;font-weight:600;color:#1a1a1a;padding:2px 0;">{h(v)}</td>'
+            f'<td style="font-size:9pt;font-weight:600;color:{_P.text_primary};padding:2px 0;">{h(v)}</td>'
             f'</tr>'
             for k, v in [
                 ("Bill #", bill.bill_number),
@@ -240,7 +241,7 @@ class PurchaseBillPrintService:
             '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;">'
             '<tr>'
             f'<td style="vertical-align:top;width:46%;padding-right:14px;">{left}</td>'
-            '<td style="width:8px;border-left:1px solid #d0d7de;"></td>'
+            f'<td style="width:8px;border-left:1px solid {_P.border_default};"></td>'
             f'<td style="vertical-align:top;width:46%;padding-left:14px;">{right}</td>'
             '</tr>'
             '</table>'

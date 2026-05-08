@@ -1,8 +1,8 @@
-"""Alembic migration: T35/T36/T37 — new columns on tax_returns.
+"""Compatibility shim for T35/T36/T37 tax return columns.
 
-Revision: a14b00000020
-Adds amendment-tracking, credit-brought-forward, and withholding-VAT
-columns to the ``tax_returns`` table.
+Revision ID: a14b00000020
+Revises: a14b00000019
+Create Date: 2026-05-07 00:00:00.000000
 """
 from __future__ import annotations
 
@@ -16,30 +16,32 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # T35: amendment support — plain integer, no FK constraint needed for SQLite
-    op.add_column(
-        "tax_returns",
-        sa.Column("is_amended", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
-    op.add_column(
-        "tax_returns",
-        sa.Column("amends_return_id", sa.Integer(), nullable=True),
-    )
-    # T36: credit carried forward from prior period settlement
-    op.add_column(
-        "tax_returns",
-        sa.Column("credit_brought_forward", sa.Numeric(18, 2), nullable=True),
-    )
-    # T37: withholding VAT deducted at source by the payer
-    op.add_column(
-        "tax_returns",
-        sa.Column("withholding_vat_amount", sa.Numeric(18, 2), nullable=True),
-    )
+    existing_columns = {
+        column["name"] for column in sa.inspect(op.get_bind()).get_columns("tax_returns")
+    }
+    if "is_amended" not in existing_columns:
+        op.add_column(
+            "tax_returns",
+            sa.Column("is_amended", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
+    if "amends_return_id" not in existing_columns:
+        op.add_column(
+            "tax_returns",
+            sa.Column("amends_return_id", sa.Integer(), nullable=True),
+        )
+    if "credit_brought_forward" not in existing_columns:
+        op.add_column(
+            "tax_returns",
+            sa.Column("credit_brought_forward", sa.Numeric(18, 2), nullable=True),
+        )
+    if "withholding_vat_amount" not in existing_columns:
+        op.add_column(
+            "tax_returns",
+            sa.Column("withholding_vat_amount", sa.Numeric(18, 2), nullable=True),
+        )
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("tax_returns") as batch_op:
-        batch_op.drop_column("withholding_vat_amount")
-        batch_op.drop_column("credit_brought_forward")
-        batch_op.drop_column("amends_return_id")
-        batch_op.drop_column("is_amended")
+    # These columns are owned by a14b00000012 in the current migration graph.
+    # This duplicate revision remains as an idempotent compatibility shim.
+    return

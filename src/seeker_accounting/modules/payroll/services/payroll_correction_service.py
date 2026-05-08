@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Callable
 
@@ -28,6 +27,7 @@ from seeker_accounting.modules.payroll.repositories.payroll_component_repository
     PayrollComponentRepository,
 )
 from seeker_accounting.platform.exceptions import NotFoundError, ValidationError
+from seeker_accounting.shared.services.telemetry_service import TelemetryService
 
 CorrectionRepositoryFactory = Callable[[Session], EmployeePayrollCorrectionRepository]
 EmployeeRepositoryFactory = Callable[[Session], EmployeeRepository]
@@ -46,6 +46,7 @@ class PayrollCorrectionService:
         component_repository_factory: ComponentRepositoryFactory,
         permission_service: PermissionService,
         audit_service: AuditService,
+        telemetry_service: TelemetryService | None = None,
     ) -> None:
         self._uow_factory = unit_of_work_factory
         self._app_context = app_context
@@ -54,6 +55,7 @@ class PayrollCorrectionService:
         self._component_repo_factory = component_repository_factory
         self._permission_service = permission_service
         self._audit_service = audit_service
+        self._telemetry = telemetry_service
 
     def list_corrections(
         self, company_id: int, status_code: str | None = None
@@ -62,6 +64,20 @@ class PayrollCorrectionService:
         with self._uow_factory() as uow:
             rows = self._correction_repo_factory(uow.session).list_by_company(
                 company_id, status_code=status_code
+            )
+            return [self._to_dto(row) for row in rows]
+
+    def list_employee_corrections(
+        self,
+        company_id: int,
+        employee_id: int,
+        status_code: str | None = None,
+    ) -> list[EmployeePayrollCorrectionDTO]:
+        """List corrections for a specific employee (used by Employee Hub)."""
+        self._permission_service.require_permission(PAYROLL_CORRECTION_MANAGE)
+        with self._uow_factory() as uow:
+            rows = self._correction_repo_factory(uow.session).list_by_employee(
+                company_id, employee_id, status_code=status_code
             )
             return [self._to_dto(row) for row in rows]
 
@@ -133,6 +149,13 @@ class PayrollCorrectionService:
                 ),
             )
             uow.commit()
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="correction",
+                    step="correction_applied",
+                    event_code="payroll.correction_applied",
+                    context={"company_id": company_id},
+                )
             row = self._correction_repo_factory(uow.session).get_by_id(company_id, correction.id)
             return self._to_dto(row or correction)
 
@@ -149,7 +172,6 @@ class PayrollCorrectionService:
             if correction.status_code != "pending":
                 raise ValidationError("Only pending corrections can be voided.")
             correction.status_code = "voided"
-            correction.applied_at = datetime.now(timezone.utc)
             self._audit_service.record_event_in_session(
                 uow.session,
                 company_id,
@@ -162,6 +184,13 @@ class PayrollCorrectionService:
                 ),
             )
             uow.commit()
+            if self._telemetry is not None:
+                self._telemetry.record_funnel_step(
+                    funnel="correction",
+                    step="correction_voided",
+                    event_code="payroll.correction_voided",
+                    context={"company_id": company_id},
+                )
 
     @staticmethod
     def _validate_period(year: int, month: int) -> None:

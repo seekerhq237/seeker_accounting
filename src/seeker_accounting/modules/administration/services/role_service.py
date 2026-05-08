@@ -5,6 +5,7 @@ permissions to roles.  It does not manage user-to-role assignment (that
 remains in ``UserAuthService``).
 """
 from __future__ import annotations
+import logging
 
 import re
 from typing import TYPE_CHECKING, Callable
@@ -249,4 +250,4 @@ class RoleService:
                 ),
             )
         except Exception:
-            pass  # Audit must not break business operations
+            logging.getLogger(__name__).warning("Audit event failed", exc_info=True)

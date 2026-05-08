@@ -23,6 +23,7 @@ from seeker_accounting.platform.wizards import (
     WizardState,
     WizardStep,
 )
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
 
 _HEADERS = ["Account", "Description", "Debit", "Credit"]
@@ -135,7 +136,7 @@ class LinesStep(WizardStep):
             cr += self._safe_decimal(cr_cell.text() if cr_cell else "")
         diff = dr - cr
         self._totals.setText(f"Debits: {dr:.2f} \u00b7 Credits: {cr:.2f} \u00b7 Diff: {diff:.2f}")
-        self._totals.setStyleSheet("color: #2a7;" if diff == 0 and dr > 0 else "color: #c33;")
+        self._totals.setStyleSheet(text_style("success" if diff == 0 and dr > 0 else "danger"))
 
     def load(self, context: WizardContext, state: WizardState) -> None:
         if not self._accounts:

@@ -38,7 +38,7 @@ class ReviewStep(WizardStep):
         layout.setSpacing(8)
 
         title = QLabel("Summary of changes", root)
-        title.setStyleSheet("font-size: 13px; font-weight: 600; color: #1A2230;")
+        title.setObjectName("WizardBodyTextStrong")
         layout.addWidget(title)
 
         helper = QLabel(
@@ -47,13 +47,11 @@ class ReviewStep(WizardStep):
             root,
         )
         helper.setWordWrap(True)
-        helper.setStyleSheet("color: #4E5866; font-size: 11px;")
+        helper.setObjectName("WizardMutedText")
         layout.addWidget(helper)
 
         card = QFrame(root)
-        card.setStyleSheet(
-            "background: #F4F6FA; border: 1px solid #D4DAE3; border-radius: 2px;"
-        )
+        card.setObjectName("WizardReviewPanel")
         self._summary_layout = QVBoxLayout(card)
         self._summary_layout.setContentsMargins(12, 10, 12, 10)
         self._summary_layout.setSpacing(6)
@@ -81,7 +79,7 @@ class ReviewStep(WizardStep):
                 continue
             row = QLabel(f"\u2022  {preview}", self.widget)
             row.setWordWrap(True)
-            row.setStyleSheet("color: #1A2230; font-size: 12px;")
+            row.setObjectName("WizardBodyText")
             layout.addWidget(row)
             rendered_any = True
 
@@ -101,12 +99,12 @@ class ReviewStep(WizardStep):
 
         if not rendered_any:
             empty = QLabel("Nothing to commit.", self.widget)
-            empty.setStyleSheet("color: #7A8392; font-size: 12px;")
+            empty.setObjectName("WizardMutedText")
             layout.addWidget(empty)
 
     def _info_line(self, text: str) -> QLabel:
         label = QLabel(text, self.widget)
-        label.setStyleSheet("color: #4E5866; font-size: 11px;")
+        label.setObjectName("WizardMutedText")
         return label
 
     def _gather_sibling_steps(self, context: WizardContext, state: WizardState):

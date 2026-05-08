@@ -26,17 +26,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
+
 
 # ── Brand constants ─────────────────────────────────────────────────────
-_BG_COLOR = QColor("#F7F8FC")
-_TITLEBAR_BG = QColor("#E6EAF2")
-_BADGE_BLUE = QColor("#2F66E8")
-_BADGE_GLOW = QColor("#5A86F2")
-_TEXT_COLOR = QColor("#182230")
-_TEXT_SECONDARY = QColor("#526071")
-_TEXT_MUTED = QColor("#7A8797")
-_STATUS_COLOR = QColor("#8E99A8")
-_WHITE = QColor("#FFFFFF")
+_BG_COLOR = QColor(_P.app_background)
+_TITLEBAR_BG = QColor(_P.sidebar_surface)
+_BADGE_BLUE = QColor(_P.accent)
+_BADGE_GLOW = QColor(_P.accent_hover)
+_TEXT_COLOR = QColor(_P.text_primary)
+_TEXT_SECONDARY = QColor(_P.text_secondary)
+_TEXT_MUTED = QColor(_P.text_muted)
+_STATUS_COLOR = QColor(_P.text_muted)
+_WHITE = QColor(_P.workspace_surface)
 
 _SPLASH_W = 1020
 _SPLASH_H = 613
@@ -441,11 +443,11 @@ class AnimatedSplashScreen(QWidget):
         btn.setStyleSheet(
             f"QPushButton {{"
             f"  background-color: {_BADGE_BLUE.name()};"
-            f"  color: white; border: none; border-radius: 11px;"
+            f"  color: {_P.accent_text}; border: none; border-radius: 11px;"
             f"  font-size: 14px; font-weight: 600; font-family: 'Segoe UI';"
             f"}}"
-            f"QPushButton:hover {{ background-color: #2558CC; }}"
-            f"QPushButton:pressed {{ background-color: #1E4BB5; }}"
+            f"QPushButton:hover {{ background-color: {_P.accent_hover}; }}"
+            f"QPushButton:pressed {{ background-color: {_P.accent_hover}; }}"
         )
         btn.move(int((_SPLASH_W - 240) / 2), _TITLEBAR_H + int(_CTA_Y - 23))
         btn.clicked.connect(self.login_requested.emit)

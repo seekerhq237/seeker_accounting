@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from seeker_accounting.modules.payroll.models.employee_compensation_profile import (
@@ -75,15 +75,15 @@ class CompensationProfileRepository:
                 EmployeeCompensationProfile.employee_id == employee_id,
                 EmployeeCompensationProfile.is_active == True,  # noqa: E712
                 EmployeeCompensationProfile.effective_from <= period_date,
+                or_(
+                    EmployeeCompensationProfile.effective_to.is_(None),
+                    EmployeeCompensationProfile.effective_to >= period_date,
+                ),
             )
             .order_by(EmployeeCompensationProfile.effective_from.desc())
+            .limit(1)
         )
-        # Filter out profiles whose effective_to has passed
-        profiles = list(self._session.scalars(stmt).all())
-        for profile in profiles:
-            if profile.effective_to is None or profile.effective_to >= period_date:
-                return profile
-        return None
+        return self._session.scalar(stmt)
 
     def map_active_for_period(
         self,

@@ -794,6 +794,7 @@ class RibbonRegistry:
             print_label="Print / Export",
             print_tooltip="Print or export the selected bill",
         )
+        self._append_purchase_bill_match_action()
         self._register_document_register(
             surface_key="purchase_orders",
             prefix="purchase_orders",
@@ -1679,20 +1680,27 @@ class RibbonRegistry:
                         icon_name="plus",
                         tooltip="Assign a recurring payroll component",
                     ),
+                    RibbonButtonDef(
+                        command_id="payroll_employee_hub.queue_correction",
+                        label="Queue Correction",
+                        icon_name="alert_circle",
+                        tooltip="Queue an additive payroll correction for this employee",
+                        default_enabled=False,
+                    ),
                     RibbonDividerDef(key="after_actions"),
                     RibbonButtonDef(
                         command_id="payroll_employee_hub.deactivate",
-                        label="Deactivate",
+                        label="Terminate",
                         icon_name="user_x",
-                        tooltip="Deactivate this employee",
+                        tooltip="Terminate this employee via the termination wizard",
                         variant="danger",
                         default_enabled=False,
                     ),
                     RibbonButtonDef(
                         command_id="payroll_employee_hub.reactivate",
-                        label="Reactivate",
+                        label="Rehire",
                         icon_name="check",
-                        tooltip="Reactivate this employee",
+                        tooltip="Rehire this employee via the rehire wizard",
                         default_enabled=False,
                     ),
                     RibbonDividerDef(key="before_utility"),
@@ -2256,6 +2264,34 @@ class RibbonRegistry:
         self._surfaces[surface_key] = RibbonSurfaceDef(
             surface_key=surface.surface_key,
             items=tuple(surface.items) + tuple(extra),
+        )
+
+    def _append_purchase_bill_match_action(self) -> None:
+        surface = self._surfaces.get("purchase_bills")
+        if surface is None:
+            return
+        items = list(surface.items)
+        insert_index = next(
+            (
+                index + 1
+                for index, item in enumerate(items)
+                if isinstance(item, RibbonButtonDef) and item.command_id == "purchase_bills.post"
+            ),
+            len(items),
+        )
+        items.insert(
+            insert_index,
+            RibbonButtonDef(
+                command_id="purchase_bills.match_grn",
+                label="Match GRNs",
+                icon_name="list_checks",
+                tooltip="Match the selected posted bill to goods receipt lines",
+                default_enabled=False,
+            ),
+        )
+        self._surfaces["purchase_bills"] = RibbonSurfaceDef(
+            surface_key=surface.surface_key,
+            items=tuple(items),
         )
 
     def _register_document_register(

@@ -36,24 +36,28 @@ SEMANTIC_STATUS_MAP: Final[dict[str, str]] = {
     "filed": "success", "paid": "success", "approved": "success",
     "settled": "success", "reconciled": "success", "ready": "success",
     "success": "success", "done": "success", "ok": "success",
+    "cleared": "success", "matched": "success", "accepted": "success",
     # accent family (in-progress / draft-ish)
     "draft": "accent", "pending": "accent", "open": "accent",
     "in_progress": "accent", "processing": "accent", "new": "accent",
-    "submitted": "accent", "awaiting_approval": "accent",
+    "submitted": "accent", "submitted_for_review": "accent",
+    "awaiting_approval": "accent", "awaiting_review": "accent",
     # info family
     "info": "info", "scheduled": "info", "planned": "info",
-    "fully_depreciated": "info",
+    "fully_depreciated": "info", "calculated": "info", "settling": "info",
     # warning family
     "on_hold": "warning", "hold": "warning", "overdue": "warning",
     "due": "warning", "warning": "warning", "partial": "warning",
     "partially_paid": "warning", "partially_allocated": "warning",
-    "unreconciled": "warning", "low_stock": "warning",
+    "unreconciled": "warning", "low_stock": "warning", "unmatched": "warning",
+    "needs_review": "warning", "late": "warning", "unpaid": "warning",
     # success family (continued)
     "in_stock": "success",
     # danger family
     "cancelled": "danger", "canceled": "danger", "rejected": "danger",
     "failed": "danger", "error": "danger", "closed": "danger",
     "locked": "danger", "voided": "danger", "void": "danger",
+    "blocked": "danger", "invalid": "danger", "expired": "danger",
     # neutral family
     "inactive": "neutral", "archived": "neutral", "disposed": "neutral", "n_a": "neutral",
     "unknown": "neutral", "none": "neutral",

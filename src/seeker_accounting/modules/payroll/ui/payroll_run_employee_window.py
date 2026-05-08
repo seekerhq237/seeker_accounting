@@ -32,6 +32,7 @@ from seeker_accounting.modules.payroll.dto.payroll_calculation_dto import (
 from seeker_accounting.platform.exceptions import AppError
 from seeker_accounting.shared.ui.icon_provider import IconProvider
 from seeker_accounting.shared.ui.message_boxes import show_error
+from seeker_accounting.shared.ui.styles.inline_styles import text_style
 from seeker_accounting.shared.ui.table_helpers import configure_compact_table
 
 
@@ -112,7 +113,7 @@ class PayrollRunEmployeeWindow(ChildWindowBase):
             col = QVBoxLayout()
             col.setSpacing(2)
             title = QLabel(key)
-            title.setStyleSheet("font-size: 10px; color: #666;")
+            title.setStyleSheet(text_style("secondary", font_size="10px"))
             val = QLabel("—")
             val.setStyleSheet("font-weight: 600; font-size: 12px;")
             val.setAlignment(Qt.AlignmentFlag.AlignRight)

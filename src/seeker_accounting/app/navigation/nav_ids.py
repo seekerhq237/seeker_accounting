@@ -52,6 +52,8 @@ PAYROLL_SETUP: Final = "payroll_setup"
 PAYROLL_CALCULATION: Final = "payroll_calculation"
 PAYROLL_ACCOUNTING: Final = "payroll_accounting"
 PAYROLL_OPERATIONS: Final = "payroll_operations"
+PAYROLL: Final = "payroll"  # P2.S8 — unified workbench entry
+PAYROLL_WORKBENCH: Final = "payroll_workbench"  # Feature-flagged workbench nav entry
 REPORTS: Final = "reports"
 PROJECT_VARIANCE_ANALYSIS: Final = "project_variance_analysis"
 CONTRACT_SUMMARY: Final = "contract_summary"
@@ -121,6 +123,8 @@ ALL_NAV_IDS: Final[tuple[str, ...]] = (
     PAYROLL_CALCULATION,
     PAYROLL_ACCOUNTING,
     PAYROLL_OPERATIONS,
+    PAYROLL,
+    PAYROLL_WORKBENCH,
     REPORTS,
     PROJECT_VARIANCE_ANALYSIS,
     CONTRACT_SUMMARY,

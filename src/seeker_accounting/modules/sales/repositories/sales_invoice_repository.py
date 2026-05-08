@@ -32,6 +32,20 @@ class SalesInvoiceRepository:
         )
         return list(self._session.scalars(statement))
 
+    def list_posted_for_customer(self, company_id: int, customer_id: int) -> list[SalesInvoice]:
+        """Return all posted invoices for a specific customer. Used for open-item allocation."""
+        statement = (
+            select(SalesInvoice)
+            .where(
+                SalesInvoice.company_id == company_id,
+                SalesInvoice.customer_id == customer_id,
+                SalesInvoice.status_code == "posted",
+            )
+            .options(selectinload(SalesInvoice.customer))
+            .order_by(SalesInvoice.invoice_date.desc(), SalesInvoice.id.desc())
+        )
+        return list(self._session.scalars(statement))
+
     # ------------------------------------------------------------------
     # Paginated + searchable listing (server-side)
     # ------------------------------------------------------------------

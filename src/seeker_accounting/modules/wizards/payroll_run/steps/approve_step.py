@@ -37,7 +37,7 @@ class ApproveStep(WizardStep):
 
         self._summary = QLabel("", root)
         self._summary.setWordWrap(True)
-        self._summary.setStyleSheet("color: #2E3848; font-size: 12px;")
+        self._summary.setObjectName("WizardBodyText")
         outer.addWidget(self._summary)
 
         warning = QLabel(
@@ -46,7 +46,7 @@ class ApproveStep(WizardStep):
             root,
         )
         warning.setWordWrap(True)
-        warning.setStyleSheet("color: #6B5500; font-size: 11px;")
+        warning.setObjectName("WizardWarningText")
         outer.addWidget(warning)
 
         self._confirm = QCheckBox("I confirm the run is correct and approve it.", root)

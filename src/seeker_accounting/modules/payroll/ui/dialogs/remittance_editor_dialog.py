@@ -65,6 +65,7 @@ from seeker_accounting.platform.exceptions import (
     ValidationError,
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 
 _log = logging.getLogger(__name__)
@@ -346,11 +347,11 @@ class RemittanceEditorDialog(BaseDialog):
             return
         days_left = (deadline - date.today()).days
         if days_left < 0:
-            color, suffix = "#b00020", f"overdue by {-days_left} day(s)"
+            color, suffix = _P.danger, f"overdue by {-days_left} day(s)"
         elif days_left <= 7:
-            color, suffix = "#a05a00", f"due in {days_left} day(s)"
+            color, suffix = _P.warning, f"due in {days_left} day(s)"
         else:
-            color, suffix = "#1f7a3a", f"due in {days_left} day(s)"
+            color, suffix = _P.success, f"due in {days_left} day(s)"
         self._deadline_label.setText(
             f"<b>Filing deadline:</b> {deadline.isoformat()} "
             f"<span style='color:{color}'>({suffix})</span>"
@@ -412,7 +413,7 @@ class RemittanceEditorDialog(BaseDialog):
 
     def _show_warnings(self, html: str) -> None:
         self._warnings_label.setText(
-            f"<span style='color:#a05a00'>{html}</span>"
+            f"<span style='color:{_P.status_warning_fg}'>{html}</span>"
         )
         self._warnings_label.show()
 

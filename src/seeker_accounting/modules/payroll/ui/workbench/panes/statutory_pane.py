@@ -32,6 +32,7 @@ from seeker_accounting.modules.payroll.dto.payroll_remittance_dto import (
     PayrollRemittanceBatchListItemDTO,
 )
 from seeker_accounting.shared.ui.components import DataTable, DataTableColumn, StatusChip
+from seeker_accounting.shared.ui.keyboard_shortcuts import install_shortcut, shortcut_map
 from seeker_accounting.shared.ui.styles.tokens import DEFAULT_TOKENS
 
 logger = logging.getLogger(__name__)
@@ -234,6 +235,11 @@ class _RemittanceTableModel(QAbstractTableModel):
             return self._HEADERS[section]
         return None
 
+    def row_dto(self, row_index: int) -> PayrollRemittanceBatchListItemDTO | None:
+        if 0 <= row_index < len(self._rows):
+            return self._rows[row_index]
+        return None
+
 
 class _RemittancesTab(QWidget):
     def __init__(self, sr: ServiceRegistry, parent: QWidget | None = None) -> None:
@@ -253,12 +259,21 @@ class _RemittancesTab(QWidget):
         self._count_label.setObjectName("WorkbenchPaneCountLabel")
         tb.addWidget(self._count_label)
         tb.addStretch(1)
+        self._open_btn = QPushButton("Open", toolbar)
+        self._open_btn.setObjectName("RemittanceTabOpenBtn")
+        self._open_btn.setProperty("variant", "primary")
+        self._open_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self._open_btn.clicked.connect(self._on_open_remittance)
+        tb.addWidget(self._open_btn)
         refresh_btn = QPushButton("Refresh", toolbar)
         refresh_btn.setProperty("variant", "ghost")
         refresh_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         refresh_btn.clicked.connect(self.refresh)
         tb.addWidget(refresh_btn)
         layout.addWidget(toolbar)
+
+        _sc = shortcut_map("payroll.statutory")
+        install_shortcut(self, _sc["open_remittance"], self._on_open_remittance)
 
         cols = [
             DataTableColumn(key="batch_no", title="Batch No.", width=120),
@@ -307,6 +322,33 @@ class _RemittancesTab(QWidget):
             return getattr(c, "id", None) if c else None
         except Exception:
             return None
+
+    def _on_open_remittance(self) -> None:
+        company_id = self._active_company_id()
+        if company_id is None:
+            return
+        ctx = getattr(self._sr, "company_context_service", None)
+        company_name = ""
+        if ctx is not None:
+            try:
+                c = ctx.get_active_company()
+                company_name = getattr(c, "name", "") or ""
+            except Exception:
+                pass
+        try:
+            from seeker_accounting.modules.payroll.ui.dialogs.remittance_editor_dialog import (
+                RemittanceEditorDialog,
+            )
+            dlg = RemittanceEditorDialog(
+                service_registry=self._sr,
+                company_id=company_id,
+                company_name=company_name,
+                parent=self,
+            )
+            dlg.exec()
+            self.refresh()
+        except Exception:
+            logger.warning("RemittanceEditorDialog failed", exc_info=True)
 
 
 # ── Simple text model ─────────────────────────────────────────────────────────

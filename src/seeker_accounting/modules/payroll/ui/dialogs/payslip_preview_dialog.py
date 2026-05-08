@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
 )
 
 from seeker_accounting.app.dependency.service_registry import ServiceRegistry
+from seeker_accounting.shared.ui.styles.inline_styles import solid_button_style
+from seeker_accounting.shared.ui.styles.palette import LIGHT_PALETTE as _P
 
 _log = logging.getLogger(__name__)
 
@@ -72,7 +74,9 @@ class PayslipPreviewDialog(QDialog):
         # ── Action bar ─────────────────────────────────────────────────────────────────────────────
         btn_bar = QFrame(self)
         btn_bar.setFrameShape(QFrame.Shape.NoFrame)
-        btn_bar.setStyleSheet("background: #F3F5F7; border-top: 1px solid #D6E0EA;")
+        btn_bar.setStyleSheet(
+            f"background: {_P.secondary_surface}; border-top: 1px solid {_P.border_default};"
+        )
         btn_row = QHBoxLayout(btn_bar)
         btn_row.setContentsMargins(14, 8, 14, 8)
         btn_row.setSpacing(8)
@@ -81,12 +85,7 @@ class PayslipPreviewDialog(QDialog):
         export_btn = QPushButton("Export…")
         export_btn.setObjectName("PrimaryButton")
         export_btn.setMinimumWidth(100)
-        export_btn.setStyleSheet(
-            "QPushButton { background: #2F4F6F; color: #ffffff; border: 1px solid #2F4F6F; "
-            "border-radius: 4px; padding: 5px 16px; font-weight: 600; }"
-            "QPushButton:hover { background: #1E3A5F; border-color: #1E3A5F; }"
-            "QPushButton:pressed { background: #1A3356; }"
-        )
+        export_btn.setStyleSheet(solid_button_style("accent"))
         export_btn.clicked.connect(self._on_export)
         btn_row.addWidget(export_btn)
 
@@ -136,7 +135,7 @@ class PayslipPreviewDialog(QDialog):
     def _show_error(self, message: str) -> None:
         if self._view is not None:
             self._view.setHtml(
-                "<body style='font-family:Segoe UI;padding:24px;color:#c0392b'>"
+                f"<body style='font-family:Segoe UI;padding:24px;color:{_P.status_danger_fg}'>"
                 f"<b>Error</b><p>{message}</p></body>",
                 "about:blank",
             )
@@ -217,6 +216,6 @@ class PayslipPreviewDialog(QDialog):
                 else:
                     import subprocess
                     cmd = "open" if sys.platform == "darwin" else "xdg-open"
-                    subprocess.call([cmd, output_path])
+                    subprocess.Popen([cmd, output_path])  # noqa: S603, S607
             except Exception:
-                pass
+                _log.warning("Could not open generated file '%s' in OS viewer", output_path, exc_info=True)

@@ -47,7 +47,7 @@ class ChartOfAccountsStep(WizardStep):
             root,
         )
         helper.setWordWrap(True)
-        helper.setStyleSheet("color: #4E5866; font-size: 11px;")
+        helper.setObjectName("WizardMutedText")
         layout.addWidget(helper)
         layout.addStretch(1)
         return root

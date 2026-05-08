@@ -1,9 +1,39 @@
 repos:
   - repo: local
     hooks:
+      - id: python-compileall
+        name: Python compile smoke
+        entry: python -m compileall -f -q src tests
+        language: system
+        files: ^(src|tests)/.*\.py$
+        pass_filenames: false
+      - id: service-registry-import
+        name: Service registry import smoke
+        entry: python -c "import seeker_accounting.app.dependency.service_registry; import seeker_accounting.app.dependency.factories"
+        language: system
+        files: ^src/seeker_accounting/(app/dependency|modules)/.*\.py$
+        pass_filenames: false
+      - id: alembic-check
+        name: Alembic metadata drift check
+        entry: alembic check
+        language: system
+        files: ^src/seeker_accounting/(db|modules/.*/models)/.*\.py$
+        pass_filenames: false
+      - id: layout-resize-literals
+        name: UI layout resize literal guard
+        entry: pytest -q tests/test_p12_p13_p14_foundations.py::test_layout_resize_literals_are_centralized
+        language: system
+        files: ^(src/seeker_accounting/.*ui.*\.py|tests/test_p12_p13_p14_foundations\.py)$
+        pass_filenames: false
       - id: payroll-terminology
         name: Payroll terminology glossary
         entry: python scripts/check_payroll_terminology.py
         language: system
         files: ^src/seeker_accounting/modules/payroll/.*\.py$
+        pass_filenames: false
+      - id: payroll-ui-ast
+        name: Payroll UI AST lint guards (P1.S8)
+        entry: python scripts/payroll_lint_ast.py
+        language: system
+        files: ^src/seeker_accounting/modules/payroll/ui/.*\.py$
         pass_filenames: false

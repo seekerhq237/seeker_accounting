@@ -40,6 +40,7 @@ from seeker_accounting.shared.ui.accessibility import describe_button, set_acces
 from seeker_accounting.shared.ui.coach_marks import install_coach_mark
 from seeker_accounting.shared.ui.empty_states import build_empty_state
 from seeker_accounting.shared.ui.keyboard_shortcuts import install_shortcut, shortcut_map
+from seeker_accounting.shared.ui.styles.palette import DARK_PALETTE, LIGHT_PALETTE
 
 _log = logging.getLogger(__name__)
 
@@ -860,8 +861,20 @@ class DashboardPage(QWidget):
 # Aging bar widget
 # ======================================================================
 
-_AGING_COLORS_LIGHT = ["#2363EA", "#3B82F6", "#F59E0B", "#F97316", "#EF4444"]
-_AGING_COLORS_DARK = ["#4D84F1", "#60A5FA", "#F6C453", "#FB923C", "#F87171"]
+_AGING_COLORS_LIGHT = [
+    LIGHT_PALETTE.accent,
+    LIGHT_PALETTE.info,
+    LIGHT_PALETTE.warning,
+    LIGHT_PALETTE.status_warning_fg,
+    LIGHT_PALETTE.danger,
+]
+_AGING_COLORS_DARK = [
+    DARK_PALETTE.accent,
+    DARK_PALETTE.info,
+    DARK_PALETTE.warning,
+    DARK_PALETTE.status_warning_fg,
+    DARK_PALETTE.danger,
+]
 
 
 class AgingBar(QWidget):
@@ -890,7 +903,7 @@ class AgingBar(QWidget):
         if self._total <= 0:
             painter.setPen(Qt.PenStyle.NoPen)
             is_dark = self.palette().window().color().lightness() < 128
-            bg = QColor("#273247") if is_dark else QColor("#D9E2EC")
+            bg = QColor(DARK_PALETTE.secondary_surface if is_dark else LIGHT_PALETTE.secondary_surface)
             painter.setBrush(QBrush(bg))
             painter.drawRoundedRect(0, 0, w, h, radius, radius)
             painter.end()
@@ -937,14 +950,14 @@ class AgingBar(QWidget):
 # Cash inflow / outflow trend chart
 # ======================================================================
 
-_TREND_INFLOW_LIGHT = "#10B981"
-_TREND_OUTFLOW_LIGHT = "#F59E0B"
-_TREND_INFLOW_DARK = "#34D399"
-_TREND_OUTFLOW_DARK = "#FBBF24"
-_TREND_GRID_LIGHT = "#E5E7EB"
-_TREND_GRID_DARK = "#273247"
-_TREND_AXIS_LIGHT = "#6B7280"
-_TREND_AXIS_DARK = "#9CA3AF"
+_TREND_INFLOW_LIGHT = LIGHT_PALETTE.success
+_TREND_OUTFLOW_LIGHT = LIGHT_PALETTE.warning
+_TREND_INFLOW_DARK = DARK_PALETTE.success
+_TREND_OUTFLOW_DARK = DARK_PALETTE.warning
+_TREND_GRID_LIGHT = LIGHT_PALETTE.divider_subtle
+_TREND_GRID_DARK = DARK_PALETTE.divider_subtle
+_TREND_AXIS_LIGHT = LIGHT_PALETTE.text_secondary
+_TREND_AXIS_DARK = DARK_PALETTE.text_secondary
 
 
 class TrendChart(QWidget):
