@@ -6,7 +6,7 @@ import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDateEdit,
     QDialog,
@@ -36,6 +36,10 @@ _log = logging.getLogger(__name__)
 
 
 class SalesInvoiceDialog(QDialog):
+    # Emitted whenever draft content changes — the ambient overlay listens
+    # to this signal while the dialog is open to keep its context fresh.
+    ambient_context_changed = Signal()
+
     def __init__(
         self,
         service_registry: ServiceRegistry,
@@ -399,6 +403,22 @@ class SalesInvoiceDialog(QDialog):
     def _on_data_changed(self, *_args: object) -> None:
         self._update_totals()
         self._refresh_identity()
+        self.ambient_context_changed.emit()
+
+    def get_ambient_context(self) -> dict[str, object]:
+        """Implement the ambient page contract so the overlay gets draft state."""
+        lines: list = []
+        if hasattr(self, "_lines_grid"):
+            try:
+                lines = self._lines_grid.get_line_commands()
+            except Exception:
+                pass
+        has_missing_tax = any(
+            getattr(ln, "tax_code_id", None) is None for ln in lines
+        )
+        return {
+            "has_line_without_tax": has_missing_tax,
+        }
 
     def _on_customer_changed(self, customer_id: object) -> None:
         """T37: show/hide withheld VAT row based on customer flag."""

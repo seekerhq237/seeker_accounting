@@ -766,6 +766,18 @@ class PayrollRunCockpit(QWidget):
     def run_id(self) -> int:
         return self._run_id
 
+    def get_ambient_context(self) -> dict[str, object]:
+        """Expose current run state for the ambient thought overlay."""
+        run = self._run
+        if run is None:
+            return {}
+        return {
+            "run_id": self._run_id,
+            "run_status": getattr(run, "status_code", None),
+            "run_period_label": getattr(run, "period_label", None),
+            "run_currency": getattr(run, "currency_code", None),
+        }
+
     def refresh(self) -> None:
         """Re-load run + employees from the service layer."""
         company_id = self._company_id

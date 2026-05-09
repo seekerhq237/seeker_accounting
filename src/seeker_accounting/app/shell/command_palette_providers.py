@@ -258,6 +258,31 @@ class ActionsProvider:
         _add_global("Toggle Theme", "Switch between light and dark theme",
                      sr.theme_manager.toggle_theme, ["dark mode", "light mode", "theme"])
 
+        # ── Ambient Intelligence controls ──
+        def _toggle_ambient() -> None:
+            prefs = getattr(sr, "ambient_thought_preferences_service", None)
+            if prefs is not None:
+                prefs.toggle_enabled()
+
+        _add_global(
+            "Toggle Ambient Thoughts",
+            "Turn the ambient guidance overlay on or off",
+            _toggle_ambient,
+            ["ambient", "thoughts", "guidance", "tips", "assistant"],
+        )
+
+        def _snooze_ambient_hour() -> None:
+            prefs = getattr(sr, "ambient_thought_preferences_service", None)
+            if prefs is not None:
+                prefs.snooze_for(60)
+
+        _add_global(
+            "Snooze Ambient Thoughts (1 hour)",
+            "Hide ambient thoughts for the next hour",
+            _snooze_ambient_hour,
+            ["ambient", "snooze", "mute", "quiet"],
+        )
+
         def _open_company_setup_wizard() -> None:
             from seeker_accounting.modules.wizards.company_setup import (
                 launch_company_setup_wizard,

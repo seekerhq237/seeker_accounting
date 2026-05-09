@@ -6,7 +6,7 @@ import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDateEdit,
     QDialog,
@@ -36,6 +36,10 @@ _log = logging.getLogger(__name__)
 
 
 class PurchaseBillDialog(QDialog):
+    # Emitted whenever draft content changes — the ambient overlay listens
+    # to this signal while the dialog is open to keep its context fresh.
+    ambient_context_changed = Signal()
+
     def __init__(
         self,
         service_registry: ServiceRegistry,
@@ -372,6 +376,40 @@ class PurchaseBillDialog(QDialog):
     def _on_data_changed(self, *_args: object) -> None:
         self._update_totals()
         self._refresh_identity()
+        self.ambient_context_changed.emit()
+
+    def get_ambient_context(self) -> dict[str, object]:
+        """Implement the ambient page contract so the overlay gets draft state."""
+        lines: list = []
+        if hasattr(self, "_lines_grid"):
+            try:
+                lines = self._lines_grid.get_line_commands()
+            except Exception:
+                pass
+        has_missing_tax = any(
+            getattr(ln, "tax_code_id", None) is None for ln in lines
+        )
+
+        # Check if the selected supplier has a tax identifier (NIU / VAT reg).
+        supplier_tax_incomplete = False
+        supplier_id = None
+        if hasattr(self, "_supplier_combo"):
+            supplier_id = self._supplier_combo.current_value()
+        if isinstance(supplier_id, int):
+            try:
+                supplier = self._service_registry.supplier_service.get_supplier(
+                    self._company_id, supplier_id
+                )
+                supplier_tax_incomplete = not bool(
+                    getattr(supplier, "tax_identifier", None)
+                )
+            except Exception:
+                pass
+
+        return {
+            "has_line_without_tax": has_missing_tax,
+            "supplier_tax_details_incomplete": supplier_tax_incomplete,
+        }
 
     def _on_currency_changed(self, _value: object) -> None:
         current_currency = self._currency_combo.current_value()

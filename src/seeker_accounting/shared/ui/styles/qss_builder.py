@@ -2136,30 +2136,17 @@ QScrollBar::sub-page:vertical {{
 QMenu {{
     background: {palette.workspace_surface};
     border: 1px solid {palette.border_default};
-    border-radius: {radius.medium}px;
-    padding: 4px 0;
+    padding: 6px;
 }}
 
 QMenu::item {{
-    padding: 6px 16px;
-    color: {palette.text_primary};
-    background: transparent;
+    padding: 8px 12px;
     border-radius: {radius.small}px;
 }}
 
 QMenu::item:selected {{
     background: {palette.accent_soft};
     color: {palette.accent};
-}}
-
-QMenu::item:disabled {{
-    color: {palette.text_muted};
-}}
-
-QMenu::separator {{
-    height: 1px;
-    background: {palette.border_default};
-    margin: 4px 0;
 }}
 
 QToolTip {{

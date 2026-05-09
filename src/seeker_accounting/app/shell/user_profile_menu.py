@@ -125,6 +125,20 @@ class UserProfileMenu(QFrame):
         root.addWidget(theme_row)
         root.addWidget(self._separator())
 
+        # ── Ambient thoughts toggle ──────────────────────────────────
+        ambient_row = QWidget(self)
+        ambient_row.setObjectName("ProfileMenuActions")
+        ar = QVBoxLayout(ambient_row)
+        ar.setContentsMargins(8, 6, 8, 6)
+        ar.setSpacing(2)
+
+        self._ambient_btn = self._action_button("Ambient Thoughts: On", ambient_row)
+        self._ambient_btn.clicked.connect(self._on_toggle_ambient_thoughts)
+        ar.addWidget(self._ambient_btn)
+
+        root.addWidget(ambient_row)
+        root.addWidget(self._separator())
+
         # ── Logout ────────────────────────────────────────────────────
         logout_section = QWidget(self)
         logout_section.setObjectName("ProfileMenuActions")
@@ -145,6 +159,7 @@ class UserProfileMenu(QFrame):
         """Load current user data and show the menu below *anchor*."""
         self._load_user_info()
         self._sync_theme_label()
+        self._sync_ambient_label()
 
         global_pos = anchor.mapToGlobal(anchor.rect().bottomRight())
         self.move(global_pos.x() - self.width(), global_pos.y() + 4)
@@ -208,6 +223,19 @@ class UserProfileMenu(QFrame):
         target = "Light" if current == "dark" else "Dark"
         self._theme_btn.setText(f"Switch to {target}")
 
+    def _sync_ambient_label(self) -> None:
+        prefs = getattr(
+            self._service_registry, "ambient_thought_preferences_service", None
+        )
+        if prefs is None:
+            self._ambient_btn.setText("Ambient Thoughts: On")
+            self._ambient_btn.setEnabled(False)
+            return
+        self._ambient_btn.setEnabled(True)
+        self._ambient_btn.setText(
+            "Ambient Thoughts: On" if prefs.is_enabled() else "Ambient Thoughts: Off"
+        )
+
     # ── Signal forwarders ─────────────────────────────────────────────
 
     def _on_edit_profile(self) -> None:
@@ -221,6 +249,15 @@ class UserProfileMenu(QFrame):
     def _on_toggle_theme(self) -> None:
         self.close()
         self.toggle_theme_requested.emit()
+
+    def _on_toggle_ambient_thoughts(self) -> None:
+        prefs = getattr(
+            self._service_registry, "ambient_thought_preferences_service", None
+        )
+        if prefs is None:
+            return
+        prefs.toggle_enabled()
+        self._sync_ambient_label()
 
     def _on_open_license(self) -> None:
         self.close()

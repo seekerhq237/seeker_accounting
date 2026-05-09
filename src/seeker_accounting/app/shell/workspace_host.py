@@ -120,6 +120,7 @@ class WorkspaceHost(QFrame):
         self._page_models: dict[str, PlaceholderPageModel] = {}
         self._materialized_pages: set[str] = set()
         self._last_navigation_context_by_nav_id: dict[str, dict[str, Any]] = {}
+        self._ambient_overlay = None  # type: ignore[var-annotated]
 
         self.setObjectName("WorkspaceFrame")
 
@@ -143,6 +144,52 @@ class WorkspaceHost(QFrame):
         self._navigation_service.navigation_changed.connect(self._set_current_page)
         self._navigation_service.navigation_context_changed.connect(self._on_navigation_context_changed)
         self._set_current_page(self._navigation_service.current_nav_id)
+
+        # ── Ambient Intelligence overlay ────────────────────────────
+        # Parented to the workspace frame so it floats above page content
+        # but stays inside the central content area (below modal dialogs
+        # and any global topbar / ribbon). Refresh is debounced inside
+        # the overlay; we just trigger it on navigation events.
+        self._install_ambient_overlay()
+        self._navigation_service.navigation_changed.connect(
+            lambda _nav_id: self._refresh_ambient_overlay()
+        )
+        self._navigation_service.navigation_context_changed.connect(
+            lambda _nav_id, _ctx: self._refresh_ambient_overlay()
+        )
+        try:
+            self._service_registry.active_company_context.active_company_changed.connect(
+                lambda _cid, _name: self._refresh_ambient_overlay()
+            )
+        except Exception:
+            # Active-company context may not have a Qt signal in tests; skip.
+            pass
+
+    def _install_ambient_overlay(self) -> None:
+        try:
+            from seeker_accounting.shared.ui.ambient_thought_overlay import (
+                AmbientThoughtOverlay,
+            )
+            self._ambient_overlay = AmbientThoughtOverlay(
+                thought_service=self._service_registry.ambient_thought_service,
+                preferences_service=(
+                    self._service_registry.ambient_thought_preferences_service
+                ),
+                parent=self,
+            )
+            QTimer.singleShot(0, self._refresh_ambient_overlay)
+        except Exception:
+            # Ambient is non-critical; never block shell startup on it.
+            self._ambient_overlay = None
+
+    def _refresh_ambient_overlay(self) -> None:
+        overlay = self._ambient_overlay
+        if overlay is None:
+            return
+        try:
+            overlay.request_refresh()
+        except Exception:
+            pass
 
     def _ensure_page_materialized(self, nav_id: str) -> None:
         """Create the real page widget on first access, replacing the blank placeholder."""

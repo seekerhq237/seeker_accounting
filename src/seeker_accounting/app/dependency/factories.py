@@ -658,6 +658,10 @@ from seeker_accounting.modules.reporting.services.inventory_reconciliation_repor
 from seeker_accounting.platform.numbering.numbering_service import NumberingService
 from seeker_accounting.platform.printing.print_engine import PrintEngine
 from seeker_accounting.platform.session.session_idle_watcher_service import SessionIdleWatcherService
+from seeker_accounting.shared.services.ambient_thought_preferences_service import (
+    AmbientThoughtPreferencesService,
+)
+from seeker_accounting.shared.services.ambient_thought_service import AmbientThoughtService
 from seeker_accounting.shared.services.telemetry_service import (
     TelemetryService,
     get_default_telemetry_service,
@@ -4430,7 +4434,16 @@ def create_service_registry(
     ribbon_registry = RibbonRegistry()
     child_window_manager = ChildWindowManager()
 
-    return ServiceRegistry(
+    # Ambient Intelligence wiring — preferences are a user-scoped JSON
+    # store; the orchestrator service is built now and bound to the
+    # registry once the registry exists (its providers consume the
+    # registry, hence the two-phase construction).
+    ambient_thought_preferences_service = AmbientThoughtPreferencesService()
+    ambient_thought_service = AmbientThoughtService(
+        preferences_service=ambient_thought_preferences_service,
+    )
+
+    registry = ServiceRegistry(
         settings=settings,
         app_context=app_context,
         session_context=session_context,
@@ -4642,6 +4655,14 @@ def create_service_registry(
         wizard_run_service=wizard_run_service,
         deferral_service=deferral_service,
         feature_flag_service=FeatureFlagService(),
+        ambient_thought_preferences_service=ambient_thought_preferences_service,
+        ambient_thought_service=ambient_thought_service,
         ribbon_registry=ribbon_registry,
         child_window_manager=child_window_manager,
     )
+
+    # Two-phase: bind the registry into the ambient orchestrator now
+    # that it exists. After this call, providers can resolve every
+    # service they need via the registry.
+    ambient_thought_service.bind(registry)
+    return registry

@@ -6,7 +6,7 @@ import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -42,6 +42,10 @@ _log = logging.getLogger(__name__)
 
 
 class TreasuryTransactionDialog(QDialog):
+    # Emitted whenever draft content changes — the ambient overlay listens
+    # to this signal while the dialog is open.
+    ambient_context_changed = Signal()
+
     def __init__(
         self,
         service_registry: ServiceRegistry,
@@ -299,6 +303,21 @@ class TreasuryTransactionDialog(QDialog):
                 if val is not None:
                     total += val
         self._total_label.setText(f"Total: {total:,.2f}")
+        self.ambient_context_changed.emit()
+
+    def get_ambient_context(self) -> dict[str, object]:
+        """Expose current draft state for the ambient thought overlay."""
+        account_label = ""
+        if hasattr(self, "_account_combo"):
+            account_label = self._account_combo.currentText().strip()
+        # Overdraw detection requires a GL balance query that is not yet
+        # available as a public service method.  The context key is
+        # provided so the treasury thought provider can enable it once a
+        # FinancialAccountBalanceService is wired in.
+        return {
+            "payment_account_label": account_label or "the selected account",
+            "payment_would_overdraw": False,
+        }
 
     # ------------------------------------------------------------------
     # Data loading

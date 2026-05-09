@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QVBoxLayout,
@@ -128,6 +127,15 @@ class CompanyTaxProfileDialog(BaseDialog):
         self.setObjectName("CompanyTaxProfileDialog")
         apply_window_size(self, "modules.taxation.ui.company.tax.profile.dialog.0")
 
+        intro = QLabel(
+            "Configure the company's tax-compliance identity. These values drive "
+            "obligation generation, return drafting, and DSF filing.",
+            self,
+        )
+        intro.setObjectName("PageSummary")
+        intro.setWordWrap(True)
+        self.body_layout.addWidget(intro)
+
         company_row = QLabel(f"Company: <b>{company_name}</b>", self)
         company_row.setTextFormat(Qt.TextFormat.RichText)
         self.body_layout.addWidget(company_row)
@@ -138,26 +146,12 @@ class CompanyTaxProfileDialog(BaseDialog):
         self._error_label.hide()
         self.body_layout.addWidget(self._error_label)
 
-        # Two-column section layout — left: identity + VAT, right: CIT + DSF + flags
-        _col_left = QVBoxLayout()
-        _col_left.setSpacing(8)
-        _col_left.addWidget(self._build_identity_section())
-        _col_left.addWidget(self._build_vat_section())
-        _col_left.addStretch(1)
-
-        _col_right = QVBoxLayout()
-        _col_right.setSpacing(8)
-        _col_right.addWidget(self._build_cit_section())
-        _col_right.addWidget(self._build_dsf_section())
-        _col_right.addWidget(self._build_flags_section())
-        _col_right.addStretch(1)
-
-        _cols = QHBoxLayout()
-        _cols.setContentsMargins(0, 0, 0, 0)
-        _cols.setSpacing(12)
-        _cols.addLayout(_col_left, 1)
-        _cols.addLayout(_col_right, 1)
-        self.body_layout.addLayout(_cols)
+        self.body_layout.addWidget(self._build_identity_section())
+        self.body_layout.addWidget(self._build_vat_section())
+        self.body_layout.addWidget(self._build_cit_section())
+        self.body_layout.addWidget(self._build_dsf_section())
+        self.body_layout.addWidget(self._build_flags_section())
+        self.body_layout.addStretch(1)
 
         self.button_box.setStandardButtons(
             QDialogButtonBox.StandardButton.Cancel
@@ -303,13 +297,12 @@ class CompanyTaxProfileDialog(BaseDialog):
         frame.setObjectName("DialogSection")
         frame.setProperty("card", True)
         grid = QGridLayout(frame)
-        grid.setContentsMargins(12, 8, 12, 10)
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(5)
+        grid.setContentsMargins(16, 12, 16, 12)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(8)
         header = QLabel(title, frame)
         header.setObjectName("DialogSectionTitle")
         grid.addWidget(header, 0, 0, 1, 2)
-        grid.setColumnMinimumWidth(0, 128)
         grid.setColumnStretch(1, 1)
         return frame
 

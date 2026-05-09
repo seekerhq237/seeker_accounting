@@ -363,6 +363,10 @@ from seeker_accounting.platform.code_suggestion import CodeSuggestionService
 from seeker_accounting.platform.feature_flags import FeatureFlagService
 from seeker_accounting.platform.printing.print_engine import PrintEngine
 from seeker_accounting.platform.session.session_idle_watcher_service import SessionIdleWatcherService
+from seeker_accounting.shared.services.ambient_thought_preferences_service import (
+    AmbientThoughtPreferencesService,
+)
+from seeker_accounting.shared.services.ambient_thought_service import AmbientThoughtService
 from seeker_accounting.shared.ui.styles.theme_manager import ThemeManager
 
 
@@ -579,6 +583,8 @@ class ServiceRegistry:
     wizard_run_service: WizardRunService
     deferral_service: DeferralService
     feature_flag_service: FeatureFlagService
+    ambient_thought_preferences_service: AmbientThoughtPreferencesService
+    ambient_thought_service: AmbientThoughtService
 
     # Shell subsystems introduced with the Sage-style ribbon / child-window
     # UX. These use ``default_factory`` so no existing construction site

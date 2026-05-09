@@ -75,7 +75,6 @@ from seeker_accounting.platform.exceptions import (
     ValidationError,
 )
 from seeker_accounting.shared.ui.dialogs import BaseDialog
-from seeker_accounting.shared.ui.layout_constraints import apply_window_size
 from seeker_accounting.shared.ui.message_boxes import show_error
 from seeker_accounting.shared.ui.styles.inline_styles import text_style
 
@@ -134,7 +133,7 @@ class GenerateMonthlyVATObligationsDialog(BaseDialog):
             help_key="dialog.tax.generate_vat_obligations",
         )
         self.setObjectName("GenerateMonthlyVATObligationsDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.0")
+        self.resize(520, 320)
 
         intro = QLabel(
             "Generate the 12 monthly VAT obligations for the selected calendar "
@@ -234,7 +233,7 @@ class GenerateQuarterlyCITInstallmentsDialog(BaseDialog):
             help_key="dialog.tax.generate_cit_installments",
         )
         self.setObjectName("GenerateQuarterlyCITInstallmentsDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.1")
+        self.resize(520, 320)
 
         intro = QLabel(
             "Generate the four quarterly Corporate Income Tax installment "
@@ -338,7 +337,7 @@ class FileTaxReturnDialog(BaseDialog):
             help_key="dialog.tax.file_return",
         )
         self.setObjectName("FileTaxReturnDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.2")
+        self.resize(560, 360)
 
         intro = QLabel(
             f"File the draft <b>{tax_return.tax_type_code}</b> return for "
@@ -451,7 +450,7 @@ class FileAssessedTaxReturnDialog(BaseDialog):
             help_key="dialog.tax.file_assessed_return",
         )
         self.setObjectName("FileAssessedTaxReturnDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.3")
+        self.resize(560, 420)
 
         intro = QLabel(
             f"File the <b>{obligation.tax_type_code}</b> return for period "
@@ -584,7 +583,7 @@ class RecordTaxPaymentDialog(BaseDialog):
             help_key="dialog.tax.record_payment",
         )
         self.setObjectName("RecordTaxPaymentDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.4")
+        self.resize(560, 460)
 
         outstanding = (
             Decimal(tax_return.total_due_amount or 0)
@@ -766,7 +765,7 @@ class DSFExportDialog(BaseDialog):
             help_key="dialog.tax.dsf_export",
         )
         self.setObjectName("DSFExportDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.5")
+        self.resize(640, 540)
 
         intro = QLabel(
             f"Generate the DSF working file (Excel) for <b>{company_name}</b> "
@@ -964,7 +963,7 @@ class SettleVATReturnDialog(BaseDialog):
             help_key="dialog.tax.settle_return",
         )
         self.setObjectName("SettleVATReturnDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.6")
+        self.resize(720, 560)
 
         intro = QLabel(
             f"Posting the settlement journal for return covering "
@@ -1216,7 +1215,7 @@ class GenerateMonthlyWithholdingObligationsDialog(BaseDialog):
             help_key="dialog.tax.generate_withholding_obligations",
         )
         self.setObjectName("GenerateMonthlyWithholdingObligationsDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.7")
+        self.resize(520, 320)
 
         intro = QLabel(
             "Generate the 12 monthly withholding-tax obligations for the "
@@ -1317,7 +1316,7 @@ class GenerateAnnualPatenteObligationDialog(BaseDialog):
             help_key="dialog.tax.generate_patente_obligation",
         )
         self.setObjectName("GenerateAnnualPatenteObligationDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.8")
+        self.resize(520, 340)
 
         intro = QLabel(
             "Generate the annual Patente obligation for the selected year. "
@@ -1425,7 +1424,7 @@ class GenerateMonthlyTSRObligationsDialog(BaseDialog):
             help_key="dialog.tax.generate_tsr_obligations",
         )
         self.setObjectName("GenerateMonthlyTSRObligationsDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.9")
+        self.resize(520, 320)
 
         intro = QLabel(
             "Generate the 12 monthly Tax on Specific Services (TSR) "
@@ -1526,7 +1525,7 @@ class RecordCustomsDutyObligationDialog(BaseDialog):
             help_key="dialog.tax.record_customs_duty",
         )
         self.setObjectName("RecordCustomsDutyObligationDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.10")
+        self.resize(560, 380)
 
         intro = QLabel(
             "Record a customs-duty obligation for a single import "
@@ -1651,7 +1650,7 @@ class ExportTaxReturnPDFDialog(BaseDialog):
             help_key="dialog.tax.export_return_pdf",
         )
         self.setObjectName("ExportTaxReturnPDFDialog")
-        apply_window_size(self, "modules.taxation.ui.tax.compliance.dialogs.11")
+        self.resize(560, 280)
 
         intro = QLabel(
             f"Render tax return #{tax_return.id} ({tax_return.tax_type_code}, "
